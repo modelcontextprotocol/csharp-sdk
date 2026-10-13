@@ -19,15 +19,12 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </para>
 /// <para>
 /// Unquoted scalars are resolved per the YAML 1.2 core schema (<c>null</c>, booleans, integers, finite floats,
-/// otherwise strings). Other YAML parsers can differ in the forms and values they support; an application
-/// supplying explicit metadata is responsible for parsing and validating the entire frontmatter with a
-/// suitable mechanism and providing the correct JSON representation.
+/// otherwise strings). Other YAML parsers can differ in the forms and values they support, so values meant to
+/// be strings, such as version numbers, are best quoted.
 /// </para>
 /// <para>
-/// Before loading a skill, hosts must parse the fetched <c>SKILL.md</c> and compare every frontmatter field with
-/// the held entry, regardless of how the server authored it. A host may use this reader for its supported subset.
-/// On unsupported or malformed input, the host must reject the content or use a suitable full parser; it must
-/// not substitute the server-provided JSON for verification.
+/// Hosts can use this reader for the frontmatter verification described on <see cref="SkillVerifier"/>. A
+/// <see cref="FormatException"/> from it is a failed verification unless the host parses the file another way.
 /// </para>
 /// </remarks>
 public static class SkillFrontmatter

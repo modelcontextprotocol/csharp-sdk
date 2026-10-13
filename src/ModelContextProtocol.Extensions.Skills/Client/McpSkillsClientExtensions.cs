@@ -9,11 +9,8 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// MCP Skills extension (SEP-2640).
 /// </summary>
 /// <remarks>
-/// Listing and retrieval validate structured entries, not the contents of their files.
-/// <see cref="ReadSkillResourceAsync"/> verifies manifest membership, URI, digest and size, not frontmatter.
-/// Before loading a skill, the host must separately parse the fetched <c>SKILL.md</c> and compare every
-/// frontmatter field with the held entry. Use <see cref="SkillFrontmatter"/> only for its supported subset;
-/// reject unsupported content or use a suitable full parser, never the server's JSON as a verification fallback.
+/// These methods validate entries and verify file content against manifests. They do not verify a skill's
+/// frontmatter, which a host must still do before loading it; see <see cref="SkillVerifier"/>.
 /// </remarks>
 public static class McpSkillsClientExtensions
 {

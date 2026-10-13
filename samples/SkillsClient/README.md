@@ -66,11 +66,8 @@ Expected output (abridged):
 
 - Digest verification proves that the entry and the content are consistent. It is not a trust boundary: both come
   from the same server. Treat skill content as untrusted model input and tag it with its originating server.
-- Digest and size verification are not frontmatter verification. Every host must independently parse the
-  fetched `SKILL.md` and compare all fields with the held entry before loading, regardless of how the server
-  authored the metadata.
-- This sample accepts text `SKILL.md` resources and uses `SkillFrontmatter.Parse` for its supported subset.
-  It rejects mismatches, malformed input and unsupported YAML. A host needing other YAML forms must use a
-  suitable full parser, never the server-provided JSON as a verification fallback.
-- This is not a complete host implementation: approval binding, origin isolation and permission decisions
-  remain application responsibilities.
+- Digest verification is not frontmatter verification. The sample also parses the fetched `SKILL.md` with
+  `SkillFrontmatter.Parse` and compares it to the entry, rejecting the skill on a difference or on YAML the reader
+  does not support. A host that must accept such YAML can use a full YAML parser instead, but never the entry's
+  own frontmatter.
+- This is not a complete host: approval binding, origin isolation, and permission decisions are left out.
