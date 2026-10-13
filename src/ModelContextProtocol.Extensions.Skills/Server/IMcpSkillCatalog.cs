@@ -18,10 +18,9 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// resources through <c>resources/read</c>, since that is how hosts fetch skill content.
 /// </para>
 /// <para>
-/// The application must supply <see cref="Skill.Frontmatter"/> identical to the complete frontmatter in the
-/// corresponding file. Skills transport handlers validate entry structure; they do not read files or perform
-/// full YAML validation for a catalog. <see cref="McpServerSkill"/> is an optional authoring helper, not a
-/// requirement for implementing this interface. Hosts independently verify fetched frontmatter before loading.
+/// Each entry's <see cref="Skill.Frontmatter"/> must be identical to the frontmatter of the <c>SKILL.md</c> it
+/// describes. The server validates an entry's structure but does not read the files to check this; building
+/// entries with <see cref="McpServerSkill"/> is one way to keep the two in agreement.
 /// </para>
 /// <para>
 /// The skills methods do not pass through the request filters that guard the built-in resource methods, so a

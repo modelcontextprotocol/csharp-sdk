@@ -18,16 +18,11 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// resources serve, so the two cannot disagree.
 /// </para>
 /// <para>
-/// Overloads without explicit metadata use the optional bounded <see cref="SkillFrontmatter"/> reader and
-/// reject unsupported or malformed input. Overloads accepting a <see cref="JsonObject"/> compare it with the
-/// file when the reader can read the complete frontmatter, and reject a mismatch or a detected format error.
-/// When parsing stops at an unsupported construct, the application must have parsed and validated the entire
-/// frontmatter with a suitable mechanism and supplied identical JSON. This is not a whole-document YAML validator.
-/// </para>
-/// <para>
-/// Hosts must independently parse the fetched <c>SKILL.md</c> and compare its frontmatter field by field with
-/// the held entry before loading the skill, regardless of the authoring overload. Manifest digest and size
-/// verification does not perform that comparison.
+/// Overloads without explicit metadata read the frontmatter with <see cref="SkillFrontmatter"/> and reject
+/// unsupported or malformed input rather than publish guessed metadata. Overloads accepting a
+/// <see cref="JsonObject"/> exist for YAML the reader does not support; see
+/// <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/> for what they check and what remains
+/// the caller's responsibility.
 /// </para>
 /// <para>
 /// Register skills with <see cref="McpSkillsBuilderExtensions.WithSkills(IMcpServerBuilder, IEnumerable{McpServerSkill}, Action{McpSkillsOptions})"/>,
@@ -75,10 +70,6 @@ public sealed class McpServerSkill
     /// specification's per-skill limits; or the <c>SKILL.md</c> frontmatter cannot be read (see
     /// <see cref="SkillFrontmatter"/>) or is missing a required field.
     /// </exception>
-    /// <remarks>
-    /// The bounded reader must read the frontmatter successfully. Unsupported or malformed input is rejected,
-    /// not replaced with guessed metadata. Hosts still verify frontmatter independently when loading the skill.
-    /// </remarks>
     public static McpServerSkill Create(IEnumerable<McpServerSkillFile> files)
     {
 #if NET
@@ -106,9 +97,6 @@ public sealed class McpServerSkill
     /// frontmatter cannot be read (see <see cref="SkillFrontmatter"/>), is missing a required field, or has a
     /// name that does not match <paramref name="uri"/>.
     /// </exception>
-    /// <remarks>
-    /// Uses the same bounded reader and rejection behavior as <see cref="Create(IEnumerable{McpServerSkillFile})"/>.
-    /// </remarks>
     public static McpServerSkill Create(string uri, IEnumerable<McpServerSkillFile> files)
     {
 #if NET
@@ -145,16 +133,15 @@ public sealed class McpServerSkill
     /// </exception>
     /// <remarks>
     /// <para>
-    /// Prefer <see cref="Create(string, IEnumerable{McpServerSkillFile})"/> for the supported YAML subset. This
-    /// overload retains UTF-8 and frontmatter-boundary checks, structural entry and URI validation, and manifest
-    /// computation from the served bytes. Detected malformed input is rejected. When <see cref="SkillFrontmatter"/>
-    /// reads the complete block, the supplied object must match it exactly.
+    /// Prefer <see cref="Create(string, IEnumerable{McpServerSkillFile})"/>, which reads the frontmatter from the
+    /// file. This overload still checks UTF-8, the frontmatter boundaries, and the entry's structure, computes the
+    /// manifest from the served bytes, and rejects malformed YAML the reader detects. When
+    /// <see cref="SkillFrontmatter"/> reads the complete block, the supplied object must match it exactly.
     /// </para>
     /// <para>
-    /// When the bounded reader reports unsupported syntax, it may not examine later content. The application
-    /// must parse and validate the entire frontmatter with a suitable mechanism and supply identical JSON.
-    /// Acceptance of an explicit object is not proof that unsupported YAML is valid or matches the file.
-    /// Hosts still perform their own frontmatter verification before loading the skill.
+    /// When the reader stops at an unsupported construct, it does not examine the rest of the block, so acceptance
+    /// here proves neither that the YAML is valid nor that it matches <paramref name="frontmatter"/>. The caller
+    /// must have parsed the entire frontmatter with a full YAML parser and supplied the identical JSON.
     /// </para>
     /// </remarks>
     public static McpServerSkill Create(string uri, JsonObject frontmatter, IEnumerable<McpServerSkillFile> files)
@@ -188,10 +175,6 @@ public sealed class McpServerSkill
     /// <para>
     /// Files are read once, when this method is called. Changes on disk afterwards are not reflected in the
     /// manifest or the served content.
-    /// </para>
-    /// <para>
-    /// This automatic overload uses the bounded <see cref="SkillFrontmatter"/> reader. Unsupported or malformed
-    /// frontmatter is an error, not a reason to publish guessed metadata.
     /// </para>
     /// <para>
     /// Links are not followed. A symbolic link inside the directory could point outside it and publish a file
@@ -262,17 +245,9 @@ public sealed class McpServerSkill
     /// or the directory contains a symbolic link or other reparse point.
     /// </exception>
     /// <remarks>
-    /// <para>
-    /// Prefer <see cref="CreateFromDirectory(string, string)"/> for supported YAML. This overload has the same
-    /// checks and application-owned full-frontmatter validation responsibility as
-    /// <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/>. An unsupported construct can
-    /// stop the reader before later content is examined; the application must validate the complete block and
-    /// provide matching JSON. When the reader can read it completely, mismatched metadata is rejected.
-    /// </para>
-    /// <para>
-    /// See <see cref="CreateFromDirectory(string)"/> for how files and links are handled. Hosts independently
-    /// verify fetched frontmatter regardless of this authoring path.
-    /// </para>
+    /// Prefer <see cref="CreateFromDirectory(string, string)"/>. The supplied frontmatter is checked, and remains
+    /// the caller's responsibility, as described for <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/>.
+    /// See <see cref="CreateFromDirectory(string)"/> for how files and links are handled.
     /// </remarks>
     public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath)
     {

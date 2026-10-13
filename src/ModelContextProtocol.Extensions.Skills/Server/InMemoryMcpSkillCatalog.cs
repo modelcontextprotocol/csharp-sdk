@@ -8,8 +8,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <remarks>
 /// <para>
 /// Every entry is validated against the specification's structural requirements when the catalog is constructed.
-/// The catalog does not read skill files or compare their frontmatter. The application must supply identical
-/// file metadata, and hosts independently parse and compare fetched frontmatter before loading a skill.
+/// It does not read the skills' files, so each entry's frontmatter must already match its <c>SKILL.md</c>.
 /// </para>
 /// <para>
 /// The catalog keeps its own copy of every entry and hands out copies, so neither later changes to the objects
