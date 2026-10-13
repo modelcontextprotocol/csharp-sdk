@@ -22,6 +22,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </remarks>
 public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
 {
+    private static readonly UTF8Encoding s_strictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     private readonly Skill[] _ordered;
     private readonly string[] _orderedUris;
     private readonly Dictionary<string, Skill> _byUri;
@@ -53,13 +54,15 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
         foreach (var skill in skills)
         {
             SkillValidation.Validate(skill, nameof(skills));
+            var snapshot = SkillValidation.Snapshot(skill);
+            SkillValidation.Validate(snapshot, nameof(skills));
 
-            if (_byUri.ContainsKey(skill.Uri))
+            if (_byUri.ContainsKey(snapshot.Uri))
             {
-                throw new ArgumentException($"Duplicate skill URI '{skill.Uri}'.", nameof(skills));
+                throw new ArgumentException($"Duplicate skill URI '{snapshot.Uri}'.", nameof(skills));
             }
 
-            _byUri.Add(skill.Uri, SkillValidation.Snapshot(skill));
+            _byUri.Add(snapshot.Uri, snapshot);
         }
 
         _ordered = [.. _byUri.Values];
@@ -129,9 +132,9 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
 
         try
         {
-            return Encoding.UTF8.GetString(Convert.FromBase64String(cursor!));
+            return s_strictUtf8.GetString(Convert.FromBase64String(cursor!));
         }
-        catch (FormatException)
+        catch (Exception exception) when (exception is FormatException or DecoderFallbackException)
         {
             throw new McpProtocolException($"Invalid cursor '{cursor}'.", McpErrorCode.InvalidParams);
         }

@@ -13,9 +13,9 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <para>
 /// This reader supports block mappings, nested mappings and sequences, plain, quoted and block scalars,
 /// and comments within its bounded YAML subset. Detected malformed input and unsupported constructs throw
-/// <see cref="FormatException"/>; unsupported forms include anchors, aliases, tags, complex keys and multi-line
-/// flow collections. Parsing can stop at the first unsupported construct, so an exception is not proof that
-/// the rest of the frontmatter is valid. This helper is not a general-purpose YAML validator.
+/// <see cref="FormatException"/>; unsupported forms include anchors, aliases, tags, complex keys,
+/// nested or multi-line flow collections. Parsing can stop at the first unsupported construct, so an exception
+/// is not proof that the rest of the frontmatter is valid. This helper is not a general-purpose YAML validator.
 /// </para>
 /// <para>
 /// Unquoted scalars are resolved per the YAML 1.2 core schema (<c>null</c>, booleans, integers, finite floats,
@@ -33,6 +33,7 @@ public static class SkillFrontmatter
 
     /// <summary>YAML's white space characters. Other Unicode spaces, such as U+00A0, are scalar content.</summary>
     private static readonly char[] s_yamlWhitespace = [' ', '\t'];
+    private static readonly char[] s_flowIndicators = [',', '[', ']', '{', '}'];
 
     /// <summary>The deepest nesting of block collections the reader accepts. Frontmatter is shallow; this only exists to keep a hostile file from exhausting the stack.</summary>
     private const int MaxNestingDepth = 32;
@@ -966,13 +967,16 @@ public static class SkillFrontmatter
                 else
                 {
                     // A plain key ends at ',' or '}' (giving it a null value) or at a ':' that is followed by a
-                    // space, a comma, a closing brace, or the end of the text. A ':' followed by anything else is
+                    // space, a flow collection indicator, or the end of the text. A ':' followed by anything else is
                     // part of the key, so "{version:1}" is the key "version:1" with a null value.
                     int start = pos;
                     int colonAt = -1;
                     while (pos < text.Length && text[pos] is not (',' or '}'))
                     {
-                        if (text[pos] == ':' && (pos + 1 == text.Length || text[pos + 1] is ' ' or '\t' or ',' or '}'))
+                        if (text[pos] == ':' &&
+                            (pos + 1 == text.Length ||
+                             text[pos + 1] is ' ' or '\t' ||
+                             Array.IndexOf(s_flowIndicators, text[pos + 1]) >= 0))
                         {
                             colonAt = pos;
                             break;
@@ -990,6 +994,11 @@ public static class SkillFrontmatter
                     if (rawKey.Length > 0 && rawKey[0] is '[' or '{')
                     {
                         throw new UnsupportedYamlException($"Line {lineNumber}: nested flow collections are not supported in frontmatter.");
+                    }
+
+                    if (rawKey.IndexOfAny(s_flowIndicators) >= 0)
+                    {
+                        throw new FormatException($"Line {lineNumber}: flow indicators in a mapping key must be quoted.");
                     }
 
                     ThrowIfReservedPlainStart(rawKey, lineNumber);
@@ -1065,9 +1074,14 @@ public static class SkillFrontmatter
             }
 
             string plain = text.Substring(start, pos - start).Trim(s_yamlWhitespace);
-            if (FindKeySeparator(plain) >= 0)
+            if (FindKeySeparator(plain, inFlow: true) >= 0)
             {
                 throw new UnsupportedYamlException($"Line {lineNumber}: compact mappings inside flow sequences ('[key: value]') are not supported in frontmatter.");
+            }
+
+            if (plain.IndexOfAny(s_flowIndicators) >= 0)
+            {
+                throw new FormatException($"Line {lineNumber}: flow indicators in a plain scalar must be quoted.");
             }
 
             ThrowIfReservedPlainStart(plain, lineNumber);
@@ -1215,12 +1229,29 @@ public static class SkillFrontmatter
 
             if (text.StartsWith("0o", StringComparison.Ordinal) && text.Length > 2 && IsAll(text, 2, static c => c is >= '0' and <= '7'))
             {
-                BigInteger value = BigInteger.Zero;
-                for (int j = 2; j < text.Length; j++)
+                // Pack the magnitude once; the final zero byte keeps BigInteger's signed representation positive.
+                int byteCount = (int)((((long)text.Length - 2) * 3 + 7) / 8);
+                var bytes = new byte[byteCount + 1];
+                int byteIndex = 0;
+                int shift = 0;
+                for (int j = text.Length - 1; j >= 2; j--)
                 {
-                    value = (value * 8) + (text[j] - '0');
+                    int digit = text[j] - '0';
+                    bytes[byteIndex] |= (byte)((digit << shift) & 0xFF);
+                    if (shift > 5)
+                    {
+                        bytes[byteIndex + 1] |= (byte)(digit >> (8 - shift));
+                    }
+
+                    shift += 3;
+                    if (shift >= 8)
+                    {
+                        shift -= 8;
+                        byteIndex++;
+                    }
                 }
 
+                var value = new BigInteger(bytes);
                 return JsonNode.Parse(value.ToString(CultureInfo.InvariantCulture));
             }
 
@@ -1343,12 +1374,15 @@ public static class SkillFrontmatter
             return pos;
         }
 
-        /// <summary>Finds the ':' that separates a plain key from its value: the first ':' followed by white space or the end of the line.</summary>
-        private static int FindKeySeparator(string content)
+        /// <summary>Finds a plain key's separator; flow context also treats a following flow indicator as separation.</summary>
+        private static int FindKeySeparator(string content, bool inFlow = false)
         {
             for (int i = 0; i < content.Length; i++)
             {
-                if (content[i] == ':' && (i + 1 == content.Length || content[i + 1] is ' ' or '\t'))
+                if (content[i] == ':' &&
+                    (i + 1 == content.Length ||
+                     content[i + 1] is ' ' or '\t' ||
+                     (inFlow && Array.IndexOf(s_flowIndicators, content[i + 1]) >= 0)))
                 {
                     return i;
                 }

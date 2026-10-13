@@ -14,6 +14,8 @@ Each skill is a directory under [`Skills/`](Skills) with a `SKILL.md` and suppor
 SHA-256 digest and size of every file, and registers the `skills/list` and `skills/get` methods together with the
 resources that serve the files, in one call. Each skill's URI is `skill://{name}/SKILL.md`, where `name` comes from
 its frontmatter; pass a `uriPrefix` to place skills under an organizational path such as `skill://acme/billing/`.
+Directory discovery excludes dot-prefixed, hidden and system entries by default. The explicit
+`includeHiddenAndSystemFiles: true` overload opts in; included links are still rejected.
 
 ## Run
 

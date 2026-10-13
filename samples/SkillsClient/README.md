@@ -6,8 +6,8 @@ doing what a host's skill-loading path does:
 
 1. Connects over Streamable HTTP and checks that the server declares `io.modelcontextprotocol/skills`
    (`client.SupportsSkills()`).
-2. Enumerates the catalog with `skills/list` (`client.ListSkillsAsync()` follows pagination; the per-page
-   overload exposes the `ttlMs` and `cacheScope` hints).
+2. Enumerates the catalog with `skills/list` (`client.ListSkillsAsync()` follows up to 100 pages and 1,000
+   entries by default; the per-page overload exposes the `ttlMs` and `cacheScope` hints).
 3. Retrieves one skill by URI with `skills/get` (`client.GetSkillAsync(uri)`), the way a host confirms a URI it
    found in server instructions.
 4. Reads the skill's files with `resources/read` and verifies manifest membership, URI, digest and size
@@ -71,3 +71,5 @@ Expected output (abridged):
   does not support. A host that must accept such YAML can use a full YAML parser instead, but never the entry's
   own frontmatter.
 - This is not a complete host: approval binding, origin isolation, and permission decisions are left out.
+- The ordinary list helpers remain strict. `ListSkillsWithDiagnosticsAsync` is an explicit alternative
+  for obtaining valid entries together with `RejectedEntries`; it never treats an invalid entry as loadable.

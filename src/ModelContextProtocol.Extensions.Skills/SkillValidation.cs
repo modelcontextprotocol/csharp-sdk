@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Extensions.Skills;
@@ -32,12 +35,12 @@ internal static class SkillValidation
     }
 
     /// <summary>
-    /// Returns the final path segment of a skill root, which the specification requires to equal the skill's name.
+    /// Returns the decoded final path segment of a skill root, which the specification requires to equal the skill's name.
     /// </summary>
     public static string GetNameSegment(string skillRoot)
     {
-        int slash = skillRoot.LastIndexOf('/');
-        return slash < 0 ? skillRoot : skillRoot.Substring(slash + 1);
+        int start = Math.Max(skillRoot.LastIndexOf('/') + 1, skillRoot.IndexOf(':') + 1);
+        return System.Uri.UnescapeDataString(skillRoot.Substring(start));
     }
 
     /// <summary>
@@ -46,29 +49,46 @@ internal static class SkillValidation
     /// </summary>
     public static bool IsValidSkillName(string name)
     {
-        if (name.Length is 0 or > 64)
+        if (name.Length == 0)
         {
             return false;
         }
 
-        char previous = '-';
-        foreach (char c in name)
+        int scalarCount = 0;
+        bool previousIsHyphen = true;
+        for (int index = 0; index < name.Length; index++)
         {
-            bool isAlphanumeric = (char.IsLetter(c) && !char.IsUpper(c)) || char.IsDigit(c);
-            if (!isAlphanumeric && c != '-')
+            char c = name[index];
+            bool isHyphen = c == '-';
+            var category = CharUnicodeInfo.GetUnicodeCategory(name, index);
+            bool isAlphanumeric = category is UnicodeCategory.LowercaseLetter or
+                UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter or UnicodeCategory.DecimalDigitNumber;
+            if (!isAlphanumeric &&
+                !isHyphen)
             {
                 return false;
             }
 
-            if (c == '-' && previous == '-')
+            if (isHyphen &&
+                previousIsHyphen)
             {
                 return false;
             }
 
-            previous = c;
+            if (++scalarCount > 64)
+            {
+                return false;
+            }
+
+            if (char.IsHighSurrogate(c))
+            {
+                index++;
+            }
+
+            previousIsHyphen = isHyphen;
         }
 
-        return previous != '-';
+        return !previousIsHyphen;
     }
 
     /// <summary>
@@ -101,8 +121,9 @@ internal static class SkillValidation
     /// </summary>
     public static void ValidateUriShape(string uri, string what, string paramName)
     {
-        int schemeEnd = uri.IndexOf("://", StringComparison.Ordinal);
-        if (schemeEnd <= 0 || !System.Uri.TryCreate(uri, UriKind.Absolute, out _))
+        int schemeEnd = uri.IndexOf(':');
+        if (schemeEnd <= 0 ||
+            !System.Uri.TryCreate(uri, UriKind.Absolute, out _))
         {
             throw new ArgumentException($"{what} '{uri}' must be a syntactically valid absolute URI with a scheme, such as skill://name/SKILL.md.", paramName);
         }
@@ -115,11 +136,27 @@ internal static class SkillValidation
         // Check the raw text rather than System.Uri's view of it, which decodes and compacts dot segments, so that
         // "%2e%2e" is caught as well as "..". The authority (the first segment) may be empty, as in
         // file:///name/SKILL.md; path segments may not.
-        string[] segments = uri.Substring(schemeEnd + 3).Split('/');
+        int pathStart = schemeEnd + 1;
+        bool hasAuthority =
+            pathStart + 1 < uri.Length &&
+            uri[pathStart] == '/' &&
+            uri[pathStart + 1] == '/';
+        if (hasAuthority)
+        {
+            pathStart += 2;
+        }
+        else if (pathStart < uri.Length &&
+                 uri[pathStart] == '/')
+        {
+            pathStart++;
+        }
+
+        string[] segments = uri.Substring(pathStart).Split('/');
         for (int i = 0; i < segments.Length; i++)
         {
             string segment = segments[i];
-            if (segment.Length == 0 && i > 0)
+            if (segment.Length == 0 &&
+                (i > 0 || !hasAuthority))
             {
                 throw new ArgumentException($"{what} '{uri}' must not contain empty path segments.", paramName);
             }
@@ -141,6 +178,7 @@ internal static class SkillValidation
     {
         Uri = skill.Uri,
         Frontmatter = (JsonObject)skill.Frontmatter.DeepClone(),
+        Meta = (JsonObject?)skill.Meta?.DeepClone(),
         Resources = skill.Resources.IsDynamic
             ? SkillResources.Dynamic
             : SkillResources.FromResources(skill.Resources.Resources!.Select(static r => new SkillResource { Uri = r.Uri, Digest = r.Digest, Size = r.Size })),
@@ -209,25 +247,35 @@ internal static class SkillValidation
             throw new ArgumentException($"Skill '{skill.Uri}' must declare a non-empty string 'description' in its frontmatter.", paramName);
         }
 
-        if (description!.Length > MaxDescriptionLength)
+        int descriptionLength = Encoding.UTF32.GetByteCount(description!) / 4;
+        if (descriptionLength > MaxDescriptionLength)
         {
             throw new ArgumentException(
-                $"Skill '{skill.Uri}' has a description of {description.Length} characters; the Agent Skills specification allows at most {MaxDescriptionLength}.",
+                $"Skill '{skill.Uri}' has a description of {descriptionLength} characters; the Agent Skills specification allows at most {MaxDescriptionLength}.",
                 paramName);
         }
 
-        // Beyond name and description, only the constraints the Agent Skills specification states as requirements
-        // are enforced: compatibility is 1 to 500 characters if provided, and metadata is a mapping. Other fields,
-        // and the values inside metadata, pass through verbatim. Hosts compare frontmatter field by field against
-        // the file and ignore fields such as allowed-tools for MCP-origin skills, so rejecting a whole skill over
-        // the shape of a field no host acts on would help nobody.
         ValidateOptionalString(skill, "compatibility", MaxCompatibilityLength, paramName);
 
-        if (skill.Frontmatter.TryGetPropertyValue("metadata", out var metadataNode) && metadataNode is not JsonObject)
+        if (skill.Frontmatter.TryGetPropertyValue("metadata", out var metadataNode))
         {
-            throw new ArgumentException(
-                $"Skill '{skill.Uri}' has a 'metadata' frontmatter field that is not a mapping. Give it key-value entries, or remove the key if it is not needed.",
-                paramName);
+            if (metadataNode is not JsonObject metadata)
+            {
+                throw new ArgumentException(
+                    $"Skill '{skill.Uri}' has a 'metadata' frontmatter field that is not a mapping. Give it string key-value entries, or remove the key if it is not needed.",
+                    paramName);
+            }
+
+            foreach (var entry in metadata)
+            {
+                if (entry.Value is null ||
+                    entry.Value.GetValueKind() != JsonValueKind.String)
+                {
+                    throw new ArgumentException(
+                        $"Skill '{skill.Uri}' has a 'metadata' value for '{entry.Key}' that is not a string.",
+                        paramName);
+                }
+            }
         }
 
         if (skill.Resources is null)
@@ -335,10 +383,12 @@ internal static class SkillValidation
                 paramName);
         }
 
-        if (text!.Length == 0 || (maxLength is { } max && text.Length > max))
+        int length = Encoding.UTF32.GetByteCount(text!) / 4;
+        if (length == 0 ||
+            (maxLength is { } max && length > max))
         {
             throw new ArgumentException(
-                $"Skill '{skill.Uri}' has a '{key}' frontmatter field of {text.Length} characters; the Agent Skills specification requires 1 to {maxLength ?? int.MaxValue}.",
+                $"Skill '{skill.Uri}' has a '{key}' frontmatter field of {length} characters; the Agent Skills specification requires 1 to {maxLength ?? int.MaxValue}.",
                 paramName);
         }
     }

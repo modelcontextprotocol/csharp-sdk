@@ -8,6 +8,48 @@ public class McpServerSkillAuthoringBoundaryTests
     private const string SkillUri = "skill://owned/SKILL.md";
 
     [Theory]
+    [InlineData("description", 1024, false)]
+    [InlineData("description", 1024, true)]
+    [InlineData("compatibility", 500, false)]
+    [InlineData("compatibility", 500, true)]
+    public void AuthoringCountsSupplementaryFrontmatterByScalar(string field, int limit, bool overLimit)
+    {
+        int length = limit + (overLimit ? 1 : 0);
+        var text = string.Concat(Enumerable.Repeat("\U0001f600", length));
+        var description = field == "description" ? text : "d";
+        var compatibility = field == "compatibility" ? $"compatibility: {text}\n" : "";
+        var markdown = $"---\nname: owned\ndescription: {description}\n{compatibility}---\n";
+        var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
+
+        if (overLimit)
+        {
+            var error = Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
+            Assert.Contains($"{length} characters", error.Message);
+            Assert.Throws<ArgumentException>(() => McpServerSkill.Create(SkillUri, files));
+        }
+        else
+        {
+            Assert.Equal(text, McpServerSkill.Create(files).ProtocolSkill.Frontmatter[field]!.GetValue<string>());
+            Assert.Equal(text, McpServerSkill.Create(SkillUri, files).ProtocolSkill.Frontmatter[field]!.GetValue<string>());
+        }
+
+        WithDirectory(markdown, directory =>
+        {
+            if (overLimit)
+            {
+                var error = Assert.Throws<ArgumentException>(() => McpServerSkill.CreateFromDirectory(directory));
+                Assert.Contains($"{length} characters", error.Message);
+                Assert.Throws<ArgumentException>(() => McpServerSkill.CreateFromDirectory(SkillUri, directory));
+            }
+            else
+            {
+                Assert.Equal(text, McpServerSkill.CreateFromDirectory(directory).ProtocolSkill.Frontmatter[field]!.GetValue<string>());
+                Assert.Equal(text, McpServerSkill.CreateFromDirectory(SkillUri, directory).ProtocolSkill.Frontmatter[field]!.GetValue<string>());
+            }
+        });
+    }
+
+    [Theory]
     [InlineData("---\nname: &name owned\ndescription: d\n---\n")]
     [InlineData("---\nname: owned\ndescription: d\nextra: [never\n---\n")]
     [InlineData("# No frontmatter\n")]

@@ -66,7 +66,7 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
             .WithResources([McpServerResource.Create(() => "the content the server actually serves", new() { UriTemplate = TamperedUri })]);
     }
 
-    private static Skill CreateEntry(string uri, string name, byte[]? content = null)
+    private Skill CreateEntry(string uri, string name, byte[]? content = null)
     {
         content ??= Encoding.UTF8.GetBytes($"---\nname: {name}\n---\n");
         return new Skill
@@ -137,6 +137,19 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
 
         Assert.Equal(McpErrorCode.InternalError, exception.ErrorCode);
         Assert.Contains("invalid entry", exception.Message);
+    }
+
+    [Fact]
+    public async Task SkillsList_WithInvalidCustomCatalogEntry_ReturnsInternalError()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        var error = await Assert.ThrowsAsync<McpProtocolException>(
+            async () => await client.ListSkillsAsync(
+                new ListSkillsRequestParams { Cursor = "broken-entry" }, TestContext.Current.CancellationToken));
+
+        Assert.Equal(McpErrorCode.InternalError, error.ErrorCode);
+        Assert.Contains("invalid entry", error.Message);
     }
 
     [Fact]
@@ -269,6 +282,10 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
         public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
         {
             AssertContext(context, SkillsProtocol.MethodSkillsList);
+            if (string.Equals(cursor, "broken-entry", StringComparison.Ordinal))
+            {
+                return new ValueTask<McpSkillPage>(new McpSkillPage { Skills = [broken] });
+            }
             return listed.ListAsync(cursor, context, cancellationToken);
         }
 

@@ -21,6 +21,9 @@ public class McpServerSkillsFromDirectoryTests : ClientServerTestBase
         Directory.CreateDirectory(Path.Combine(_root, "git-workflow", "references"));
         File.WriteAllText(Path.Combine(_root, "git-workflow", "SKILL.md"), "---\nname: git-workflow\ndescription: Git conventions\nlicense: MIT\n---\n\n# Git\n");
         File.WriteAllText(Path.Combine(_root, "git-workflow", "references", "STYLE.md"), "# Style\n");
+        File.WriteAllText(Path.Combine(_root, "git-workflow", ".env"), "synthetic-private-value");
+        Directory.CreateDirectory(Path.Combine(_root, "git-workflow", ".git"));
+        File.WriteAllText(Path.Combine(_root, "git-workflow", ".git", "config"), "synthetic-config");
 
         Directory.CreateDirectory(Path.Combine(_root, "refunds"));
         File.WriteAllText(Path.Combine(_root, "refunds", "SKILL.md"), "---\nname: refunds\ndescription: >\n  Process refunds\n  per policy.\nmetadata:\n  version: \"2.1.0\"\n---\n");
@@ -31,6 +34,8 @@ public class McpServerSkillsFromDirectoryTests : ClientServerTestBase
 
         // A file at the root is ignored too.
         File.WriteAllText(Path.Combine(_root, "README.md"), "about these skills");
+        Directory.CreateDirectory(Path.Combine(_root, ".private-skill"));
+        File.WriteAllText(Path.Combine(_root, ".private-skill", "SKILL.md"), "---\nname: private-skill\ndescription: d\n---\n");
 
         McpServerBuilder.WithSkillsFromDirectory(_root, uriPrefix: "skill://acme/billing");
         StartServer();
@@ -69,6 +74,31 @@ public class McpServerSkillsFromDirectoryTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task HiddenEntriesAreNeitherListedNorReadable()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var skills = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(skills, skill => skill.Name == "private-skill");
+        Assert.DoesNotContain(skills.SelectMany(skill => skill.Resources.Resources!), resource => resource.Uri.Contains("/."));
+
+        await Assert.ThrowsAsync<McpProtocolException>(async () => await client.ReadResourceAsync(
+            "skill://acme/billing/git-workflow/.env", cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void BuilderCanIncludeHiddenEntriesExplicitly()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithSkillsFromDirectory(_root, includeHiddenAndSystemFiles: true);
+        using var provider = services.BuildServiceProvider();
+        var resources = provider.GetServices<McpServerResource>().Select(resource => resource.ProtocolResource!.Uri).ToList();
+
+        Assert.Contains("skill://private-skill/SKILL.md", resources);
+        Assert.Contains("skill://git-workflow/.env", resources);
+        Assert.Contains("skill://git-workflow/.git/config", resources);
+    }
+
+    [Fact]
     public void WithSkills_DetectsFilesThatCollideUnderUriEquivalence()
     {
         // The resource collection compares URIs case-insensitively in scheme and authority, so these two skills
@@ -94,6 +124,52 @@ public class McpServerSkillsFromDirectoryTests : ClientServerTestBase
         ]);
         var inner = McpServerSkill.Create("skill://acme/inner/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", InnerMarkdown)]);
         new ServiceCollection().AddMcpServer().WithSkills([outer, inner]);
+    }
+
+    [Theory]
+    [InlineData("café")]
+    [InlineData("数据分析")]
+    [InlineData("\U00010428")]
+    public void WithSkills_RegistersNestedUnicodeSkillsWithIdenticalSharedUris(string name)
+    {
+        var innerMarkdown = $"---\nname: {name}\ndescription: nested\n---\n";
+        var outer = McpServerSkill.Create("skill://outer/SKILL.md",
+        [
+            McpServerSkillFile.FromText("SKILL.md", "---\nname: outer\ndescription: parent\n---\n"),
+            McpServerSkillFile.FromText($"{name}/SKILL.md", innerMarkdown),
+        ]);
+        var uri = $"skill://outer/{Uri.EscapeDataString(name)}/SKILL.md";
+        var inner = McpServerSkill.Create(uri, [McpServerSkillFile.FromText("SKILL.md", innerMarkdown)]);
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithSkills([outer, inner]);
+        using var provider = services.BuildServiceProvider();
+        var resources = provider.GetServices<McpServerResource>().Select(resource => resource.ProtocolResource!.Uri).ToArray();
+
+        Assert.Equal(2, resources.Length);
+        Assert.Contains(uri, resources);
+        Assert.Equal(uri, inner.ProtocolSkill.Uri);
+        Assert.Contains(outer.ProtocolSkill.Resources.Resources!, resource => resource.Uri == uri);
+    }
+
+    [Theory]
+    [InlineData("café", "skill://outer/")]
+    [InlineData("数据分析", "skill://outer/")]
+    [InlineData("\U00010428", "skill://outer/")]
+    [InlineData("café", "repo:/skills/")]
+    [InlineData("数据分析", "repo:skills/")]
+    [InlineData("\U00010428", "repo:/skills/")]
+    public void WithSkillsFromDirectory_EscapesUnicodeNamePathSegments(string name, string prefix)
+    {
+        var root = Path.Combine(_root, "unicode-root");
+        var directory = Path.Combine(root, name);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, "SKILL.md"), $"---\nname: {name}\ndescription: d\n---\n");
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithSkillsFromDirectory(root, uriPrefix: prefix);
+        using var provider = services.BuildServiceProvider();
+
+        var resource = Assert.Single(provider.GetServices<McpServerResource>());
+        Assert.Equal($"{prefix}{Uri.EscapeDataString(name)}/SKILL.md", resource.ProtocolResource!.Uri);
     }
 
     [Fact]

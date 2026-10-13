@@ -109,17 +109,18 @@ public static class McpSkillsBuilderExtensions
 
     /// <summary>
     /// Enables MCP Skills support for every skill directory found directly under <paramref name="directoryPath"/>,
-    /// serving both their entries and their files.
+    /// serving both their entries and their files, excluding dot-prefixed, hidden, and system entries.
     /// </summary>
     /// <param name="builder">The server builder.</param>
     /// <param name="directoryPath">
-    /// A directory whose immediate subdirectories are skills. Each subdirectory containing a <c>SKILL.md</c> becomes
+    /// A directory whose immediate subdirectories are skills. Each included subdirectory containing a <c>SKILL.md</c> becomes
     /// one skill; subdirectories without one are ignored.
     /// </param>
     /// <param name="uriPrefix">
     /// The prefix of each skill's URI. A skill's <c>SKILL.md</c> is published at <c>{uriPrefix}{name}/SKILL.md</c>,
     /// where <c>name</c> is the skill's frontmatter name. Defaults to <c>skill://</c>; use a longer prefix such as
-    /// <c>skill://acme/billing/</c> to place the skills under an organizational path.
+    /// <c>skill://acme/billing/</c> to place the skills under an organizational path. Names used as path segments
+    /// are percent-encoded.
     /// </param>
     /// <param name="configure">An optional callback that configures the extension's behavior.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
@@ -153,6 +154,27 @@ public static class McpSkillsBuilderExtensions
     public static IMcpServerBuilder WithSkillsFromDirectory(
         this IMcpServerBuilder builder,
         string directoryPath,
+        string uriPrefix = "skill://",
+        Action<McpSkillsOptions>? configure = null) =>
+        WithSkillsFromDirectory(builder, directoryPath, includeHiddenAndSystemFiles: false, uriPrefix, configure);
+
+    /// <summary>
+    /// Enables skills from immediate subdirectories with an explicit hidden/system-file policy.
+    /// </summary>
+    /// <param name="builder">The server builder.</param>
+    /// <param name="directoryPath">The directory containing skill directories.</param>
+    /// <param name="includeHiddenAndSystemFiles">Whether to include dot-prefixed, hidden, and system entries.</param>
+    /// <param name="uriPrefix">The prefix used to derive skill URIs.</param>
+    /// <param name="configure">An optional callback configuring the extension.</param>
+    /// <returns>The supplied builder.</returns>
+    /// <remarks>
+    /// The same selection applies to skill directories and their contents. Included symbolic links remain errors.
+    /// See <see cref="WithSkillsFromDirectory(IMcpServerBuilder, string, string, Action{McpSkillsOptions})"/>.
+    /// </remarks>
+    public static IMcpServerBuilder WithSkillsFromDirectory(
+        this IMcpServerBuilder builder,
+        string directoryPath,
+        bool includeHiddenAndSystemFiles,
         string uriPrefix = "skill://",
         Action<McpSkillsOptions>? configure = null)
     {
@@ -188,9 +210,20 @@ public static class McpSkillsBuilderExtensions
         var skills = new List<McpServerSkill>();
         foreach (string skillDirectory in skillDirectories)
         {
+            if (!includeHiddenAndSystemFiles &&
+                Path.GetFileName(skillDirectory).StartsWith(".", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            var attributes = File.GetAttributes(skillDirectory);
+            if (!includeHiddenAndSystemFiles &&
+                (attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+            {
+                continue;
+            }
             // The per-skill loader rejects links inside a skill; the same rule applies to the skill directory
             // itself, which could otherwise be a link to a directory outside the skills root.
-            if ((File.GetAttributes(skillDirectory) & FileAttributes.ReparsePoint) != 0)
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
             {
                 throw new ArgumentException(
                     $"'{skillDirectory}' is a symbolic link or other reparse point. Links are not followed when loading skills, " +
@@ -203,7 +236,8 @@ public static class McpSkillsBuilderExtensions
                 continue;
             }
 
-            skills.Add(McpServerSkill.CreateFromDirectory(skillDirectory, uriPrefix, nameof(directoryPath)));
+            skills.Add(McpServerSkill.CreateFromDirectory(
+                skillDirectory, uriPrefix, nameof(directoryPath), includeHiddenAndSystemFiles));
         }
 
         if (skills.Count == 0)
@@ -305,9 +339,13 @@ public static class McpSkillsBuilderExtensions
         {
             var requestParams = DeserializeParams(request, McpSkillsJsonContext.Default.ListSkillsRequestParams);
             var page = await catalog.ListAsync(requestParams?.Cursor, new McpSkillRequestContext(request), cancellationToken).ConfigureAwait(false);
-            foreach (var entry in page.Skills)
+            // The sealed built-in catalog validates its owned snapshots at construction.
+            if (catalog is not InMemoryMcpSkillCatalog)
             {
-                ValidateCatalogEntry(entry);
+                foreach (var entry in page.Skills)
+                {
+                    ValidateCatalogEntry(entry);
+                }
             }
 
             var result = new ListSkillsResult
@@ -340,7 +378,10 @@ public static class McpSkillsBuilderExtensions
 
             var skill = await catalog.GetAsync(requestParams!.Uri, new McpSkillRequestContext(request), cancellationToken).ConfigureAwait(false) ??
                 throw new McpProtocolException($"No skill is served at '{requestParams.Uri}'.", McpErrorCode.InvalidParams);
-            ValidateCatalogEntry(skill);
+            if (catalog is not InMemoryMcpSkillCatalog)
+            {
+                ValidateCatalogEntry(skill);
+            }
             if (!string.Equals(skill.Uri, requestParams.Uri, StringComparison.Ordinal))
             {
                 throw new McpProtocolException(

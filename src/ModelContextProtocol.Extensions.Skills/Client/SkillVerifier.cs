@@ -153,8 +153,8 @@ public static class SkillVerifier
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="skill"/>'s manifest is <see cref="SkillResources.Dynamic"/>, which cannot be verified.</exception>
     /// <exception cref="SkillVerificationException">
-    /// The result is empty, contains contents for a URI the manifest does not list, or contains contents whose
-    /// size or digest does not match the manifest.
+    /// The result is empty, contains a null entry or contents for a URI the manifest does not list,
+    /// or contains contents whose size or digest does not match the manifest.
     /// </exception>
     public static void Verify(Skill skill, ReadResourceResult result)
     {
@@ -175,6 +175,11 @@ public static class SkillVerifier
 
         foreach (var contents in result.Contents)
         {
+            if (contents is null)
+            {
+                throw new SkillVerificationException($"The read returned a null content entry for skill '{skill.Uri}'.");
+            }
+
             var expected = FindResource(skill, contents.Uri) ??
                 throw new SkillVerificationException(
                     $"'{contents.Uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +

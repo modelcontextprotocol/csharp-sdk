@@ -86,7 +86,7 @@ public sealed class McpServerSkill
     /// </summary>
     /// <param name="uri">
     /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
-    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// segment preceding <c>/SKILL.md</c>, decoded once, must equal the skill's name.
     /// </param>
     /// <param name="files">The skill's files. Exactly one must have the path <c>SKILL.md</c>.</param>
     /// <returns>The skill.</returns>
@@ -115,7 +115,7 @@ public sealed class McpServerSkill
     /// </summary>
     /// <param name="uri">
     /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
-    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// segment preceding <c>/SKILL.md</c>, decoded once, must equal the skill's name.
     /// </param>
     /// <param name="frontmatter">
     /// The <c>SKILL.md</c> YAML frontmatter rendered as a JSON object. It must contain string <c>name</c> and
@@ -160,7 +160,7 @@ public sealed class McpServerSkill
     }
 
     /// <summary>
-    /// Creates a skill from every file in a directory, recursively, reading the frontmatter from its <c>SKILL.md</c>
+    /// Creates a skill from the visible, non-system files in a directory, recursively, reading the frontmatter from its <c>SKILL.md</c>
     /// and deriving the skill's URI from the frontmatter's <c>name</c> as <c>skill://{name}/SKILL.md</c>.
     /// </summary>
     /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
@@ -177,13 +177,28 @@ public sealed class McpServerSkill
     /// manifest or the served content.
     /// </para>
     /// <para>
+    /// Dot-prefixed, hidden, and system files and directories are excluded before reading or descending into them.
+    /// Use <see cref="CreateFromDirectory(string, bool)"/> to include them explicitly, or
+    /// <see cref="Create(IEnumerable{McpServerSkillFile})"/> with an explicit file selection.
+    /// </para>
+    /// <para>
     /// Links are not followed. A symbolic link inside the directory could point outside it and publish a file
     /// under a URI that appears to belong to the skill, so encountering one is an error. Replace the link with a
     /// regular file or directory, or build the skill with <see cref="Create(IEnumerable{McpServerSkillFile})"/> and
     /// explicit files.
     /// </para>
     /// </remarks>
-    public static McpServerSkill CreateFromDirectory(string directoryPath)
+    public static McpServerSkill CreateFromDirectory(string directoryPath) =>
+        CreateFromDirectory(directoryPath, includeHiddenAndSystemFiles: false);
+
+    /// <summary>
+    /// Creates a skill from a directory with an explicit hidden/system-file policy.
+    /// </summary>
+    /// <param name="directoryPath">The skill's root directory, containing <c>SKILL.md</c>.</param>
+    /// <param name="includeHiddenAndSystemFiles">Whether to include dot-prefixed, hidden, and system entries.</param>
+    /// <returns>The skill with its manifest computed from the selected files.</returns>
+    /// <remarks>Included symbolic links remain errors. See <see cref="CreateFromDirectory(string)"/>.</remarks>
+    public static McpServerSkill CreateFromDirectory(string directoryPath, bool includeHiddenAndSystemFiles)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(directoryPath);
@@ -191,15 +206,16 @@ public sealed class McpServerSkill
         if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
 #endif
 
-        return CreateCore(uri: null, uriPrefix: DefaultUriPrefix, frontmatter: null, ReadDirectory(directoryPath), nameof(directoryPath));
+        return CreateCore(uri: null, uriPrefix: DefaultUriPrefix, frontmatter: null,
+            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath));
     }
 
     /// <summary>
-    /// Creates a skill from every file in a directory, recursively, reading the frontmatter from its <c>SKILL.md</c>.
+    /// Creates a skill from the visible, non-system files in a directory, recursively, reading the frontmatter from its <c>SKILL.md</c>.
     /// </summary>
     /// <param name="uri">
     /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
-    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// segment preceding <c>/SKILL.md</c>, decoded once, must equal the skill's name.
     /// </param>
     /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
     /// <returns>The skill.</returns>
@@ -212,7 +228,18 @@ public sealed class McpServerSkill
     /// <remarks>
     /// See <see cref="CreateFromDirectory(string)"/> for how files and links are handled.
     /// </remarks>
-    public static McpServerSkill CreateFromDirectory(string uri, string directoryPath)
+    public static McpServerSkill CreateFromDirectory(string uri, string directoryPath) =>
+        CreateFromDirectory(uri, directoryPath, includeHiddenAndSystemFiles: false);
+
+    /// <summary>
+    /// Creates a skill with an explicit URI and hidden/system-file policy.
+    /// </summary>
+    /// <param name="uri">The resource URI of the skill's <c>SKILL.md</c>.</param>
+    /// <param name="directoryPath">The skill's root directory.</param>
+    /// <param name="includeHiddenAndSystemFiles">Whether to include dot-prefixed, hidden, and system entries.</param>
+    /// <returns>The skill.</returns>
+    /// <remarks>Included symbolic links remain errors. See <see cref="CreateFromDirectory(string)"/>.</remarks>
+    public static McpServerSkill CreateFromDirectory(string uri, string directoryPath, bool includeHiddenAndSystemFiles)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(uri);
@@ -222,15 +249,16 @@ public sealed class McpServerSkill
         if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
 #endif
 
-        return CreateCore(uri, uriPrefix: null, frontmatter: null, ReadDirectory(directoryPath), nameof(directoryPath));
+        return CreateCore(uri, uriPrefix: null, frontmatter: null,
+            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath));
     }
 
     /// <summary>
-    /// Creates a skill from every file in a directory, recursively, with explicitly supplied frontmatter.
+    /// Creates a skill from the visible, non-system files in a directory, recursively, with explicitly supplied frontmatter.
     /// </summary>
     /// <param name="uri">
     /// The resource URI of the skill's <c>SKILL.md</c>, for example <c>skill://git-workflow/SKILL.md</c>. The path
-    /// segment preceding <c>/SKILL.md</c> must equal the skill's name.
+    /// segment preceding <c>/SKILL.md</c>, decoded once, must equal the skill's name.
     /// </param>
     /// <param name="frontmatter">
     /// The <c>SKILL.md</c> YAML frontmatter rendered as a JSON object. It must contain string <c>name</c> and
@@ -249,7 +277,23 @@ public sealed class McpServerSkill
     /// the caller's responsibility, as described for <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/>.
     /// See <see cref="CreateFromDirectory(string)"/> for how files and links are handled.
     /// </remarks>
-    public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath)
+    public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath) =>
+        CreateFromDirectory(uri, frontmatter, directoryPath, includeHiddenAndSystemFiles: false);
+
+    /// <summary>
+    /// Creates a skill with explicit frontmatter and a hidden/system-file policy.
+    /// </summary>
+    /// <param name="uri">The resource URI of the skill's <c>SKILL.md</c>.</param>
+    /// <param name="frontmatter">The fully validated JSON frontmatter, matching the file.</param>
+    /// <param name="directoryPath">The skill's root directory.</param>
+    /// <param name="includeHiddenAndSystemFiles">Whether to include dot-prefixed, hidden, and system entries.</param>
+    /// <returns>The skill.</returns>
+    /// <remarks>
+    /// See <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/> for caller responsibilities.
+    /// Included symbolic links remain errors.
+    /// </remarks>
+    public static McpServerSkill CreateFromDirectory(
+        string uri, JsonObject frontmatter, string directoryPath, bool includeHiddenAndSystemFiles)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(uri);
@@ -261,7 +305,8 @@ public sealed class McpServerSkill
         if (directoryPath is null) throw new ArgumentNullException(nameof(directoryPath));
 #endif
 
-        return CreateCore(uri, uriPrefix: null, frontmatter, ReadDirectory(directoryPath), nameof(directoryPath));
+        return CreateCore(uri, uriPrefix: null, frontmatter,
+            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath));
     }
 
     private const string DefaultUriPrefix = "skill://";
@@ -270,8 +315,9 @@ public sealed class McpServerSkill
     /// Creates a skill from a directory, deriving its URI as <c>{uriPrefix}{name}/SKILL.md</c>. Used by
     /// <c>WithSkillsFromDirectory</c>.
     /// </summary>
-    internal static McpServerSkill CreateFromDirectory(string directoryPath, string uriPrefix, string paramName) =>
-        CreateCore(uri: null, uriPrefix, frontmatter: null, ReadDirectory(directoryPath), paramName);
+    internal static McpServerSkill CreateFromDirectory(
+        string directoryPath, string uriPrefix, string paramName, bool includeHiddenAndSystemFiles = false) =>
+        CreateCore(uri: null, uriPrefix, frontmatter: null, ReadDirectory(directoryPath, includeHiddenAndSystemFiles), paramName);
 
     private static McpServerSkill CreateCore(string? uri, string? uriPrefix, JsonObject? frontmatter, IEnumerable<McpServerSkillFile> files, string filesParamName)
     {
@@ -377,7 +423,8 @@ public sealed class McpServerSkill
                     filesParamName);
             }
 
-            uri = uriPrefix + name + "/" + SkillsProtocol.SkillFileName;
+            var uriName = uriPrefix!.EndsWith("://", StringComparison.Ordinal) ? name : Uri.EscapeDataString(name);
+            uri = uriPrefix + uriName + "/" + SkillsProtocol.SkillFileName;
         }
 
         string root = SkillValidation.GetSkillRoot(uri, nameof(uri));
@@ -420,7 +467,7 @@ public sealed class McpServerSkill
         return new McpServerSkill(skill, resources);
     }
 
-    private static List<McpServerSkillFile> ReadDirectory(string directoryPath)
+    private static List<McpServerSkillFile> ReadDirectory(string directoryPath, bool includeHiddenAndSystemFiles)
     {
         string fullDirectory = Path.GetFullPath(directoryPath);
         if (!Directory.Exists(fullDirectory))
@@ -443,7 +490,7 @@ public sealed class McpServerSkill
 
         var files = new List<McpServerSkillFile>();
         long totalSize = 0;
-        CollectFiles(fullDirectory, fullDirectory, files, ref totalSize);
+        CollectFiles(fullDirectory, fullDirectory, files, ref totalSize, includeHiddenAndSystemFiles);
         return files;
     }
 
@@ -452,11 +499,22 @@ public sealed class McpServerSkill
     /// outside the skill directory, and a file reached through one would be published under a URI that looks like
     /// it lives inside the skill. Rather than try to decide which link targets are acceptable, links are rejected.
     /// </summary>
-    private static void CollectFiles(string root, string directory, List<McpServerSkillFile> files, ref long totalSize)
+    private static void CollectFiles(
+        string root, string directory, List<McpServerSkillFile> files, ref long totalSize, bool includeHiddenAndSystemFiles)
     {
         foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
         {
+            if (!includeHiddenAndSystemFiles &&
+                Path.GetFileName(entry).StartsWith(".", StringComparison.Ordinal))
+            {
+                continue;
+            }
             FileAttributes attributes = File.GetAttributes(entry);
+            if (!includeHiddenAndSystemFiles &&
+                (attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0)
+            {
+                continue;
+            }
             if ((attributes & FileAttributes.ReparsePoint) != 0)
             {
                 throw new ArgumentException(
@@ -468,7 +526,7 @@ public sealed class McpServerSkill
 
             if ((attributes & FileAttributes.Directory) != 0)
             {
-                CollectFiles(root, entry, files, ref totalSize);
+                CollectFiles(root, entry, files, ref totalSize, includeHiddenAndSystemFiles);
                 continue;
             }
 

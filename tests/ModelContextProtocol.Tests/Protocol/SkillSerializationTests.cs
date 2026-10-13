@@ -114,6 +114,69 @@ public class SkillSerializationTests
         Assert.True(JsonNode.DeepEquals(JsonNode.Parse(Json), JsonNode.Parse(reserialized)));
     }
 
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"io.modelcontextprotocol.skills/x":{"values":[true,42,null,{"text":"value"}]}}""")]
+    public void Skill_WithMeta_RoundTrips(string meta)
+    {
+        var json = $$"""
+            {
+              "uri": "skill://refunds/SKILL.md",
+              "frontmatter": { "name": "refunds", "description": "d", "metadata": { "version": "2.1" } },
+              "resources": "dynamic",
+              "_meta": {{meta}}
+            }
+            """;
+
+        var skill = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill);
+
+        Assert.NotNull(skill);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(meta), skill.Meta));
+        Assert.Equal("2.1", skill.Frontmatter["metadata"]!["version"]!.GetValue<string>());
+        var reserialized = JsonSerializer.Serialize(skill, McpSkillsJsonContext.Default.Skill);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(json), JsonNode.Parse(reserialized)));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(""", "_meta": null""")]
+    public void Skill_OmitsUnsetOrNullMeta(string metaProperty)
+    {
+        var json = $$"""
+            {
+              "uri": "skill://refunds/SKILL.md",
+              "frontmatter": { "name": "refunds", "description": "d" },
+              "resources": "dynamic"{{metaProperty}}
+            }
+            """;
+
+        var skill = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill);
+
+        Assert.NotNull(skill);
+        Assert.Null(skill.Meta);
+        var reserialized = JsonSerializer.Serialize(skill, McpSkillsJsonContext.Default.Skill);
+        Assert.False(JsonNode.Parse(reserialized)!.AsObject().ContainsKey("_meta"));
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("true")]
+    [InlineData("\"metadata\"")]
+    public void Skill_RejectsNonObjectMeta(string meta)
+    {
+        var json = $$"""
+            {
+              "uri": "skill://refunds/SKILL.md",
+              "frontmatter": { "name": "refunds", "description": "d" },
+              "resources": "dynamic",
+              "_meta": {{meta}}
+            }
+            """;
+
+        Assert.ThrowsAny<JsonException>(() => JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill));
+    }
+
     [Fact]
     public void Skill_NameAndDescription_AreNullWhenAbsentOrNotStrings()
     {

@@ -1,6 +1,9 @@
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -107,13 +110,17 @@ public class InMemoryMcpSkillCatalogTests
         Assert.Null(page.NextCursor);
     }
 
-    [Fact]
-    public async Task ListAsync_WithMalformedCursor_ThrowsInvalidParams()
+    [Theory]
+    [InlineData("not-base64!!")]
+    [InlineData("/w==")]
+    [InlineData("wK8=")]
+    [InlineData("7aCA")]
+    public async Task ListAsync_WithMalformedCursor_ThrowsInvalidParams(string cursor)
     {
         var catalog = CreateCatalog(10, "a");
 
         var exception = await Assert.ThrowsAsync<McpProtocolException>(
-            async () => await catalog.ListAsync("not-base64!!", Context, TestContext.Current.CancellationToken));
+            async () => await catalog.ListAsync(cursor, Context, TestContext.Current.CancellationToken));
 
         Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
     }
@@ -174,12 +181,122 @@ public class InMemoryMcpSkillCatalogTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EntryMetaIsOwnedAcrossConstructionListingAndLookup(bool isDynamic)
+    {
+        var source = CreateSkill("alpha", resources: isDynamic ? SkillResources.Dynamic : null);
+        source.Meta = JsonNode.Parse("""{"example.com/extension":{"items":[{"value":"original"}]},"empty":null}""")!.AsObject();
+        var expected = source.Meta.DeepClone();
+        var catalog = new InMemoryMcpSkillCatalog([source]);
+        source.Meta["example.com/extension"]!["items"]![0]!["value"] = "source changed";
+
+        var page = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
+        var listed = Assert.Single(page.Skills);
+        Assert.True(JsonNode.DeepEquals(expected, listed.Meta));
+        listed.Meta!["example.com/extension"]!["items"]![0]!["value"] = "listed entry changed";
+
+        var fetched = await catalog.GetAsync(source.Uri, Context, TestContext.Current.CancellationToken);
+        Assert.NotNull(fetched);
+        Assert.True(JsonNode.DeepEquals(expected, fetched.Meta));
+        fetched.Meta!["example.com/extension"]!["items"]!.AsArray().Clear();
+
+        var listedAgain = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
+        var fetchedAgain = await catalog.GetAsync(source.Uri, Context, TestContext.Current.CancellationToken);
+        Assert.True(JsonNode.DeepEquals(expected, Assert.Single(listedAgain.Skills).Meta));
+        Assert.True(JsonNode.DeepEquals(expected, fetchedAgain!.Meta));
+    }
+
+    [Theory]
     [InlineData("café")]
     [InlineData("数据分析")]
     [InlineData("données-2024")]
+    [InlineData("\U00010428")]
+    [InlineData("\U00020000")]
     public void Constructor_AcceptsUnicodeLowercaseNames(string name)
     {
         Assert.Equal(1, new InMemoryMcpSkillCatalog([CreateSkill(name)]).Count);
+    }
+
+    [Theory]
+    [InlineData("café")]
+    [InlineData("数据分析")]
+    [InlineData("\U00010428")]
+    public void Constructor_AcceptsPercentEncodedUnicodeNameSegments(string name)
+    {
+        var skill = CreateSkill(name);
+        skill.Uri = $"skill://catalog/{Uri.EscapeDataString(name)}/SKILL.md";
+        skill.Resources = SkillResources.FromResources([new SkillResource { Uri = skill.Uri, Digest = s_validDigest, Size = 1 }]);
+
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+    }
+
+    [Theory]
+    [InlineData("caf%25C3%25A9")]
+    [InlineData("%2e%2e")]
+    [InlineData("ca%2ffé")]
+    [InlineData("ca%5cfé")]
+    public void Constructor_DoesNotDecodeNamesRepeatedlyOrAllowEncodedTraversal(string segment)
+    {
+        var skill = CreateSkill("café");
+        skill.Uri = $"skill://catalog/{segment}/SKILL.md";
+        skill.Resources = SkillResources.FromResources([new SkillResource { Uri = skill.Uri, Digest = s_validDigest, Size = 1 }]);
+
+        Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([skill]));
+    }
+
+    [Theory]
+    [InlineData("\u01c5")]
+    [InlineData("\U00010400")]
+    public void Constructor_RejectsUppercaseOrTitlecaseNames(string name)
+    {
+        Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([CreateSkill(name)]));
+    }
+
+    [Theory]
+    [InlineData(0xd801)]
+    [InlineData(0xdc28)]
+    public void Constructor_RejectsUnpairedSurrogates(int codeUnit)
+    {
+        var name = new string((char)codeUnit, 1);
+
+        Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([CreateSkill(name)]));
+    }
+
+    [Theory]
+    [InlineData(64, true)]
+    [InlineData(65, false)]
+    public void Constructor_CountsNameLengthByUnicodeScalar(int length, bool valid)
+    {
+        var name = string.Concat(Enumerable.Repeat("\U00010428", length));
+        var skill = CreateSkill(name);
+        skill.Uri = $"skill://catalog/{name}/SKILL.md";
+        skill.Resources = SkillResources.FromResources([new SkillResource { Uri = skill.Uri, Digest = s_validDigest, Size = 10 }]);
+
+        if (valid)
+        {
+            Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+        }
+        else
+        {
+            Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([skill]));
+        }
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("true")]
+    [InlineData("[]")]
+    [InlineData("{}")]
+    [InlineData("null")]
+    public void Constructor_RejectsNonStringMetadataValues(string value)
+    {
+        var skill = CreateSkill("alpha");
+        skill.Frontmatter["metadata"] = new JsonObject { ["value"] = JsonNode.Parse(value) };
+
+        var exception = Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([skill]));
+
+        Assert.Contains("metadata", exception.Message);
     }
 
     [Fact]
@@ -213,15 +330,94 @@ public class InMemoryMcpSkillCatalogTests
         Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
     }
 
+    [Theory]
+    [InlineData("description", 513)]
+    [InlineData("compatibility", 300)]
+    public void Constructor_AcceptsSupplementaryFrontmatterWithinTheLimit(string field, int scalarCount)
+    {
+        var skill = CreateSkill("alpha");
+        skill.Frontmatter[field] = string.Concat(Enumerable.Repeat("\U0001f600", scalarCount));
+
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+    }
+
+    [Theory]
+    [InlineData("description", 1024, false)]
+    [InlineData("description", 1024, true)]
+    [InlineData("compatibility", 500, false)]
+    [InlineData("compatibility", 500, true)]
+    public void Constructor_UsesScalarCountsAtFrontmatterBoundaries(string field, int limit, bool mixed)
+    {
+        var text = (mixed ? "a" : "\U0001f600") +
+            string.Concat(Enumerable.Repeat("\U0001f600", limit - 1));
+        var skill = CreateSkill("alpha");
+        skill.Frontmatter[field] = text;
+
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+
+        skill.Frontmatter[field] = text + "a";
+        var error = Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([skill]));
+        Assert.Contains($"{limit + 1} characters", error.Message);
+    }
+
+    [Theory]
+    [InlineData("description", 1024)]
+    [InlineData("compatibility", 500)]
+    public void Constructor_CountsCombiningMarksSeparately(string field, int limit)
+    {
+        var skill = CreateSkill("alpha");
+        var text = string.Concat(Enumerable.Repeat("e\u0301", limit / 2));
+        skill.Frontmatter[field] = text;
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+
+        skill.Frontmatter[field] = text + "a";
+        var error = Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([skill]));
+        Assert.Contains($"{limit + 1} characters", error.Message);
+    }
+
+    [Fact]
+    public void Constructor_ValidatesTheOwnedSnapshotAfterCustomSerialization()
+    {
+        var options = new JsonSerializerOptions { TypeInfoResolver = JsonTypeInfoResolver.Combine() };
+        var typeInfo = JsonMetadataServices.CreateValueInfo<int>(options, new ChangingMetadataConverter());
+        var value = JsonValue.Create(1, typeInfo)!;
+        Assert.Equal(JsonValueKind.String, value.GetValueKind());
+        var skill = CreateSkill("alpha");
+        skill.Frontmatter["metadata"] = new JsonObject { ["value"] = value };
+
+        var error = Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([skill]));
+
+        Assert.Contains("metadata", error.Message);
+    }
+
+    private sealed class ChangingMetadataConverter : JsonConverter<int>
+    {
+        private int _writes;
+
+        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
+        {
+            if (++_writes == 1)
+            {
+                writer.WriteStringValue("initial-string");
+            }
+            else
+            {
+                writer.WriteNumberValue(value);
+            }
+        }
+    }
+
     [Fact]
     public void Constructor_PassesThroughFieldsHostsDoNotActOn()
     {
-        // allowed-tools is experimental and hosts ignore it for MCP-origin skills; license is free-form; metadata
-        // values are whatever the author wrote. None of these should cost a skill its listing.
+        // Unknown fields retain structured values; the known metadata map has its own string-value requirement.
         var skill = CreateSkill("alpha");
         skill.Frontmatter["allowed-tools"] = new JsonArray("Read", "Write");
         skill.Frontmatter["license"] = null;
-        skill.Frontmatter["metadata"] = new JsonObject { ["version"] = 2.1, ["tags"] = new JsonArray("a") };
+        skill.Frontmatter["custom"] = new JsonObject { ["version"] = 2.1, ["tags"] = new JsonArray("a") };
 
         Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
     }
@@ -254,6 +450,54 @@ public class InMemoryMcpSkillCatalogTests
         var catalog = new InMemoryMcpSkillCatalog([skill]);
 
         Assert.Equal(1, catalog.Count);
+    }
+
+    [Theory]
+    [InlineData("repo:/skills/alpha/SKILL.md")]
+    [InlineData("repo:skills/alpha/SKILL.md")]
+    [InlineData("repo:alpha/SKILL.md")]
+    [InlineData("urn:alpha/SKILL.md")]
+    public void Constructor_AcceptsNativeAbsoluteResourceUris(string uri)
+    {
+        var skill = CreateSkill("alpha");
+        skill.Uri = uri;
+        skill.Resources = SkillResources.FromResources([new SkillResource { Uri = uri, Digest = s_validDigest, Size = 1 }]);
+
+        Assert.Equal(1, new InMemoryMcpSkillCatalog([skill]).Count);
+    }
+
+    [Theory]
+    [InlineData("repo:/skills//alpha/SKILL.md")]
+    [InlineData("repo:skills/../alpha/SKILL.md")]
+    [InlineData("repo:skills/%2e%2e/alpha/SKILL.md")]
+    [InlineData("repo:skills/ca%2ffé/alpha/SKILL.md")]
+    [InlineData("repo:/skills/alpha/SKILL.md?query")]
+    [InlineData("repo:/skills/alpha/SKILL.md#fragment")]
+    public void Constructor_RejectsUnsafeNativeUriPaths(string uri)
+    {
+        var skill = CreateSkill("alpha");
+        skill.Uri = uri;
+        skill.Resources = SkillResources.FromResources([new SkillResource { Uri = uri, Digest = s_validDigest, Size = 1 }]);
+
+        Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([skill]));
+    }
+
+    [Theory]
+    [InlineData("repo:/skills/alpha/SKILL.md")]
+    [InlineData("repo:alpha/SKILL.md")]
+    public void Constructor_RejectsTraversalInNativeManifestUris(string uri)
+    {
+        var skill = CreateSkill("alpha");
+        skill.Uri = uri;
+        var root = uri.Substring(0, uri.Length - "/SKILL.md".Length);
+        skill.Resources = SkillResources.FromResources(
+        [
+            new SkillResource { Uri = uri, Digest = s_validDigest, Size = 1 },
+            new SkillResource { Uri = root + "/%2e%2e/secret.md", Digest = s_validDigest, Size = 1 },
+        ]);
+
+        var error = Assert.Throws<ArgumentException>(() => new InMemoryMcpSkillCatalog([skill]));
+        Assert.Contains("encoded separator", error.Message);
     }
 
     public static IEnumerable<object[]> InvalidSkills()

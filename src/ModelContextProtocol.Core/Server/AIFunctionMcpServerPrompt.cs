@@ -67,45 +67,58 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
     }
 
     private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
-        MethodInfo method, McpServerPromptCreateOptions? options) =>
-        new()
+        MethodInfo method, McpServerPromptCreateOptions? options)
+    {
+        var schemaOptions = options?.SchemaCreateOptions ?? AIJsonSchemaCreateOptions.Default;
+        return new()
         {
             Name = options?.Name ?? method.GetCustomAttribute<McpServerPromptAttribute>()?.Name ?? AIFunctionMcpServerTool.DeriveName(method),
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
-            ConfigureParameterBinding = pi =>
+            JsonSchemaCreateOptions = schemaOptions with
             {
-                if (RequestServiceProvider<GetPromptRequestParams>.IsAugmentedWith(pi.ParameterType) ||
-                    (options?.Services?.GetService<IServiceProviderIsService>() is { } ispis &&
-                     ispis.IsService(pi.ParameterType)))
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                            args.Services?.GetService(pi.ParameterType) ??
-                            (pi.HasDefaultValue ? null :
-                             throw new ArgumentException("No service of the requested type was found.")),
-                    };
-                }
-
-                if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                            (args?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
-                            (pi.HasDefaultValue ? null :
-                             throw new ArgumentException("No service of the requested type was found.")),
-                    };
-                }
-
-                return default;
+                // Match injected parameters by their binding rules, not ParameterInfo identity.
+                IncludeParameter = parameter =>
+                    !ConfigureParameterBinding(parameter).ExcludeFromSchema &&
+                    (schemaOptions.IncludeParameter?.Invoke(parameter)).GetValueOrDefault(true),
             },
+            ConfigureParameterBinding = ConfigureParameterBinding,
         };
+
+        AIFunctionFactoryOptions.ParameterBindingOptions ConfigureParameterBinding(ParameterInfo pi)
+        {
+            if (RequestServiceProvider<GetPromptRequestParams>.IsAugmentedWith(pi.ParameterType) ||
+                (options?.Services?.GetService<IServiceProviderIsService>() is { } ispis &&
+                 ispis.IsService(pi.ParameterType)))
+            {
+                return new()
+                {
+                    ExcludeFromSchema = true,
+                    BindParameter = (pi, args) =>
+                        args.Services?.GetService(pi.ParameterType) ??
+                        (pi.HasDefaultValue ? null :
+                         throw new ArgumentException("No service of the requested type was found.")),
+                };
+            }
+
+            if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
+            {
+                return new()
+                {
+                    ExcludeFromSchema = true,
+                    BindParameter = (pi, args) =>
+                        (args.Services is IKeyedServiceProvider keyedServices
+                            ? keyedServices.GetKeyedService(pi.ParameterType, keyedAttr.Key)
+                            : null) ??
+                        (pi.HasDefaultValue ? null :
+                         throw new ArgumentException("No service of the requested type was found.")),
+                };
+            }
+
+            return default;
+        }
+    }
 
     /// <summary>Creates an <see cref="McpServerPrompt"/> that wraps the specified <see cref="AIFunction"/>.</summary>
     public static new AIFunctionMcpServerPrompt Create(AIFunction function, McpServerPromptCreateOptions? options)

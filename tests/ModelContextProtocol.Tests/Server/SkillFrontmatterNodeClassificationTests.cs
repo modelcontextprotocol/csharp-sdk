@@ -32,7 +32,7 @@ public class SkillFrontmatterNodeClassificationTests
     }
 
     [Theory]
-    [InlineData("metadata:\n  {version: 1}", """{"metadata":{"version":1}}""")]
+    [InlineData("extra:\n  {version: 1}", """{"extra":{"version":1}}""")]
     [InlineData("tags:\n  [read]", """{"tags":["read"]}""")]
     [InlineData("metadata:\n  \"note\": value", """{"metadata":{"note":"value"}}""")]
     [InlineData("extra:\n  [\"a]: b\"]", """{"extra":["a]: b"]}""")]

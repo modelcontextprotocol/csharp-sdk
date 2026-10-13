@@ -24,7 +24,7 @@ public sealed class Skill
     /// Gets or sets the resource URI of the skill's <c>SKILL.md</c>, readable via <c>resources/read</c>.
     /// </summary>
     /// <remarks>
-    /// The path segment preceding <c>/SKILL.md</c> must equal the <c>name</c> field of <see cref="Frontmatter"/>,
+    /// The decoded path segment preceding <c>/SKILL.md</c> must equal the <c>name</c> field of <see cref="Frontmatter"/>,
     /// so that a skill's name is recoverable from its URI alone.
     /// </remarks>
     [JsonPropertyName("uri")]
@@ -48,6 +48,16 @@ public sealed class Skill
     /// </summary>
     [JsonPropertyName("resources")]
     public required SkillResources Resources { get; set; }
+
+    /// <summary>
+    /// Gets or sets metadata reserved by the protocol for clients and servers to associate with this skill.
+    /// </summary>
+    /// <remarks>
+    /// This metadata is separate from the <c>metadata</c> field in <see cref="Frontmatter"/>.
+    /// Implementations must not make assumptions about its contents.
+    /// </remarks>
+    [JsonPropertyName("_meta")]
+    public JsonObject? Meta { get; set; }
 
     /// <summary>
     /// Gets the skill's name from <see cref="Frontmatter"/>, or <see langword="null"/> if it is absent or not a string.

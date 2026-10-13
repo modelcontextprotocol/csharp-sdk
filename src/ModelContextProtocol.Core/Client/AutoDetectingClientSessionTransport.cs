@@ -161,7 +161,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
         try
         {
             LogAttemptingSSE(_name);
-            await sseTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            await sseTransport.ConnectAsync(cancellationToken, message.Context?.DiscoverProbe).ConfigureAwait(false);
             await sseTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
 
             LogUsingSSE(_name);

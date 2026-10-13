@@ -1,10 +1,122 @@
 using ModelContextProtocol.Extensions.Skills;
+using System.Diagnostics;
+using System.Globalization;
+using System.Numerics;
 using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
 
-public class SkillFrontmatterRegressionTests
+public class SkillFrontmatterRegressionTests(ITestOutputHelper output)
 {
+    [Theory]
+    [InlineData("{items:[one]}", """{"items":["one"]}""")]
+    [InlineData("{items :[one]}", """{"items":["one"]}""")]
+    [InlineData("{items:{value: one}}", """{"items":{"value":"one"}}""")]
+    [InlineData("{items:[one], other: two}", """{"items":["one"],"other":"two"}""")]
+    [InlineData("[key:{value}]", """[{"key":{"value":null}}]""")]
+    [InlineData("[key:[one]]", """[{"key":["one"]}]""")]
+    [InlineData("[key: {value}]", """[{"key":{"value":null}}]""")]
+    [InlineData("[key :[one], other]", """[{"key":["one"]},"other"]""")]
+    public void NestedFlowValuesAreRejectedInsteadOfPublishedAsPlainKeys(string yaml, string expectedJson)
+    {
+        var markdown = $"---\nname: alpha\ndescription: d\nextra: {yaml}\n---\n";
+        var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
+        var expected = new JsonObject
+        {
+            ["name"] = "alpha",
+            ["description"] = "d",
+            ["extra"] = JsonNode.Parse(expectedJson),
+        };
+
+        var error = Record.Exception(() => SkillFrontmatter.Parse(markdown));
+        Assert.Equal("UnsupportedYamlException", error?.GetType().Name);
+        Assert.Contains("not supported", error!.Message);
+        Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
+        var supplied = McpServerSkill.Create("skill://alpha/SKILL.md", expected, files);
+        Assert.True(JsonNode.DeepEquals(expected, supplied.ProtocolSkill.Frontmatter));
+    }
+
+    [Theory]
+    [InlineData("[word{value}]")]
+    [InlineData("[word}value]")]
+    [InlineData("{word[value]: one}")]
+    public void FlowIndicatorsCannotBecomeUnquotedScalarContent(string yaml)
+    {
+        var markdown = $"---\nname: alpha\ndescription: d\nextra: {yaml}\n---\n";
+        var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
+        var supplied = new JsonObject { ["name"] = "alpha", ["description"] = "d", ["extra"] = yaml };
+
+        Assert.Throws<FormatException>(() => SkillFrontmatter.Parse(markdown));
+        Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
+        Assert.Throws<ArgumentException>(() => McpServerSkill.Create("skill://alpha/SKILL.md", supplied, files));
+    }
+
+    [Theory]
+    [InlineData("[https://example.test/path, key:value]", """["https://example.test/path","key:value"]""")]
+    [InlineData("[\"word{value}\", 'key:[one]']", """["word{value}","key:[one]"]""")]
+    [InlineData("{\"word[value]\": one}", """{"word[value]":"one"}""")]
+    [InlineData("{version:1}", """{"version:1":null}""")]
+    public void PlainColonsAndQuotedFlowIndicatorsRemainSupported(string yaml, string expectedJson)
+    {
+        var expected = new JsonObject
+        {
+            ["name"] = "alpha",
+            ["description"] = "d",
+            ["extra"] = JsonNode.Parse(expectedJson),
+        };
+        AssertParsedAndPublished($"---\nname: alpha\ndescription: d\nextra: {yaml}\n---\n", expected);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(21)]
+    [InlineData(22)]
+    [InlineData(23)]
+    [InlineData(24)]
+    [InlineData(40_000)]
+    [InlineData(80_000)]
+    [InlineData(160_000)]
+    public void OctalConversionPreservesArbitraryPrecisionAcrossByteBoundaries(int digits)
+    {
+        var markdown = $"---\nvalue: 0o{new string('7', digits)}\n---\n";
+        var stopwatch = Stopwatch.StartNew();
+        var parsed = SkillFrontmatter.Parse(markdown);
+        stopwatch.Stop();
+
+        var expected = (BigInteger.One << (3 * digits)) - BigInteger.One;
+        Assert.Equal(expected.ToString(CultureInfo.InvariantCulture), parsed["value"]!.ToJsonString());
+        output.WriteLine($"OCTAL digits={digits}; elapsed_ms={stopwatch.Elapsed.TotalMilliseconds:F1}");
+    }
+
+    [Fact]
+    public void OctalConversionPreservesMixedDigitsAndLeadingZeros()
+    {
+        var random = new Random(2640);
+        for (int length = 1; length <= 128; length++)
+        {
+            var digits = new char[length + 1];
+            digits[0] = '0';
+            var expected = BigInteger.Zero;
+            for (int index = 1; index < digits.Length; index++)
+            {
+                int digit = random.Next(8);
+                digits[index] = (char)('0' + digit);
+                expected = (expected * 8) + digit;
+            }
+
+            var parsed = SkillFrontmatter.Parse($"---\nvalue: 0o{new string(digits)}\n---\n");
+            Assert.Equal(expected.ToString(CultureInfo.InvariantCulture), parsed["value"]!.ToJsonString());
+        }
+    }
+
     [Theory]
     [InlineData("description:\n  Builds reusable components with isolated tables.\n  Use for new components.",
         "Builds reusable components with isolated tables. Use for new components.")]
@@ -63,10 +175,10 @@ public class SkillFrontmatterRegressionTests
     }
 
     [Theory]
-    [InlineData("\"Useful\"#comment", "{version: 1}", "[read]")]
-    [InlineData("'Useful'#comment", "{version: 1}", "[read]")]
-    [InlineData("Useful", "{version: 1}#comment", "[read]")]
-    [InlineData("Useful", "{version: 1}", "[read]#comment")]
+    [InlineData("\"Useful\"#comment", "{version: '1'}", "[read]")]
+    [InlineData("'Useful'#comment", "{version: '1'}", "[read]")]
+    [InlineData("Useful", "{version: '1'}#comment", "[read]")]
+    [InlineData("Useful", "{version: '1'}", "[read]#comment")]
     public void UnseparatedTrailingComment_IsRejectedByParserAndBothAuthoringOverloads(
         string description, string metadata, string tags)
     {
@@ -75,7 +187,7 @@ public class SkillFrontmatterRegressionTests
         {
             ["name"] = "comparison",
             ["description"] = "Useful",
-            ["metadata"] = new JsonObject { ["version"] = 1 },
+            ["metadata"] = new JsonObject { ["version"] = "1" },
             ["tags"] = new JsonArray("read"),
         };
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
@@ -90,13 +202,13 @@ public class SkillFrontmatterRegressionTests
     }
 
     [Theory]
-    [InlineData("Useful#hash", "{version: 1}", "[read]", "Useful#hash")]
-    [InlineData("\"Useful\" #comment", "{version: 1}", "[read]", "Useful")]
-    [InlineData("'Useful'\t#comment", "{version: 1}", "[read]", "Useful")]
-    [InlineData("Useful", "{version: 1} #comment", "[read]", "Useful")]
-    [InlineData("Useful", "{version: 1}\t#comment", "[read]", "Useful")]
-    [InlineData("Useful", "{version: 1}", "[read] #comment", "Useful")]
-    [InlineData("Useful", "{version: 1}", "[read]\t#comment", "Useful")]
+    [InlineData("Useful#hash", "{version: '1'}", "[read]", "Useful#hash")]
+    [InlineData("\"Useful\" #comment", "{version: '1'}", "[read]", "Useful")]
+    [InlineData("'Useful'\t#comment", "{version: '1'}", "[read]", "Useful")]
+    [InlineData("Useful", "{version: '1'} #comment", "[read]", "Useful")]
+    [InlineData("Useful", "{version: '1'}\t#comment", "[read]", "Useful")]
+    [InlineData("Useful", "{version: '1'}", "[read] #comment", "Useful")]
+    [InlineData("Useful", "{version: '1'}", "[read]\t#comment", "Useful")]
     public void SeparatedCommentsAndPlainHashes_RemainValid(
         string description, string metadata, string tags, string expectedDescription)
     {
@@ -105,7 +217,7 @@ public class SkillFrontmatterRegressionTests
         {
             ["name"] = "comparison",
             ["description"] = expectedDescription,
-            ["metadata"] = new JsonObject { ["version"] = 1 },
+            ["metadata"] = new JsonObject { ["version"] = "1" },
             ["tags"] = new JsonArray("read"),
         };
 

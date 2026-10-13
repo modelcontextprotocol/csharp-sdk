@@ -62,10 +62,21 @@ builder.Services
     });
 ```
 
-Every immediate subdirectory containing a `SKILL.md` becomes a skill. The SDK reads the frontmatter from each
+Every included immediate subdirectory containing a `SKILL.md` becomes a skill. The SDK reads the frontmatter from each
 `SKILL.md`, computes every digest and size from the same bytes the resources serve, registers the file resources,
 and publishes each skill at `skill://{name}/SKILL.md`, where `name` comes from the frontmatter. Pass a `uriPrefix`
 such as `skill://acme/billing/` to place the skills under an organizational path.
+Names used as URI path segments are percent-encoded. The SDK decodes the final name segment once
+when comparing it with frontmatter; the supplied URI text remains the skill's identifier. Nested skills
+sharing a file must use the identical URI text, including its encoding, so verified reads name the same resource.
+Native absolute resource URIs such as `repo:/skills/refunds/SKILL.md` and `repo:skills/refunds/SKILL.md`
+are also supported; an absolute resource URI does not need an authority introduced by `://`.
+
+Dot-prefixed, hidden, and system files and directories are excluded by default, before reading their contents
+or counting them toward the published manifest's limits. The `includeHiddenAndSystemFiles: true` overloads of
+`WithSkillsFromDirectory` and `McpServerSkill.CreateFromDirectory` provide an explicit opt-in. For a narrower
+selection, use `McpServerSkill.Create` with explicit files; that API keeps the files the caller selected.
+Included symbolic links remain errors rather than being followed.
 
 For finer control, build skills individually with <xref:ModelContextProtocol.Extensions.Skills.McpServerSkill> and
 register them with `WithSkills`:
@@ -86,13 +97,18 @@ builder.Services.AddMcpServer().WithHttpTransport().WithSkills([gitWorkflow, ref
 
 All of these validate structural entry and file constraints and throw <xref:System.ArgumentException> with a
 specific message when, for example, the frontmatter `name` does not match the URI, `description` exceeds the
-Agent Skills limit of 1024 characters, a resource URI escapes the skill's directory, `SKILL.md` is missing, or
+Agent Skills limit of 1024 Unicode scalar values, `compatibility` exceeds 500 Unicode scalar values,
+a resource URI escapes the skill's directory, `SKILL.md` is missing, or
 the skill exceeds the per-skill limits of 512 files or 16 MiB. Frontmatter fields beyond `name`, `description`,
-`compatibility`, and the shape of `metadata` pass through verbatim, as the specification requires; hosts compare
+`compatibility`, and the string-to-string `metadata` map pass through verbatim, as the specification requires; hosts compare
 them against the file and ignore fields such as `allowed-tools` for MCP-origin skills. File contents are copied when the skill is created, so
 later changes to a caller's buffer or to files on disk do not affect what is served. `CreateFromDirectory` does not
 follow symbolic links, since a link can point outside the skill directory; it throws if it encounters one. File
 names containing characters with URI syntax (such as `{`, `?`, or a space) are percent-encoded in the resource URIs.
+
+The optional <xref:ModelContextProtocol.Extensions.Skills.Skill.Meta> property carries entry-level `_meta`.
+It is separate from the frontmatter's string-to-string `metadata` map and may contain arbitrary JSON values.
+Catalog snapshots preserve it without sharing mutable objects with callers.
 
 #### Frontmatter
 
@@ -105,7 +121,8 @@ parsing the fetched `SKILL.md` itself and comparing field by field against the p
 side types as a number and the other as a string is a verification failure. Quote values such as version numbers
 that are meant to be strings.
 
-Anchors, aliases, tags, complex keys, nested and multi-line flow collections, and multi-line quoted scalars are not
+Anchors, aliases, tags, complex keys, nested and multi-line flow collections (including `{items:[one]}`),
+and multi-line quoted scalars are not
 supported; the reader rejects them with a <xref:System.FormatException> naming the construct rather than guess.
 For such a file, the `Create` and `CreateFromDirectory` overloads that take an explicit `JsonObject` supply the
 frontmatter directly. They still reject invalid UTF-8, a missing frontmatter block, and malformed YAML the reader
@@ -214,6 +231,37 @@ return one page or the raw result and expose the caching hints.
 <xref:ModelContextProtocol.Extensions.Skills.SkillVerifier> exposes the verification and digest helpers for hosts
 that read resources through other means.
 
+#### Listing limits and rejected entries
+
+The aggregating `ListSkillsAsync()` overload stops at 100 pages or 1,000 entries by default. Repeated cursors
+and exceeded limits throw `McpException`; no silently truncated list is returned. Empty cursors remain opaque
+values, not an end marker. Use explicit positive limits when appropriate:
+
+```csharp
+var skills = await client.ListSkillsAsync(maxPages: 200, maxSkills: 5000);
+```
+
+Use the paged overload for application-controlled iteration. Strict listing still rejects a page containing
+an invalid entry. To retain valid entries while reporting the others, opt into
+`ListSkillsWithDiagnosticsAsync`:
+
+```csharp
+var listing = await client.ListSkillsWithDiagnosticsAsync(new ListSkillsRequestParams());
+foreach (var rejected in listing.RejectedEntries)
+{
+    Console.Error.WriteLine($"Skill entry {rejected.Index} was rejected: {rejected.Error.Message}");
+}
+foreach (var listedSkill in listing.Page.Skills)
+{
+    Console.WriteLine(listedSkill.Uri);
+}
+```
+
+`Page` preserves the original cursor and cache hints. `RejectedEntries` identifies each invalid entry by its
+position in the original page and retains the parsing/validation error. An empty `Page.Skills` can mean every
+entry was rejected, so callers must inspect the errors. A malformed page envelope or missing `skills` array
+still fails the request. This API does not load rejected entries or replace file/frontmatter verification.
+
 ### Security considerations
 
 Skill content is instructional text delivered to a model and is therefore a prompt-injection surface. The
@@ -224,7 +272,12 @@ specification places most of the burden on hosts. In particular:
   therefore discloses frontmatter, file names, sizes, and digests to any caller the transport admits. If some
   callers must not see some skills, implement <xref:ModelContextProtocol.Extensions.Skills.IMcpSkillCatalog> and
   decide from the request context's user, and guard the corresponding resources the same way. The built-in
-  in-memory catalog serves the same entries to every caller.
+  in-memory catalog serves the same entries to every caller. Use one shared application policy for both
+  metadata and file access; the [HTTP integration example](https://github.com/modelcontextprotocol/csharp-sdk/blob/main/tests/ModelContextProtocol.AspNetCore.Tests/SkillsAuthorizationTests.cs)
+  paginates the authorized entries, so continuation cursors cannot disclose hidden skill URIs. Filtering a
+  completed page while forwarding its unfiltered cursor is not sufficient. The example exercises allowed
+  and denied callers across multiple pages. Do not derive authorization from `resources/list` membership:
+  listings may intentionally be partial while an authorized direct read remains valid.
 - Treat MCP-served skill content as untrusted model input, and tag it with its originating server when it enters
   the model's context.
 - Digests are unsigned and come from the same server as the content. A match proves consistency between the entry
