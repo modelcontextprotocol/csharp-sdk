@@ -481,6 +481,58 @@ public partial class McpServerToolTests
         AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
     }
 
+    [Theory]
+    [InlineData(null, Sep2106ProtocolVersion)]
+    [InlineData("note", Sep2106ProtocolVersion)]
+    [InlineData(null, "2025-11-25")]
+    [InlineData("note", "2025-11-25")]
+    public async Task StructuredOutput_Enabled_RequiredNullableProperties_MatchesOutputSchema(string? note, string protocolVersion)
+    {
+        JsonSerializerOptions serializerOptions = new(McpJsonUtilities.DefaultOptions)
+        {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(
+                McpJsonUtilities.DefaultOptions.TypeInfoResolver,
+                new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new RequiredNullableOutput("42", note),
+            new() { Name = "tool", UseStructuredContent = true, SerializerOptions = serializerOptions });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(note is null ? JsonValueKind.Null : JsonValueKind.String, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+    }
+
+    [Theory]
+    [InlineData(null, Sep2106ProtocolVersion)]
+    [InlineData("note", Sep2106ProtocolVersion)]
+    [InlineData(null, "2025-11-25")]
+    [InlineData("note", "2025-11-25")]
+    public async Task StructuredOutput_Enabled_RequiredNullablePropertiesInClass_MatchesOutputSchema(string? note, string protocolVersion)
+    {
+        JsonSerializerOptions serializerOptions = new(McpJsonUtilities.DefaultOptions)
+        {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(
+                McpJsonUtilities.DefaultOptions.TypeInfoResolver,
+                new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new RequiredNullablePropertiesOutput { Id = "42", Note = note },
+            new() { Name = "tool", UseStructuredContent = true, SerializerOptions = serializerOptions });
+        var request = CreateRequestContextWithProtocolVersion(protocolVersion);
+
+        var result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(note is null ? JsonValueKind.Null : JsonValueKind.String, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+    }
+
     [Fact]
     public async Task StructuredOutput_Enabled_VoidReturningTools_ReturnsExpectedSchema()
     {
@@ -1090,6 +1142,15 @@ public partial class McpServerToolTests
     }
 
     record Person(string Name, int Age);
+
+    private sealed record RequiredNullableOutput(string Id, string? Note);
+
+    private sealed class RequiredNullablePropertiesOutput
+    {
+        public required string Id { get; init; }
+
+        public required string? Note { get; init; }
+    }
 
     private static JsonSerializerOptions CreateSerializerOptionsWithPerson()
     {
