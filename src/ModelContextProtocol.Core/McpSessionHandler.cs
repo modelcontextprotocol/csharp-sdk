@@ -94,6 +94,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
     /// that can be used to request cancellation of the in-flight handler.
     /// </summary>
     private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingRequests = new();
+    /// <summary>
+    /// The <c>subscriptions/listen</c> requests in <see cref="_handlingRequests"/>. Their handlers only complete when
+    /// cancelled, so they're cancelled once the transport stops delivering messages.
+    /// </summary>
+    private readonly ConcurrentDictionary<RequestId, CancellationTokenSource> _handlingSubscriptionRequests = new();
     private readonly ILogger _logger;
 
     // This _sessionId is solely used to identify the session in telemetry and logs.
@@ -250,6 +255,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                             {
                                 _handlingRequests[messageWithId.Id] = combinedCts;
                             }
+
+                            if (message is JsonRpcRequest { Method: RequestMethods.SubscriptionsListen })
+                            {
+                                _handlingSubscriptionRequests[messageWithId.Id] = combinedCts;
+                            }
                         }
 
                         // If we await the handler without yielding first, the transport may not be able to read more messages,
@@ -338,6 +348,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         if (messageWithId is not null)
                         {
                             _handlingRequests.TryRemove(messageWithId.Id, out _);
+                            _handlingSubscriptionRequests.TryRemove(messageWithId.Id, out _);
                             combinedCts!.Dispose();
                         }
 
@@ -359,6 +370,21 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // Decrement our own count. If all handlers have already completed, this will signal completion.
             if (Interlocked.Decrement(ref inFlightCount) != 0)
             {
+                // No more messages will arrive, so no notifications/cancelled can end an open subscriptions/listen
+                // request. Its handler only completes when cancelled, so cancel it here or this wait never ends.
+                // Other handlers are left to run to completion.
+                foreach (var entry in _handlingSubscriptionRequests)
+                {
+                    try
+                    {
+                        await entry.Value.CancelAsync().ConfigureAwait(false);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // The handler completed and disposed its token source concurrently.
+                    }
+                }
+
                 await allHandlersCompleted.Task.ConfigureAwait(false);
             }
 
