@@ -1040,6 +1040,14 @@ internal sealed class StreamableHttpHandler(
             _ => null,
         };
         var mcpNameInBody = GetJsonNodeStringProperty(bodyParams, routingNameParameter);
+        if (mcpNameInBody is null &&
+            bodyParams is System.Text.Json.Nodes.JsonObject paramsObject &&
+            paramsObject.TryGetPropertyValue(routingNameParameter, out var routingNameNode) &&
+            routingNameNode is not null)
+        {
+            errorMessage = $"Header mismatch: body '{routingNameParameter}' value must be a string.";
+            return false;
+        }
 
         // Check that the header value matches the body value if the body value is present.
         if (!string.Equals(decodedMcpNameInHeader, mcpNameInBody, StringComparison.Ordinal))
@@ -1246,9 +1254,14 @@ internal sealed class StreamableHttpHandler(
 
     private static string? GetJsonNodeStringProperty(System.Text.Json.Nodes.JsonNode? node, string propertyName)
     {
-        if (node is System.Text.Json.Nodes.JsonObject obj && obj.TryGetPropertyValue(propertyName, out var value))
+        // A non-string value (number, bool, object, array) is a malformed request, not a server error,
+        // so report it as absent rather than letting GetValue<string>() throw.
+        if (node is System.Text.Json.Nodes.JsonObject obj &&
+            obj.TryGetPropertyValue(propertyName, out var value) &&
+            value is System.Text.Json.Nodes.JsonValue jsonValue &&
+            jsonValue.TryGetValue<string>(out var stringValue))
         {
-            return value?.GetValue<string>();
+            return stringValue;
         }
 
         return null;
