@@ -16,8 +16,14 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
     private readonly ConcurrentDictionary<string, Entry> _primitives;
 
-    /// <summary>The sequence number assigned to the most recently added primitive, used to preserve insertion order.</summary>
-    private long _lastSequence;
+    /// <summary>The entries in <see cref="_primitives"/>, in the order they were added.</summary>
+    private readonly List<Entry> _orderedEntries = [];
+
+    /// <summary>Lock serializing additions and removals across <see cref="_primitives"/> and <see cref="_orderedEntries"/>.</summary>
+    private readonly object _mutationLock = new();
+
+    /// <summary>Cached copy of <see cref="_orderedEntries"/> used for enumeration, or <see langword="null"/> if it needs rebuilding.</summary>
+    private volatile Entry[]? _snapshot;
 
     /// <summary>Lock protecting <see cref="_activeDeferralScopes"/> and <see cref="_hasDeferredChangeEvents"/>.</summary>
     private readonly object _deferralLock = new();
@@ -146,7 +152,13 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     /// <summary>Clears all primitives from the collection.</summary>
     public virtual void Clear()
     {
-        _primitives.Clear();
+        lock (_mutationLock)
+        {
+            _primitives.Clear();
+            _orderedEntries.Clear();
+            _snapshot = null;
+        }
+
         RaiseChanged();
     }
 
@@ -170,13 +182,21 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         Throw.IfNull(primitive);
 
-        bool added = _primitives.TryAdd(primitive.Id, new(primitive, Interlocked.Increment(ref _lastSequence)));
-        if (added)
+        string key = primitive.Id;
+        lock (_mutationLock)
         {
-            RaiseChanged();
+            Entry entry = new(key, primitive);
+            if (!_primitives.TryAdd(key, entry))
+            {
+                return false;
+            }
+
+            _orderedEntries.Add(entry);
+            _snapshot = null;
         }
 
-        return added;
+        RaiseChanged();
+        return true;
     }
 
     /// <summary>Removes the specified primitive from the collection.</summary>
@@ -189,18 +209,22 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         Throw.IfNull(primitive);
 
-        // Remove the entry only if it is still the one found above. Entry compares by reference, so an entry
-        // that another thread removed and re-added under the same name in the meantime isn't removed.
-        bool removed =
-            _primitives.TryGetValue(primitive.Id, out Entry? entry) &&
-            EqualityComparer<T>.Default.Equals(entry.Primitive, primitive) &&
-            ((ICollection<KeyValuePair<string, Entry>>)_primitives).Remove(new(primitive.Id, entry));
-        if (removed)
+        string key = primitive.Id;
+        lock (_mutationLock)
         {
-            RaiseChanged();
+            if (!_primitives.TryGetValue(key, out Entry? entry) ||
+                !EqualityComparer<T>.Default.Equals(entry.Primitive, primitive))
+            {
+                return false;
+            }
+
+            _primitives.TryRemove(key, out _);
+            _orderedEntries.Remove(entry);
+            _snapshot = null;
         }
 
-        return removed;
+        RaiseChanged();
+        return true;
     }
 
     /// <summary>Attempts to get the primitive with the specified name from the collection.</summary>
@@ -237,43 +261,65 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     }
 
     /// <summary>Gets the names of all of the primitives in the collection, in the order the primitives were added.</summary>
-    public virtual ICollection<string> PrimitiveNames => Array.ConvertAll(GetOrderedEntries(), static e => e.Primitive.Id);
+    public virtual ICollection<string> PrimitiveNames => Array.ConvertAll(GetSnapshot(), static e => e.Key);
 
     /// <summary>Creates an array containing all of the primitives in the collection.</summary>
     /// <returns>An array containing all of the primitives in the collection, in the order they were added.</returns>
-    public virtual T[] ToArray() => Array.ConvertAll(GetOrderedEntries(), static e => e.Primitive);
+    public virtual T[] ToArray() => Array.ConvertAll(GetSnapshot(), static e => e.Primitive);
 
     /// <inheritdoc/>
     public virtual void CopyTo(T[] array, int arrayIndex)
     {
         Throw.IfNull(array);
+        Throw.IfNegative(arrayIndex);
 
-        ToArray().CopyTo(array, arrayIndex);
+        Entry[] entries = GetSnapshot();
+        if (array.Length - arrayIndex < entries.Length)
+        {
+            throw new ArgumentException("The destination array is not long enough to copy all the primitives in the collection.", nameof(array));
+        }
+
+        for (int i = 0; i < entries.Length; i++)
+        {
+            array[arrayIndex + i] = entries[i].Primitive;
+        }
     }
 
     /// <inheritdoc/>
     public virtual IEnumerator<T> GetEnumerator()
     {
-        foreach (var entry in GetOrderedEntries())
+        foreach (var entry in GetSnapshot())
         {
             yield return entry.Primitive;
         }
     }
 
-    /// <summary>Takes a snapshot of the collection's entries, sorted into insertion order.</summary>
-    private Entry[] GetOrderedEntries()
+    /// <summary>Gets the collection's entries in insertion order, rebuilding the cached snapshot if a mutation invalidated it.</summary>
+    /// <remarks>The returned array is shared between callers and must not be modified or exposed.</remarks>
+    private Entry[] GetSnapshot()
     {
-        Entry[] entries = _primitives.Values.ToArray();
-        Array.Sort(entries, static (x, y) => x.Sequence.CompareTo(y.Sequence));
-        return entries;
+        Entry[]? snapshot = _snapshot;
+        if (snapshot is null)
+        {
+            lock (_mutationLock)
+            {
+                snapshot = _snapshot ??= _orderedEntries.ToArray();
+            }
+        }
+
+        return snapshot;
     }
 
-    /// <summary>A primitive together with the sequence number recording when it was added.</summary>
-    private sealed class Entry(T primitive, long sequence)
+    /// <summary>A primitive together with the key it was added under.</summary>
+    /// <remarks>
+    /// The key is captured when the primitive is added, because <see cref="IMcpServerPrimitive.Id"/> may be backed by
+    /// mutable protocol properties.
+    /// </remarks>
+    private sealed class Entry(string key, T primitive)
     {
-        public T Primitive { get; } = primitive;
+        public string Key { get; } = key;
 
-        public long Sequence { get; } = sequence;
+        public T Primitive { get; } = primitive;
     }
 
     /// <inheritdoc/>

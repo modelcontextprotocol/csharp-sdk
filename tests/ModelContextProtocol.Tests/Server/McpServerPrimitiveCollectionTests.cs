@@ -695,4 +695,95 @@ public class McpServerPrimitiveCollectionTests
         Assert.Contains(stored, collection);
         Assert.Same(stored, collection["tool1"]);
     }
+
+    [Fact]
+    public void PrimitiveNames_PrimitiveRenamedAfterAdd_ReturnsNameItWasAddedUnder()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        var tool = CreateTool("original");
+        collection.Add(tool);
+
+        tool.ProtocolTool.Name = "renamed";
+
+        Assert.Equal(["original"], collection.PrimitiveNames);
+        Assert.True(collection.TryGetPrimitive("original", out var found));
+        Assert.Same(tool, found);
+    }
+
+    [Fact]
+    public void ToArrayAndPrimitiveNames_ReturnCopiesTheCallerOwns()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        collection.Add(CreateTool("alpha"));
+        collection.Add(CreateTool("bravo"));
+
+        var array = collection.ToArray();
+        array[0] = array[1];
+        var names = collection.PrimitiveNames;
+        ((string[])names)[0] = "changed";
+
+        Assert.Equal(["alpha", "bravo"], collection.Select(t => t.ProtocolTool.Name));
+        Assert.Equal(["alpha", "bravo"], collection.PrimitiveNames);
+        Assert.NotSame(collection.ToArray(), collection.ToArray());
+    }
+
+    [Fact]
+    public void CopyTo_DestinationTooSmall_Throws()
+    {
+        var collection = new McpServerPrimitiveCollection<McpServerTool>();
+        collection.Add(CreateTool("alpha"));
+        collection.Add(CreateTool("bravo"));
+
+        Assert.Throws<ArgumentException>(() => collection.CopyTo(new McpServerTool[2], 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => collection.CopyTo(new McpServerTool[2], -1));
+    }
+
+    [Fact]
+    public async Task Enumeration_AddStalledMidway_LaterAddDoesNotOvertakeIt()
+    {
+        var comparer = new StallingComparer("first");
+        var collection = new McpServerPrimitiveCollection<McpServerTool>(comparer);
+
+        // Enumerate once so listing while an add is stalled reads the cached snapshot rather than waiting for the add.
+        Assert.Empty(collection);
+
+        var addFirst = Task.Run(() => collection.Add(CreateTool("first")), TestContext.Current.CancellationToken);
+        Assert.True(comparer.Stalled.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        // Give the second add a chance to complete while the first is stalled inside the collection.
+        var addSecond = Task.Run(() => collection.Add(CreateTool("second")), TestContext.Current.CancellationToken);
+        await Task.WhenAny(addSecond, Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken));
+        string[] whileStalled = [.. collection.Select(t => t.ProtocolTool.Name)];
+
+        comparer.Release.Set();
+        await Task.WhenAll(addFirst, addSecond);
+        string[] afterward = [.. collection.Select(t => t.ProtocolTool.Name)];
+
+        // A primitive that was already listed must not be reordered by an add that started before it.
+        Assert.Equal(["first", "second"], afterward);
+        Assert.Equal(whileStalled, afterward.Take(whileStalled.Length));
+    }
+
+    /// <summary>A comparer that blocks the first time it hashes <c>stallKey</c>, until <see cref="Release"/> is set.</summary>
+    private sealed class StallingComparer(string stallKey) : IEqualityComparer<string>
+    {
+        private int _hasStalled;
+
+        public ManualResetEventSlim Stalled { get; } = new();
+
+        public ManualResetEventSlim Release { get; } = new();
+
+        public bool Equals(string? x, string? y) => string.Equals(x, y);
+
+        public int GetHashCode(string obj)
+        {
+            if (obj == stallKey && Interlocked.Exchange(ref _hasStalled, 1) == 0)
+            {
+                Stalled.Set();
+                Release.Wait();
+            }
+
+            return obj.GetHashCode();
+        }
+    }
 }
