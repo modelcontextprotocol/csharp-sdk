@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -14,6 +15,7 @@ namespace ModelContextProtocol.Server;
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
+    private readonly JsonSerializerOptions _structuredContentSerializerOptions;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -225,6 +227,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         ProtocolTool = tool;
 
         _metadata = metadata;
+        _structuredContentSerializerOptions = tool.OutputSchema is not null &&
+            function.JsonSerializerOptions.DefaultIgnoreCondition is JsonIgnoreCondition.WhenWritingNull
+                ? new JsonSerializerOptions(function.JsonSerializerOptions)
+                {
+                    DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+                }
+                : function.JsonSerializerOptions;
     }
 
     /// <inheritdoc />
@@ -677,7 +686,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonElement jsonElement => jsonElement,
             JsonNode node => JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode),
             null => null,
-            _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
+            _ => JsonSerializer.SerializeToElement(aiFunctionResult, _structuredContentSerializerOptions.GetTypeInfo(typeof(object))),
         };
 
         // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
