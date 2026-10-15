@@ -93,6 +93,10 @@
     <Content Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)'))ModelContextProtocol.TestServer\$(Configuration)\$(TargetFramework)\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)'))ModelContextProtocol.TestServer\$(Configuration)\$(TargetFramework)\**\*">
+      <TargetPath>ExecutableWithSpacesHandledCorrectly\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="$([System.IO.Path]::GetFullPath('$(ArtifactsBinDir)'))TestServerWithHosting\$(Configuration)\$(TargetFramework)\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
