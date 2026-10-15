@@ -464,18 +464,22 @@ internal static partial class UriTemplate
             }
             else
             {
-                AppendHex(ref builder, c);
+                // A supplementary character is a surrogate pair and must be UTF-8 encoded as a single scalar.
+                int charCount = char.IsHighSurrogate(c) && i + 1 < value.Length && char.IsLowSurrogate(value[i + 1]) ? 2 : 1;
+                AppendHex(ref builder, value.AsSpan(i, charCount));
+                i += charCount - 1;
             }
         }
 
         return builder.ToStringAndClear();
 
-        static void AppendHex(ref DefaultInterpolatedStringHandler builder, char c)
+        static void AppendHex(ref DefaultInterpolatedStringHandler builder, ReadOnlySpan<char> chars)
         {
             ReadOnlySpan<char> hexDigits = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'];
 
-            if (c <= 0x7F)
+            if (chars.Length == 1 && chars[0] <= 0x7F)
             {
+                char c = chars[0];
                 builder.AppendLiteral("%");
                 builder.AppendFormatted(hexDigits[c >> 4]);
                 builder.AppendFormatted(hexDigits[c & 0xF]);
@@ -483,10 +487,10 @@ internal static partial class UriTemplate
             else
             {
 #if NET
-                Span<byte> utf8 = stackalloc byte[Encoding.UTF8.GetMaxByteCount(1)];
-                foreach (byte b in utf8.Slice(0, new Rune(c).EncodeToUtf8(utf8)))
+                Span<byte> utf8 = stackalloc byte[Encoding.UTF8.GetMaxByteCount(2)];
+                foreach (byte b in utf8.Slice(0, Encoding.UTF8.GetBytes(chars, utf8)))
 #else
-                foreach (byte b in Encoding.UTF8.GetBytes([c]))
+                foreach (byte b in Encoding.UTF8.GetBytes(chars.ToArray()))
 #endif
                 {
                     builder.AppendLiteral("%");
