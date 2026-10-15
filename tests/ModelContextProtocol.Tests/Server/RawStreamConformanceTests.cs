@@ -210,5 +210,63 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         var call = await ReadAsync();
         Assert.Equal("echo:still-modern", call["result"]!["content"]![0]!["text"]!.GetValue<string>());
     }
+
+    [Fact]
+    public async Task InputEndOfStream_WithOpenSubscriptionsListen_CompletesRunAsync()
+    {
+        // Closing the server's input is the stdio shutdown signal. An open subscriptions/listen request,
+        // whose handler only completes when cancelled, must not keep RunAsync alive after that (#1914).
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}");
+        Assert.NotNull((await ReadAsync())["result"]);
+
+        await SendAsync(
+            @"{""jsonrpc"":""2.0"",""id"":""listen:0"",""method"":""subscriptions/listen"",""params"":{""notifications"":{""toolsListChanged"":true}," +
+            July2026ProtocolMetaFragment() + "}}");
+        var acknowledgement = await ReadAsync();
+        Assert.Equal(NotificationMethods.SubscriptionsAcknowledgedNotification, acknowledgement["method"]!.GetValue<string>());
+
+        _clientToServer.Writer.Complete();
+
+        await _serverTask.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.False(_cts.IsCancellationRequested);
+    }
+
+    [Fact]
+    public async Task InputEndOfStream_WithOpenCustomSubscriptionsListen_CompletesRunAsync()
+    {
+        // Same as above, but the stream is owned by a custom SubscriptionsListenHandler that waits for its token.
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+        var handlerWaiting = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await using var transport = new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream(), loggerFactory: LoggerFactory);
+        await using var server = McpServer.Create(transport, new McpServerOptions
+        {
+            Handlers = new()
+            {
+                SubscriptionsListenHandler = async (request, cancellationToken) =>
+                {
+                    handlerWaiting.TrySetResult(true);
+                    var cancelled = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    using var registration = cancellationToken.Register(
+                        static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true), cancelled);
+                    await cancelled.Task;
+                    return new EmptyResult();
+                },
+            },
+        }, LoggerFactory);
+
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        using var writer = new StreamWriter(clientToServer.Writer.AsStream(), new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
+        await writer.WriteLineAsync(
+            @"{""jsonrpc"":""2.0"",""id"":""listen:0"",""method"":""subscriptions/listen"",""params"":{""notifications"":{""toolsListChanged"":true}," +
+            July2026ProtocolMetaFragment() + "}}");
+        await handlerWaiting.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        clientToServer.Writer.Complete();
+
+        await runTask.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+    }
 }
 #endif
