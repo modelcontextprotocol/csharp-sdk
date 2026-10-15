@@ -218,7 +218,13 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
                 return false;
             }
 
-            _primitives.TryRemove(key, out _);
+            // Remove only the exact entry compared above. A primitive's Equals can reenter the collection while the
+            // lock is held and replace the entry under the same key; the replacement must then stay in place.
+            if (!((ICollection<KeyValuePair<string, Entry>>)_primitives).Remove(new(key, entry)))
+            {
+                return false;
+            }
+
             _orderedEntries.Remove(entry);
             _snapshot = null;
         }

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
+using System.Runtime.CompilerServices;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -739,33 +741,126 @@ public class McpServerPrimitiveCollectionTests
     }
 
     [Fact]
+    public void Remove_EqualsReplacesEntryUnderSameKey_LeavesReplacementInPlace()
+    {
+        var collection = new McpServerPrimitiveCollection<ReentrantEqualityPrimitive>();
+        var original = new ReentrantEqualityPrimitive("tool1");
+        var replacement = new ReentrantEqualityPrimitive("tool1");
+        collection.Add(original);
+
+        original.OnEquals = () =>
+        {
+            collection.Clear();
+            collection.Add(replacement);
+        };
+
+        Assert.False(collection.Remove(original));
+        Assert.False(collection.IsEmpty);
+        Assert.Same(replacement, collection["tool1"]);
+        Assert.Same(replacement, Assert.Single(collection.ToArray()));
+    }
+
+    [Fact]
+    public void Enumeration_AlreadyVisiblePrimitive_KeepsItsPosition()
+    {
+        // The comparer reenters the collection on the same thread before "first" is inserted, which deterministically
+        // forces the interleaving where a later add becomes visible while an earlier add is still in progress.
+        var comparer = new InsertionInterleavingComparer();
+        var collection = new McpServerPrimitiveCollection<McpServerTool>(comparer);
+        string[] whileFirstPending = [];
+
+        comparer.BeforeFirstInsertion = () =>
+        {
+            collection.Add(CreateTool("second"));
+            whileFirstPending = [.. collection.Select(t => t.ProtocolTool.Name)];
+        };
+
+        collection.Add(CreateTool("first"));
+        string[] afterward = [.. collection.Select(t => t.ProtocolTool.Name)];
+
+        Assert.Equal(["second"], whileFirstPending);
+        Assert.Equal(["second", "first"], afterward);
+    }
+
+    [Fact]
     public async Task Enumeration_AddStalledMidway_LaterAddDoesNotOvertakeIt()
     {
-        var comparer = new StallingComparer("first");
+        // Best-effort threaded coverage: the second add is given a window to complete while the first is stalled, but
+        // isn't guaranteed to use it. Enumeration_AlreadyVisiblePrimitive_KeepsItsPosition covers the interleaving
+        // deterministically.
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        using var comparer = new StallingComparer("first", cancellationToken);
         var collection = new McpServerPrimitiveCollection<McpServerTool>(comparer);
 
         // Enumerate once so listing while an add is stalled reads the cached snapshot rather than waiting for the add.
         Assert.Empty(collection);
 
-        var addFirst = Task.Run(() => collection.Add(CreateTool("first")), TestContext.Current.CancellationToken);
-        Assert.True(comparer.Stalled.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Task addFirst = Task.Run(() => collection.Add(CreateTool("first")), cancellationToken);
+        Task addSecond = Task.CompletedTask;
+        string[] whileStalled;
+        try
+        {
+            Assert.True(comparer.Stalled.Wait(TestConstants.DefaultTimeout, cancellationToken));
 
-        // Give the second add a chance to complete while the first is stalled inside the collection.
-        var addSecond = Task.Run(() => collection.Add(CreateTool("second")), TestContext.Current.CancellationToken);
-        await Task.WhenAny(addSecond, Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken));
-        string[] whileStalled = [.. collection.Select(t => t.ProtocolTool.Name)];
+            addSecond = Task.Run(() => collection.Add(CreateTool("second")), cancellationToken);
+            await Task.WhenAny(addSecond, Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken));
+            whileStalled = [.. collection.Select(t => t.ProtocolTool.Name)];
+        }
+        finally
+        {
+            comparer.Release.Set();
+            await Task.WhenAll(addFirst, addSecond);
+        }
 
-        comparer.Release.Set();
-        await Task.WhenAll(addFirst, addSecond);
         string[] afterward = [.. collection.Select(t => t.ProtocolTool.Name)];
 
         // A primitive that was already listed must not be reordered by an add that started before it.
-        Assert.Equal(["first", "second"], afterward);
         Assert.Equal(whileStalled, afterward.Take(whileStalled.Length));
     }
 
+    /// <summary>A primitive whose <see cref="Equals(object?)"/> runs <see cref="OnEquals"/> once before comparing by reference.</summary>
+    private sealed class ReentrantEqualityPrimitive(string id) : IMcpServerPrimitive
+    {
+        public string Id => id;
+
+        public IReadOnlyList<object> Metadata => [];
+
+        public Action? OnEquals { get; set; }
+
+        public override bool Equals(object? obj)
+        {
+            Action? onEquals = OnEquals;
+            OnEquals = null;
+            onEquals?.Invoke();
+            return ReferenceEquals(this, obj);
+        }
+
+        public override int GetHashCode() => RuntimeHelpers.GetHashCode(this);
+    }
+
+    /// <summary>A comparer that runs <see cref="BeforeFirstInsertion"/> once, the first time it hashes <c>"first"</c>.</summary>
+    private sealed class InsertionInterleavingComparer : IEqualityComparer<string>
+    {
+        private bool _callbackInvoked;
+
+        public Action? BeforeFirstInsertion { get; set; }
+
+        public bool Equals(string? x, string? y) => StringComparer.Ordinal.Equals(x, y);
+
+        public int GetHashCode(string value)
+        {
+            if (value == "first" && !_callbackInvoked)
+            {
+                _callbackInvoked = true;
+                BeforeFirstInsertion?.Invoke();
+            }
+
+            return StringComparer.Ordinal.GetHashCode(value);
+        }
+    }
+
     /// <summary>A comparer that blocks the first time it hashes <c>stallKey</c>, until <see cref="Release"/> is set.</summary>
-    private sealed class StallingComparer(string stallKey) : IEqualityComparer<string>
+    private sealed class StallingComparer(string stallKey, CancellationToken cancellationToken) : IEqualityComparer<string>, IDisposable
     {
         private int _hasStalled;
 
@@ -773,17 +868,26 @@ public class McpServerPrimitiveCollectionTests
 
         public ManualResetEventSlim Release { get; } = new();
 
-        public bool Equals(string? x, string? y) => string.Equals(x, y);
+        public bool Equals(string? x, string? y) => StringComparer.Ordinal.Equals(x, y);
 
         public int GetHashCode(string obj)
         {
             if (obj == stallKey && Interlocked.Exchange(ref _hasStalled, 1) == 0)
             {
                 Stalled.Set();
-                Release.Wait();
+                if (!Release.Wait(TestConstants.DefaultTimeout, cancellationToken))
+                {
+                    throw new TimeoutException($"The stalled add of '{stallKey}' was never released.");
+                }
             }
 
-            return obj.GetHashCode();
+            return StringComparer.Ordinal.GetHashCode(obj);
+        }
+
+        public void Dispose()
+        {
+            Stalled.Dispose();
+            Release.Dispose();
         }
     }
 }
