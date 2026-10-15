@@ -74,58 +74,45 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
                 LogUsingStreamableHttp(_name);
                 ActiveTransport = streamableHttpTransport;
             }
-            else if (await StreamableHttpClientSessionTransport.TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError)
+            else if (await StreamableHttpClientSessionTransport.TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError &&
+                StreamableHttpClientSessionTransport.ShouldSurfaceJsonRpcErrorAsProtocolException(response.StatusCode, parsedError))
             {
-                // A JSON-RPC error envelope in the body means the peer IS a Streamable HTTP server.
-                // Adopt it before surfacing the failure so the catch filter leaves the now-owned
-                // transport alone, and never mask the response by attempting deprecated SSE.
+                // Recognized modern JSON-RPC error: the peer is Streamable HTTP. Adopt it and surface
+                // the protocol failure without masking it behind a deprecated SSE GET.
                 LogUsingStreamableHttp(_name);
                 ActiveTransport = streamableHttpTransport;
-
-                if (StreamableHttpClientSessionTransport.ShouldSurfaceJsonRpcErrorAsProtocolException(response.StatusCode, parsedError))
-                {
-                    throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
-                }
-
-                // TryReadJsonRpcErrorAsync buffered the content, so this preserves the same response
-                // body and status without consuming the network stream a second time.
-                throw await HttpResponseMessageExtensions.CreateHttpRequestExceptionWithBodyAsync(response, cancellationToken).ConfigureAwait(false);
+                throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
             }
             else
             {
-                // Non-JSON-RPC error response: either the server doesn't speak MCP at all, or this
-                // is an older deployment that expects the SSE transport (which establishes its
-                // protocol via GET /sse rather than POST). Fall back to SSE per the original
-                // behavior. Capture the underlying error (status + body) before falling back so that,
-                // if SSE also fails, we can surface the real Streamable HTTP diagnostic to the caller
-                // instead of dropping it on the floor (see https://github.com/modelcontextprotocol/csharp-sdk/issues/1526).
-                // This reads the response body a second time for the application/json case, where
-                // TryReadJsonRpcErrorAsync above already read it. HttpContent buffers after the first
-                // read, so this returns the same buffered content and is safe (not a second stream
-                // consumption). For the common non-JSON error responses (415, 405, plain text)
-                // TryReadJsonRpcErrorAsync returns early on the content type, so there is no double read.
+                // Unstructured response, or a parsed JSON-RPC error that is not a recognized modern
+                // signal. Classify the full HTTP response: preserve #1855's server/discover 400/404
+                // skip, keep 401/403/5xx (and other non-allowlisted statuses) off SSE, and try SSE
+                // only for the remaining unrecognized 400/404/405 responses (including a JSON-RPC-
+                // bodied 405 that is not a recognized modern error).
+                //
+                // TryReadJsonRpcErrorAsync may already have buffered application/json content;
+                // HttpContent returns that buffer, so this is safe (not a second stream consumption).
+                // For common non-JSON errors (415, 405, plain text) TryReadJsonRpcErrorAsync returns
+                // early on the content type, so there is no double read.
                 var streamableHttpError = await HttpResponseMessageExtensions.CreateHttpRequestExceptionWithBodyAsync(response, cancellationToken).ConfigureAwait(false);
 
-                if (IsDiscoverProbeRejection(message, response.StatusCode))
+                // Preserve #1855: unrecognized server/discover 400/404 must reach the initialize
+                // retry without an intervening GET. Non-allowlisted statuses (401/403/5xx/415/…)
+                // retain their HTTP semantics without a deprecated GET.
+                if (IsDiscoverProbeRejection(message, response.StatusCode) ||
+                    !ShouldTrySseFallback(response.StatusCode))
                 {
-                    // The server/discover probe is protocol negotiation, not transport detection. A server
-                    // predating SEP-2575 rejects the session-less POST with 400 (can't parse the request) or
-                    // 404 (requires Mcp-Session-Id on every non-initialize POST) whether it speaks Streamable
-                    // HTTP or SSE, so neither status is evidence about which transport to use. McpClientImpl
-                    // .ConnectAsync treats exactly these two statuses as "initialize-handshake server" and
-                    // immediately retries with initialize on this same transport — and that attempt still
-                    // falls back to SSE, so an SSE-only server is reached one POST later rather than not at
-                    // all. Attempting SSE here instead spends a GET whose result is discarded on every
-                    // connect to a Streamable-HTTP-only server that predates SEP-2575, and logs a "falling
-                    // back to SSE transport" line that misreports settled protocol negotiation as a failure.
-                    LogSkippingSseFallbackForDiscoverProbe(_name, response.StatusCode);
+                    if (IsDiscoverProbeRejection(message, response.StatusCode))
+                    {
+                        LogSkippingSseFallbackForDiscoverProbe(_name, response.StatusCode);
+                    }
 
-                    await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
                     throw streamableHttpError;
                 }
 
+                // Try SSE for the remaining unrecognized 400/404/405 responses.
                 LogStreamableHttpFailed(_name, response.StatusCode);
-
                 await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
                 await InitializeSseTransportAsync(message, streamableHttpError, cancellationToken).ConfigureAwait(false);
             }
@@ -133,7 +120,7 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
         catch when (ActiveTransport is null)
         {
             // Only dispose the Streamable HTTP transport when we didn't adopt it. If we set
-            // ActiveTransport above (success path OR structured-error path), the transport's
+            // ActiveTransport above (success path OR recognized-error path), the transport's
             // lifetime is owned by the outer transport from this point on.
             await streamableHttpTransport.DisposeAsync().ConfigureAwait(false);
             throw;
@@ -204,6 +191,15 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
             _messageChannel.Writer.TryComplete();
         }
     }
+
+    /// <summary>
+    /// Spec allowlist for HTTP→SSE transport fallback: only 400, 404, or 405 may indicate an older
+    /// SSE-only deployment. Authentication, authorization, and server errors must not trigger a GET.
+    /// </summary>
+    private static bool ShouldTrySseFallback(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.BadRequest
+            or HttpStatusCode.NotFound
+            or HttpStatusCode.MethodNotAllowed;
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "{EndpointName} attempting to connect using Streamable HTTP transport.")]
     private partial void LogAttemptingStreamableHttp(string endpointName);
