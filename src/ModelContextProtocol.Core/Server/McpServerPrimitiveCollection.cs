@@ -6,11 +6,24 @@ namespace ModelContextProtocol.Server;
 
 /// <summary>Provides a thread-safe collection of <typeparamref name="T"/> instances, indexed by their names.</summary>
 /// <typeparam name="T">The type of primitive stored in the collection.</typeparam>
+/// <remarks>
+/// Enumerating the collection, including via <see cref="ToArray"/>, <see cref="CopyTo"/>, and <see cref="PrimitiveNames"/>,
+/// yields primitives in the order they were added. A primitive that is removed and then added again moves to the end.
+/// </remarks>
 public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollection<T>
     where T : IMcpServerPrimitive
 {
     /// <summary>Concurrent dictionary of primitives, indexed by their names.</summary>
-    private readonly ConcurrentDictionary<string, T> _primitives;
+    private readonly ConcurrentDictionary<string, Entry> _primitives;
+
+    /// <summary>The entries in <see cref="_primitives"/>, in the order they were added.</summary>
+    private readonly List<Entry> _orderedEntries = [];
+
+    /// <summary>Lock serializing additions and removals across <see cref="_primitives"/> and <see cref="_orderedEntries"/>.</summary>
+    private readonly object _mutationLock = new();
+
+    /// <summary>Cached copy of <see cref="_orderedEntries"/> used for enumeration, or <see langword="null"/> if it needs rebuilding.</summary>
+    private volatile Entry[]? _snapshot;
 
     /// <summary>Lock protecting <see cref="_activeDeferralScopes"/> and <see cref="_hasDeferredChangeEvents"/>.</summary>
     private readonly object _deferralLock = new();
@@ -132,14 +145,20 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
         get
         {
             Throw.IfNull(name);
-            return _primitives[name];
+            return _primitives[name].Primitive;
         }
     }
 
     /// <summary>Clears all primitives from the collection.</summary>
     public virtual void Clear()
     {
-        _primitives.Clear();
+        lock (_mutationLock)
+        {
+            _primitives.Clear();
+            _orderedEntries.Clear();
+            _snapshot = null;
+        }
+
         RaiseChanged();
     }
 
@@ -163,13 +182,21 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         Throw.IfNull(primitive);
 
-        bool added = _primitives.TryAdd(primitive.Id, primitive);
-        if (added)
+        string key = primitive.Id;
+        lock (_mutationLock)
         {
-            RaiseChanged();
+            Entry entry = new(key, primitive);
+            if (!_primitives.TryAdd(key, entry))
+            {
+                return false;
+            }
+
+            _orderedEntries.Add(entry);
+            _snapshot = null;
         }
 
-        return added;
+        RaiseChanged();
+        return true;
     }
 
     /// <summary>Removes the specified primitive from the collection.</summary>
@@ -182,13 +209,28 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     {
         Throw.IfNull(primitive);
 
-        bool removed = ((ICollection<KeyValuePair<string, T>>)_primitives).Remove(new(primitive.Id, primitive));
-        if (removed)
+        string key = primitive.Id;
+        lock (_mutationLock)
         {
-            RaiseChanged();
+            if (!_primitives.TryGetValue(key, out Entry? entry) ||
+                !EqualityComparer<T>.Default.Equals(entry.Primitive, primitive))
+            {
+                return false;
+            }
+
+            // Remove only the exact entry compared above. A primitive's Equals can reenter the collection while the
+            // lock is held and replace the entry under the same key; the replacement must then stay in place.
+            if (!((ICollection<KeyValuePair<string, Entry>>)_primitives).Remove(new(key, entry)))
+            {
+                return false;
+            }
+
+            _orderedEntries.Remove(entry);
+            _snapshot = null;
         }
 
-        return removed;
+        RaiseChanged();
+        return true;
     }
 
     /// <summary>Attempts to get the primitive with the specified name from the collection.</summary>
@@ -201,7 +243,15 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     public virtual bool TryGetPrimitive(string name, [NotNullWhen(true)] out T? primitive)
     {
         Throw.IfNull(name);
-        return _primitives.TryGetValue(name, out primitive);
+
+        if (_primitives.TryGetValue(name, out Entry? entry))
+        {
+            primitive = entry.Primitive;
+            return true;
+        }
+
+        primitive = default;
+        return false;
     }
 
     /// <summary>Checks if a specific primitive is present in the collection of primitives.</summary>
@@ -211,31 +261,71 @@ public class McpServerPrimitiveCollection<T> : ICollection<T>, IReadOnlyCollecti
     public virtual bool Contains(T primitive)
     {
         Throw.IfNull(primitive);
-        return ((ICollection<KeyValuePair<string, T>>)_primitives).Contains(new(primitive.Id, primitive));
+        return
+            _primitives.TryGetValue(primitive.Id, out Entry? entry) &&
+            EqualityComparer<T>.Default.Equals(entry.Primitive, primitive);
     }
 
-    /// <summary>Gets the names of all of the primitives in the collection.</summary>
-    public virtual ICollection<string> PrimitiveNames => _primitives.Keys;
+    /// <summary>Gets the names of all of the primitives in the collection, in the order the primitives were added.</summary>
+    public virtual ICollection<string> PrimitiveNames => Array.ConvertAll(GetSnapshot(), static e => e.Key);
 
     /// <summary>Creates an array containing all of the primitives in the collection.</summary>
-    /// <returns>An array containing all of the primitives in the collection.</returns>
-    public virtual T[] ToArray() => _primitives.Values.ToArray();
+    /// <returns>An array containing all of the primitives in the collection, in the order they were added.</returns>
+    public virtual T[] ToArray() => Array.ConvertAll(GetSnapshot(), static e => e.Primitive);
 
     /// <inheritdoc/>
     public virtual void CopyTo(T[] array, int arrayIndex)
     {
         Throw.IfNull(array);
+        Throw.IfNegative(arrayIndex);
 
-        _primitives.Values.CopyTo(array, arrayIndex);
+        Entry[] entries = GetSnapshot();
+        if (array.Length - arrayIndex < entries.Length)
+        {
+            throw new ArgumentException("The destination array is not long enough to copy all the primitives in the collection.", nameof(array));
+        }
+
+        for (int i = 0; i < entries.Length; i++)
+        {
+            array[arrayIndex + i] = entries[i].Primitive;
+        }
     }
 
     /// <inheritdoc/>
     public virtual IEnumerator<T> GetEnumerator()
     {
-        foreach (var entry in _primitives)
+        foreach (var entry in GetSnapshot())
         {
-            yield return entry.Value;
+            yield return entry.Primitive;
         }
+    }
+
+    /// <summary>Gets the collection's entries in insertion order, rebuilding the cached snapshot if a mutation invalidated it.</summary>
+    /// <remarks>The returned array is shared between callers and must not be modified or exposed.</remarks>
+    private Entry[] GetSnapshot()
+    {
+        Entry[]? snapshot = _snapshot;
+        if (snapshot is null)
+        {
+            lock (_mutationLock)
+            {
+                snapshot = _snapshot ??= _orderedEntries.ToArray();
+            }
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>A primitive together with the key it was added under.</summary>
+    /// <remarks>
+    /// The key is captured when the primitive is added, because <see cref="IMcpServerPrimitive.Id"/> may be backed by
+    /// mutable protocol properties.
+    /// </remarks>
+    private sealed class Entry(string key, T primitive)
+    {
+        public string Key { get; } = key;
+
+        public T Primitive { get; } = primitive;
     }
 
     /// <inheritdoc/>
