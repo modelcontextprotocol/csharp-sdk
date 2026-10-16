@@ -40,6 +40,7 @@
     <Project Path="docs/concepts/progress/samples/server/Progress.csproj" />
   </Folder>
   <Folder Name="/samples/">
+    <Project Path="samples/AspNetCoreMcpClient/AspNetCoreMcpClient.csproj" />
     <Project Path="samples/AspNetCoreMcpPerSessionTools/AspNetCoreMcpPerSessionTools.csproj" />
     <Project Path="samples/AspNetCoreMcpServer/AspNetCoreMcpServer.csproj" />
     <Project Path="samples/ChatWithTools/ChatWithTools.csproj" />
@@ -73,6 +74,7 @@
     <Project Path="src/ModelContextProtocol/ModelContextProtocol.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AspNetCoreMcpClient.Tests/AspNetCoreMcpClient.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.Analyzers.Tests/ModelContextProtocol.Analyzers.Tests.csproj" />
     <Project Path="tests/ModelContextProtocol.AotCompatibility.TestApp/ModelContextProtocol.AotCompatibility.TestApp.csproj" />
     <Project Path="tests/ModelContextProtocol.AspNetCore.Tests/ModelContextProtocol.AspNetCore.Tests.csproj" />
