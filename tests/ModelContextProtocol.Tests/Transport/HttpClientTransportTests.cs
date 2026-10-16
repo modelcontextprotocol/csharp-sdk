@@ -282,6 +282,69 @@ public class HttpClientTransportTests : LoggedTest
         Assert.False(transportBase.IsConnected);
     }
 
+    [Fact]
+    public async Task SendMessageAsync_PostsBodyWithContentLength_InsteadOfChunkedEncoding()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/932
+        // JsonContent serializes lazily and cannot report a length, so HttpClient falls back to
+        // Transfer-Encoding: chunked. Hosts reject that outright -- the local Azure Functions
+        // Python worker answers 400 "'Transfer-Encoding: chunked' header can not be used when
+        // content object is not specified" -- so the body must be buffered and sent with a
+        // Content-Length.
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost:8080/mcp"),
+            TransportMode = HttpTransportMode.StreamableHttp,
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+
+        HttpRequestMessage? postRequest = null;
+        long? declaredLength = null;
+        bool? transferEncodingChunked = null;
+        byte[]? bodyBytes = null;
+
+        // Observed from the handler, which is where the request is still live: McpHttpClient
+        // disposes the content once SendAsync returns, so the values have to be captured here.
+        mockHttpHandler.RequestHandler = async request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            Assert.NotNull(request.Content);
+
+            postRequest = request;
+            declaredLength = request.Content.Headers.ContentLength;
+            transferEncodingChunked = request.Headers.TransferEncodingChunked;
+            bodyBytes = await request.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+
+            return new HttpResponseMessage
+            {
+                StatusCode = HttpStatusCode.Accepted,
+                Content = new StringContent("", Encoding.UTF8, "application/json"),
+            };
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(
+            new JsonRpcNotification { Method = "notifications/initialized" },
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(postRequest);
+
+        // A known length is what keeps HttpClient on the Content-Length path. With JsonContent
+        // this is null and the body goes out chunked instead.
+        Assert.True(
+            declaredLength.HasValue && declaredLength.Value > 0,
+            $"the POST body must declare a Content-Length; got {declaredLength?.ToString() ?? "null"}");
+        Assert.NotEqual(true, transferEncodingChunked);
+
+        // The declared length has to describe the bytes actually sent.
+        Assert.NotNull(bodyBytes);
+        Assert.Equal(declaredLength.GetValueOrDefault(), (long)bodyBytes.Length);
+        Assert.Contains("notifications/initialized", Encoding.UTF8.GetString(bodyBytes));
+    }
+
     // Strict server mock used in Content-Type tests below.
     // Returns 200 only for bare "application/json", otherwise 415.
     private static Func<HttpRequestMessage, Task<HttpResponseMessage>> StrictJsonContentTypeHandler =>
