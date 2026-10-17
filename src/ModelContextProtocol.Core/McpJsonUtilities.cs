@@ -27,6 +27,11 @@ public static partial class McpJsonUtilities
     /// <item>Enables <see cref="JsonNumberHandling.AllowReadingFromString"/> as the default number handling for number types.</item>
     /// </list>
     /// </para>
+    /// <para>
+    /// Property names are matched case-insensitively, as with <see cref="JsonSerializerDefaults.Web"/>. The SDK itself
+    /// deserializes incoming protocol messages with case-sensitive contracts, so a protocol property such as
+    /// <c>params.name</c> is only recognized with the casing defined by the MCP specification.
+    /// </para>
     /// </remarks>
     public static JsonSerializerOptions DefaultOptions { get; } = CreateDefaultOptions();
 
@@ -39,7 +44,12 @@ public static partial class McpJsonUtilities
     private static JsonSerializerOptions CreateDefaultOptions()
     {
         // Copy the configuration from the source generated context.
-        JsonSerializerOptions options = new(JsonContext.Default.Options);
+        JsonSerializerOptions options = new(JsonContext.Default.Options)
+        {
+            // The source generated context matches protocol property names case-sensitively. These options
+            // are also used for user-defined types (for example tool parameters), so keep the web default.
+            PropertyNameCaseInsensitive = true,
+        };
 
         // Chain with all supported types from MEAI.
         options.TypeInfoResolverChain.Add(AIJsonUtilities.DefaultOptions.TypeInfoResolver!);
@@ -101,10 +111,13 @@ public static partial class McpJsonUtilities
     internal static bool IsValidToolOutputSchema(JsonElement element) =>
         element.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False;
 
-    // Keep in sync with CreateDefaultOptions above.
+    // Keep in sync with CreateDefaultOptions above. Unlike DefaultOptions, property names are matched
+    // case-sensitively: these contracts deserialize protocol messages, whose property names are defined
+    // by the MCP and JSON-RPC specifications, and must agree with the JSON-RPC envelope converter.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        NumberHandling = JsonNumberHandling.AllowReadingFromString)]
+        NumberHandling = JsonNumberHandling.AllowReadingFromString,
+        PropertyNameCaseInsensitive = false)]
 
     // JSON-RPC
     [JsonSerializable(typeof(JsonRpcMessage))]

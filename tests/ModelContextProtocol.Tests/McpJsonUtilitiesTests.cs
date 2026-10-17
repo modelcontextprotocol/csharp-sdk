@@ -18,6 +18,25 @@ public static class McpJsonUtilitiesTests
     }
 
     [Fact]
+    public static void DefaultOptions_MatchesPropertyNamesCaseInsensitively()
+    {
+        var options = McpJsonUtilities.DefaultOptions;
+
+        Assert.True(options.PropertyNameCaseInsensitive);
+
+        if (JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            var query = JsonSerializer.Deserialize<WeatherQuery>("""{"CITY":"Hefei"}""", options);
+            Assert.Equal("Hefei", query?.City);
+        }
+    }
+
+    private sealed class WeatherQuery
+    {
+        public string? City { get; set; }
+    }
+
+    [Fact]
     public static void DefaultOptions_UseReflectionWhenEnabled()
     {
         var options = McpJsonUtilities.DefaultOptions;
