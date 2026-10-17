@@ -31,7 +31,7 @@ public class DcrFailureTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => CreateMcpClientAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         // The consumer needs enough to produce a meaningful error: the HTTP status, the AS error
@@ -63,7 +63,7 @@ public class DcrFailureTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        await Assert.ThrowsAsync<McpException>(() => CreateMcpClientAsync(
             firstTransport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         // Second attempt: a new provider on the SAME HttpClient with an adjusted (loopback) redirect
@@ -84,7 +84,7 @@ public class DcrFailureTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await CreateMcpClientAsync(
             secondTransport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("native", TestOAuthServer.LastApplicationType);
