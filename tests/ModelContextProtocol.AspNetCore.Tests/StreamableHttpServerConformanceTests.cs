@@ -302,20 +302,23 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         Assert.Equal(4242, doc.RootElement.GetProperty("id").GetInt64());
     }
 
-    [Fact]
-    public async Task PostMalformedJson_Returns400_InvalidRequest_WithNullId()
+    [Theory]
+    [InlineData("{ this is not valid json")]
+    [InlineData("""{"jsonrpc":""")]
+    public async Task PostMalformedJson_Returns400_ParseError_WithNullId(string body)
     {
         await StartAsync();
 
-        using var response = await HttpClient.PostAsync("", JsonContent("{ this is not valid json"), TestContext.Current.CancellationToken);
+        using var response = await HttpClient.PostAsync("", JsonContent(body), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         // The server must emit a conformant JSON-RPC error envelope (not a raw 500). Because the request
         // id could not be read, the error carries id=null per JSON-RPC 2.0 §5.1 — and crucially it must
-        // serialize as JSON null, not "" (regression guard for the RequestId write path).
+        // serialize as JSON null, not "" (regression guard for the RequestId write path). Invalid JSON is
+        // a Parse error (-32700); Invalid Request (-32600) is for JSON that is not a valid request object.
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
-        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.Equal((int)McpErrorCode.ParseError, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
     }
 
     [Fact]
