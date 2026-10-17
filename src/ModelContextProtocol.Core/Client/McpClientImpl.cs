@@ -310,18 +310,20 @@ internal sealed partial class McpClientImpl : McpClient
 
                     // Apply a probe timeout so dual-path clients don't block forever waiting for an
                     // initialize-handshake server that silently drops unknown methods (per stdio.mdx fallback rules).
-                    // The probe timeout is configurable via McpClientOptions.DiscoverProbeTimeout and is
-                    // always bounded by InitializationTimeout (only applied when it is the tighter bound).
+                    // OAuth temporarily suspends only the server-wait budget. InitializationTimeout
+                    // and caller cancellation still bound session initialization, including its authorization.
                     var probeTimeout = _options.DiscoverProbeTimeout;
-                    using var probeCts = CancellationTokenSource.CreateLinkedTokenSource(initializationCts.Token);
-                    if (_options.InitializationTimeout > probeTimeout)
-                    {
-                        probeCts.CancelAfter(probeTimeout);
-                    }
+                    bool initializationBoundsProbe =
+                        _options.InitializationTimeout != Timeout.InfiniteTimeSpan &&
+                        (probeTimeout == Timeout.InfiniteTimeSpan ||
+                         probeTimeout >= _options.InitializationTimeout);
+                    using var probe = new DiscoverProbe(
+                        initializationBoundsProbe ? Timeout.InfiniteTimeSpan : probeTimeout,
+                        initializationCts.Token);
 
                     try
                     {
-                        discoverResult = await SendDiscoverAsync(discoverVersion, probeCts.Token).ConfigureAwait(false);
+                        discoverResult = await SendDiscoverAsync(discoverVersion).ConfigureAwait(false);
                     }
                     catch (UnsupportedProtocolVersionException ex)
                     {
@@ -347,7 +349,7 @@ internal sealed partial class McpClientImpl : McpClient
                             }
 
                             discoverVersion = retryVersion;
-                            discoverResult = await SendDiscoverAsync(discoverVersion, probeCts.Token).ConfigureAwait(false);
+                            discoverResult = await SendDiscoverAsync(discoverVersion).ConfigureAwait(false);
                         }
                         else
                         {
@@ -392,7 +394,8 @@ internal sealed partial class McpClientImpl : McpClient
                         // server, so fall back. Other statuses stay uncaught and surface to the caller.
                         fallbackToInitialize = true;
                     }
-                    catch (OperationCanceledException) when (probeCts.IsCancellationRequested && !initializationCts.IsCancellationRequested)
+                    catch (OperationCanceledException) when (probe.Token.IsCancellationRequested &&
+                        !initializationCts.IsCancellationRequested)
                     {
                         // Probe timeout elapsed without a response. Per stdio.mdx fallback rules, no
                         // response within a reasonable timeout means the server requires initialize. Fall back.
@@ -454,19 +457,22 @@ internal sealed partial class McpClientImpl : McpClient
                         _serverInstructions = discoverResult.Instructions;
                     }
 
-                    async Task<DiscoverResult> SendDiscoverAsync(string protocolVersion, CancellationToken cancellationToken)
+                    async Task<DiscoverResult> SendDiscoverAsync(string protocolVersion)
                     {
                         // Eagerly set the negotiated version so InjectRequestMetaIfNeeded recognizes us as being
                         // on a per-request metadata revision when SendRequestAsync is invoked for server/discover.
                         _negotiatedProtocolVersion = protocolVersion;
                         _sessionHandler.NegotiatedProtocolVersion = protocolVersion;
 
-                        return await SendRequestAsync(
-                            RequestMethods.ServerDiscover,
-                            new DiscoverRequestParams(),
-                            McpJsonUtilities.JsonContext.Default.DiscoverRequestParams,
-                            McpJsonUtilities.JsonContext.Default.DiscoverResult,
-                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                        var request = new JsonRpcRequest
+                        {
+                            Method = RequestMethods.ServerDiscover,
+                            Params = JsonSerializer.SerializeToNode(new DiscoverRequestParams(), McpJsonUtilities.JsonContext.Default.DiscoverRequestParams),
+                            Context = new() { DiscoverProbe = probe },
+                        };
+                        var response = await SendRequestAsync(request, probe.Token).ConfigureAwait(false);
+                        return JsonSerializer.Deserialize(response.Result, McpJsonUtilities.JsonContext.Default.DiscoverResult)
+                            ?? throw new JsonException("Unexpected JSON result in discovery response.");
                     }
                 }
                 else

@@ -117,9 +117,19 @@ public sealed class McpClientOptions
     /// servers. Increase it for high-latency environments (for example, cold-start serverless peers or
     /// satellite links) where a short probe could trigger the initialize fallback before a server on the
     /// per-request metadata revision has had a chance to respond. The probe is always also bounded by
-    /// <see cref="InitializationTimeout"/>, which governs the overall connect budget: if this value is
+    /// <see cref="InitializationTimeout"/>, which bounds session initialization: if this value is
     /// greater than or equal to <see cref="InitializationTimeout"/>, the probe is effectively bounded by
     /// <see cref="InitializationTimeout"/> alone.
+    /// </para>
+    /// <para>
+    /// All OAuth work associated with an active probe, including authorization metadata discovery,
+    /// interactive authorization, and challenge-driven token acquisition, is excluded from the probe
+    /// timeout. During discovery and session initialization, this work remains subject to
+    /// <see cref="InitializationTimeout"/> and caller cancellation. Authorization before session
+    /// initialization, such as the initial transport connection with explicitly selected
+    /// <see cref="HttpTransportMode.Sse"/>, is subject to caller cancellation but is not covered by
+    /// <see cref="InitializationTimeout"/>. If discovery is skipped or authorization occurs after
+    /// initialization, there is no active probe timeout to trigger protocol fallback.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">

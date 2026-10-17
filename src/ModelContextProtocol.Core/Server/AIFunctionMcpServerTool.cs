@@ -69,45 +69,59 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
-        MethodInfo method, McpServerToolCreateOptions? options) =>
-        new()
+        MethodInfo method, McpServerToolCreateOptions? options)
+    {
+        var schemaOptions = options?.SchemaCreateOptions ?? AIJsonSchemaCreateOptions.Default;
+        return new()
         {
             Name = options?.Name ?? method.GetCustomAttribute<McpServerToolAttribute>()?.Name ?? DeriveName(method),
             Description = options?.Description,
             MarshalResult = static (result, _, cancellationToken) => new ValueTask<object?>(result),
             SerializerOptions = options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions,
-            JsonSchemaCreateOptions = options?.SchemaCreateOptions,
-            ConfigureParameterBinding = pi =>
+            JsonSchemaCreateOptions = schemaOptions with
             {
-                if (RequestServiceProvider<CallToolRequestParams>.IsAugmentedWith(pi.ParameterType) ||
-                    (options?.Services?.GetService<IServiceProviderIsService>() is { } ispis &&
-                     ispis.IsService(pi.ParameterType)))
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                            args.Services?.GetService(pi.ParameterType) ??
-                            (pi.HasDefaultValue ? null :
-                             throw new ArgumentException("No service of the requested type was found.")),
-                    };
-                }
-
-                if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
-                {
-                    return new()
-                    {
-                        ExcludeFromSchema = true,
-                        BindParameter = (pi, args) =>
-                            (args?.Services as IKeyedServiceProvider)?.GetKeyedService(pi.ParameterType, keyedAttr.Key) ??
-                            (pi.HasDefaultValue ? null :
-                             throw new ArgumentException("No service of the requested type was found.")),
-                    };
-                }
-
-                return default;
+                // Schema generation can enumerate distinct ParameterInfo instances, including
+                // when the runtime's cold parameter cache is initialized concurrently.
+                IncludeParameter = parameter =>
+                    !ConfigureParameterBinding(parameter).ExcludeFromSchema &&
+                    (schemaOptions.IncludeParameter?.Invoke(parameter)).GetValueOrDefault(true),
             },
+            ConfigureParameterBinding = ConfigureParameterBinding,
         };
+
+        AIFunctionFactoryOptions.ParameterBindingOptions ConfigureParameterBinding(ParameterInfo pi)
+        {
+            if (RequestServiceProvider<CallToolRequestParams>.IsAugmentedWith(pi.ParameterType) ||
+                (options?.Services?.GetService<IServiceProviderIsService>() is { } ispis &&
+                 ispis.IsService(pi.ParameterType)))
+            {
+                return new()
+                {
+                    ExcludeFromSchema = true,
+                    BindParameter = (pi, args) =>
+                        args.Services?.GetService(pi.ParameterType) ??
+                        (pi.HasDefaultValue ? null :
+                         throw new ArgumentException("No service of the requested type was found.")),
+                };
+            }
+
+            if (pi.GetCustomAttribute<FromKeyedServicesAttribute>() is { } keyedAttr)
+            {
+                return new()
+                {
+                    ExcludeFromSchema = true,
+                    BindParameter = (pi, args) =>
+                        (args.Services is IKeyedServiceProvider keyedServices
+                            ? keyedServices.GetKeyedService(pi.ParameterType, keyedAttr.Key)
+                            : null) ??
+                        (pi.HasDefaultValue ? null :
+                         throw new ArgumentException("No service of the requested type was found.")),
+                };
+            }
+
+            return default;
+        }
+    }
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
     public static new AIFunctionMcpServerTool Create(AIFunction function, McpServerToolCreateOptions? options)

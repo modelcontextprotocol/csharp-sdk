@@ -15,6 +15,8 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public sealed class JsonRpcMessageContext
 {
+    internal Client.DiscoverProbe? DiscoverProbe { get; set; }
+
     /// <summary>
     /// Gets or sets the transport the <see cref="JsonRpcMessage"/> was received on or should be sent over.
     /// </summary>

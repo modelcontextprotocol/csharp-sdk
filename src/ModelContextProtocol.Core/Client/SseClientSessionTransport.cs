@@ -49,13 +49,13 @@ internal sealed partial class SseClientSessionTransport : TransportBase
     }
 
     /// <inheritdoc/>
-    public async Task ConnectAsync(CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(CancellationToken cancellationToken = default, DiscoverProbe? discoverProbe = null)
     {
         Debug.Assert(!IsConnected);
         try
         {
             // Start message receiving loop
-            _receiveTask = ReceiveMessagesAsync(_connectionCts.Token);
+            _receiveTask = ReceiveMessagesAsync(_connectionCts.Token, discoverProbe);
 
             await _connectionEstablished.Task.WaitAsync(_options.ConnectionTimeout, cancellationToken).ConfigureAwait(false);
         }
@@ -149,7 +149,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
         }
     }
 
-    private async Task ReceiveMessagesAsync(CancellationToken cancellationToken)
+    private async Task ReceiveMessagesAsync(CancellationToken cancellationToken, DiscoverProbe? discoverProbe)
     {
         HttpStatusCode? failureStatusCode = null;
         try
@@ -158,7 +158,7 @@ internal sealed partial class SseClientSessionTransport : TransportBase
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
             StreamableHttpClientSessionTransport.CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, sessionId: null, protocolVersion: null);
 
-            using var response = await _httpClient.SendAsync(request, message: null, cancellationToken).ConfigureAwait(false);
+            using var response = await _httpClient.SendAsync(request, message: null, cancellationToken, discoverProbe).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {

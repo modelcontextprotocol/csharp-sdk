@@ -14,7 +14,8 @@ internal class McpHttpClient(HttpClient httpClient)
 {
     internal static readonly MediaTypeHeaderValue s_applicationJsonContentType = new("application/json");
 
-    internal virtual async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
+    internal virtual async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken, DiscoverProbe? discoverProbe = null)
     {
         Debug.Assert(request.Content is null, "The request body should only be supplied as a JsonRpcMessage");
         Debug.Assert(message is null || request.Method == HttpMethod.Post, "All messages should be sent in POST requests.");

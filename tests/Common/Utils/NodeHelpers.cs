@@ -396,10 +396,8 @@ public static class NodeHelpers
         return (core, prerelease);
     }
 
-
-    /// whether it succeeded along with the captured stdout/stderr. Centralizes the process
-    /// plumbing (output capture, a 5-minute timeout, and the Windows libuv-shutdown fallback)
-    /// shared by the server-side conformance tests.
+    /// <summary>
+    /// Runs the server-side conformance process and captures its output with a five-minute timeout.
     /// </summary>
     /// <param name="arguments">Arguments to pass to the conformance runner.</param>
     /// <param name="onLine">Optional callback invoked for each captured stdout/stderr line.</param>
@@ -407,13 +405,15 @@ public static class NodeHelpers
     /// Forwarded to <see cref="ConformanceTestStartInfo(string, bool)"/>.
     /// </param>
     /// <param name="cancellationToken">Token used to cancel the run.</param>
+    /// <param name="processStartInfo">An alternative process for isolated process-outcome tests.</param>
     public static async Task<(bool Success, string Output, string Error)> RunServerConformanceAsync(
         string arguments,
         Action<string>? onLine = null,
         bool appendProtocolVersionFromEnv = true,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ProcessStartInfo? processStartInfo = null)
     {
-        var startInfo = ConformanceTestStartInfo(arguments, appendProtocolVersionFromEnv);
+        var startInfo = processStartInfo ?? ConformanceTestStartInfo(arguments, appendProtocolVersionFromEnv);
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
@@ -484,34 +484,13 @@ public static class NodeHelpers
         var stdoutText = outputBuilder.ToString();
         var stderrText = errorBuilder.ToString();
 
-        // The Node.js conformance runner can crash during cleanup on Windows with a libuv
-        // assertion ("!(handle->flags & UV_HANDLE_CLOSING)") that produces a non-zero exit
-        // code even though every conformance check passed. When that happens, fall back to
-        // parsing the "Test Results:" summary in stdout to decide success.
-        bool success = process.ExitCode == 0 || ConformanceOutputIndicatesSuccess(stdoutText);
-
-        return (success, stdoutText, stderrText);
-    }
-
-    /// <summary>
-    /// Parses the conformance runner output for a "Test Results:" line such as
-    /// "Passed: 3/3, 0 failed, 0 warnings" and returns true when all checks passed
-    /// and none failed.
-    /// </summary>
-    private static bool ConformanceOutputIndicatesSuccess(string output)
-    {
-        // Match lines like "Passed: 3/3, 0 failed, 0 warnings"
-        var match = Regex.Match(output, @"Passed:\s*(\d+)/(\d+),\s*(\d+)\s*failed");
-        if (!match.Success)
+        bool success = process.ExitCode == 0;
+        if (!success)
         {
-            return false;
+            stderrText += $"{Environment.NewLine}Conformance runner exited with code {process.ExitCode}.";
         }
 
-        int passed = int.Parse(match.Groups[1].Value);
-        int total = int.Parse(match.Groups[2].Value);
-        int failed = int.Parse(match.Groups[3].Value);
-
-        return passed == total && failed == 0 && total > 0;
+        return (success, stdoutText, stderrText);
     }
 
     /// <summary>

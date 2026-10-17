@@ -191,14 +191,20 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         });
     }
 
-    internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
+    internal override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken, DiscoverProbe? discoverProbe = null)
     {
         bool attemptedRefresh = false;
+        discoverProbe ??= message?.Context?.DiscoverProbe;
 
-        if (request.Headers.Authorization is null && request.RequestUri is not null)
+        if (request.Headers.Authorization is null &&
+            request.RequestUri is not null)
         {
             string? accessToken;
-            (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(request.RequestUri, cancellationToken).ConfigureAwait(false);
+            using (discoverProbe?.Suspend())
+            {
+                (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(request.RequestUri, cancellationToken).ConfigureAwait(false);
+            }
 
             if (!string.IsNullOrEmpty(accessToken))
             {
@@ -213,7 +219,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             // Capture the token that produced this challenge so the retry path can detect whether
             // another concurrent caller already replaced it in the cache.
             var usedAccessToken = request.Headers.Authorization?.Parameter;
-            return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
+            return await HandleUnauthorizedResponseAsync(request, message, response, attemptedRefresh, usedAccessToken, discoverProbe, cancellationToken).ConfigureAwait(false);
         }
 
         return response;
@@ -296,6 +302,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         HttpResponseMessage response,
         bool attemptedRefresh,
         string? usedAccessToken,
+        DiscoverProbe? discoverProbe,
         CancellationToken cancellationToken)
     {
         if (response.Headers.WwwAuthenticate.Count == 0)
@@ -308,7 +315,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             throw new McpException($"The server does not support the '{BearerScheme}' authentication scheme. Server supports: [{serverSchemes}].");
         }
 
-        var accessToken = await GetAccessTokenAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
+        string accessToken;
+        using (discoverProbe?.Suspend())
+        {
+            accessToken = await GetAccessTokenAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
+        }
 
         using var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri);
 
@@ -514,7 +525,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             AuthorizationServerMetadata? metadata;
             try
             {
-                var response = await _httpClient.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
+                using var response = await _httpClient.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
                     continue;
@@ -568,14 +579,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 // below, its existence disqualifies the legacy fallback that would otherwise synthesize S256.
                 metadataDocumentFound = true;
             }
-            catch (McpException)
+            catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                // Metadata validation failures are security signals and must not fall back to
-                // another well-known endpoint.
-                throw;
+                // HttpClient's per-request timeout does not cancel the caller's token.
+                // Another metadata endpoint may still respond within the overall budget.
+                LogErrorFetchingAuthServerMetadata(ex, wellKnownEndpoint);
+                continue;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 LogErrorFetchingAuthServerMetadata(ex, wellKnownEndpoint);
                 continue;
             }
@@ -602,10 +615,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                         $"Authorization server metadata from '{wellKnownEndpoint}' does not advertise required PKCE method 'S256' in 'code_challenge_methods_supported'. Advertised methods: {advertisedMethods}.");
                 }
             }
-            catch (Exception ex)
+            catch (McpException ex)
             {
                 LogAuthServerMetadataMissingPkceSupport(ex, wellKnownEndpoint);
-                pkceValidationFailure = ex as McpException ?? new McpException(ex.Message, ex);
+                pkceValidationFailure = ex;
                 continue;
             }
 
