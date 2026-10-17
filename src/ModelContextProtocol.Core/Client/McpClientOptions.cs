@@ -151,4 +151,21 @@ public sealed class McpClientOptions
         }
     }
 
+    /// <summary>
+    /// Gets or sets the filters applied to outgoing requests sent by the client.
+    /// </summary>
+    /// <remarks>
+    /// Use <see cref="McpClientRequestFilters.CallToolFilters"/> to inspect, modify, or block tool calls before they
+    /// reach the server, for example to require confirmation for tools annotated as destructive.
+    /// </remarks>
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
+    public McpClientFilters Filters
+    {
+        get => field ??= new();
+        set
+        {
+            Throw.IfNull(value);
+            field = value;
+        }
+    }
 }

@@ -28,7 +28,7 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 | Diagnostic ID | Description |
 | :------------ | :---------- |
 | `MCPEXP001` | Experimental APIs tied to MCP specification features. Reuse this ID for newly introduced experimental spec features, and add feature-specific messages/URLs in `Experimentals`. |
-| `MCPEXP002` | Experimental SDK extensibility APIs used to implement features in standalone packages without requiring Core to understand those features. For example, the Tasks package uses these APIs to extend the SDK while keeping the Tasks concept out of Core. This includes `McpClient`/`McpServer` subclassing, custom request handlers, alternate handlers and filters, outgoing request interception, and `RunSessionHandler`. These APIs remain experimental until additional extensibility scenarios validate the design. |
+| `MCPEXP002` | Experimental SDK extensibility APIs used to implement features in standalone packages without requiring Core to understand those features. For example, the Tasks package uses these APIs to extend the SDK while keeping the Tasks concept out of Core. This includes `McpClient`/`McpServer` subclassing, custom request handlers, alternate handlers and filters, client request filters, outgoing request interception, and `RunSessionHandler`. These APIs remain experimental until additional extensibility scenarios validate the design. |
 | `MCPEXP003` | Experimental MCP Apps extension APIs. MCP Apps is the first official MCP extension (`io.modelcontextprotocol/ui`), enabling servers to deliver interactive UIs inside AI clients (see [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)). |
 
 ## Obsolete APIs
