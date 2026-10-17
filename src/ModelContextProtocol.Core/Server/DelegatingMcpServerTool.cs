@@ -20,6 +20,9 @@ public abstract class DelegatingMcpServerTool : McpServerTool
         _innerTool = innerTool;
     }
 
+    /// <summary>Gets the tool wrapped by this delegating tool.</summary>
+    internal McpServerTool InnerTool => _innerTool;
+
     /// <inheritdoc />
     public override Tool ProtocolTool => _innerTool.ProtocolTool;
 
