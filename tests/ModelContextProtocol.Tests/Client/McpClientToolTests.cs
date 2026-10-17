@@ -477,6 +477,80 @@ public class McpClientToolTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task WithResultMarshaling_ReceivesRawCallToolResult_AndControlsReturnValue()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        CallToolResult? observed = null;
+        var tool = tools.Single(t => t.Name == "meta_tool").WithResultMarshaling((result, cancellationToken) =>
+        {
+            observed = result;
+            return new ValueTask<object?>("marshaled");
+        });
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("marshaled", result);
+        Assert.NotNull(observed);
+        Assert.Equal("customValue", observed.Meta?["customKey"]?.GetValue<string>());
+        Assert.Equal("Content with meta", Assert.IsType<TextContentBlock>(observed.Content[0]).Text);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_CanKeepMetaOutOfReturnedValue()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The default marshaling would return the whole CallToolResult as a JsonElement, _meta included.
+        // A host-supplied marshaler can surface only the content blocks.
+        var tool = tools.Single(t => t.Name == "meta_tool").WithResultMarshaling((result, cancellationToken) =>
+            new ValueTask<object?>(result.Content.Select(c => c.ToAIContent()).ToArray()));
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<AIContent[]>(result);
+        var textContent = Assert.IsType<TextContent>(Assert.Single(aiContents));
+        Assert.Equal("Content with meta", textContent.Text);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_ReplacesDefaultConversionForSimpleContent()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // Without the marshaler this would return a single TextContent; with it, the host gets the
+        // typed CallToolResult itself.
+        var tool = tools.Single(t => t.Name == "text_only_tool").WithResultMarshaling((result, cancellationToken) =>
+            new ValueTask<object?>(result));
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var callToolResult = Assert.IsType<CallToolResult>(result);
+        Assert.Equal("Simple text result", Assert.IsType<TextContentBlock>(callToolResult.Content[0]).Text);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_IsPreservedByOtherWithMethods()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var tool = tools.Single(t => t.Name == "text_only_tool")
+            .WithResultMarshaling((result, cancellationToken) => new ValueTask<object?>("marshaled"))
+            .WithName("renamed_tool")
+            .WithDescription("renamed description");
+
+        Assert.Equal("renamed_tool", tool.Name);
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("marshaled", result);
+    }
+
+    [Fact]
     public async Task BinaryResourceTool_ReturnsSingleDataContent()
     {
         await using McpClient client = await CreateMcpClientForServer();
