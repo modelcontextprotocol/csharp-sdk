@@ -2,7 +2,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 
-namespace EverythingServer.Tools;
+namespace EverythingServer.Core.Tools;
 
 [McpServerToolType]
 public class PrintEnvTool
