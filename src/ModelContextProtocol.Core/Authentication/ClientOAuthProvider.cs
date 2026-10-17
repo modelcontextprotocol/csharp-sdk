@@ -690,12 +690,40 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (!httpResponse.IsSuccessStatusCode)
         {
+            // The MCP authorization spec requires the RFC 8707 resource parameter on token requests, but some
+            // authorization servers reject it on refresh_token grants (Microsoft Entra ID v2.0 fails with
+            // AADSTS9010010). Rather than forcing interactive re-authorization every time the access token
+            // expires, retry the refresh once without it. A dead refresh token (invalid_grant) can't be fixed
+            // by dropping the resource, so that falls through to re-authorization as before.
+            if (resourceUri is not null && httpResponse.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                var error = await ReadOAuthErrorCodeAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+                if (error != "invalid_grant")
+                {
+                    LogOAuthTokenRefreshRetryingWithoutResource(resourceUri, error);
+                    return await RefreshTokensAsync(refreshToken, resourceUri: null, authServerMetadata, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
             return null;
         }
 
         var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
         LogOAuthTokenRefreshCompleted();
         return tokens.AccessToken;
+    }
+
+    private static async Task<string?> ReadOAuthErrorCodeAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Deserialize(body, McpJsonUtilities.JsonContext.Default.OAuthErrorResponse)?.Error;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private async Task<string> InitiateAuthorizationCodeFlowAsync(
@@ -1571,6 +1599,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Information, Message = "OAuth token refresh completed successfully")]
     partial void LogOAuthTokenRefreshCompleted();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "OAuth token refresh with resource '{Resource}' was rejected with error '{Error}'. Retrying without the resource parameter.")]
+    partial void LogOAuthTokenRefreshRetryingWithoutResource(string resource, string? error);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error fetching auth server metadata from {Endpoint}")]
     partial void LogErrorFetchingAuthServerMetadata(Exception ex, Uri endpoint);
