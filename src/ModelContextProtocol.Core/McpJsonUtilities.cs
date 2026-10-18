@@ -28,27 +28,46 @@ public static partial class McpJsonUtilities
     /// </list>
     /// </para>
     /// <para>
-    /// Property names are matched case-insensitively, as with <see cref="JsonSerializerDefaults.Web"/>. The SDK itself
-    /// deserializes incoming protocol messages with case-sensitive contracts, so a protocol property such as
-    /// <c>params.name</c> is only recognized with the casing defined by the MCP specification.
+    /// Property names are matched case-insensitively, as with <see cref="JsonSerializerDefaults.Web"/>, because these
+    /// options are also used for user-defined data such as tool arguments and results. The SDK deserializes protocol
+    /// messages with <see cref="ProtocolOptions"/> instead, so a protocol property such as <c>params.name</c> is only
+    /// recognized with the casing defined by the MCP specification. Protocol types deserialized through these options
+    /// keep case-insensitive matching.
     /// </para>
     /// </remarks>
-    public static JsonSerializerOptions DefaultOptions { get; } = CreateDefaultOptions();
+    public static JsonSerializerOptions DefaultOptions { get; } = CreateDefaultOptions(propertyNameCaseInsensitive: true);
+
+    /// <summary>
+    /// Gets the <see cref="JsonSerializerOptions"/> singleton used to deserialize MCP and JSON-RPC protocol messages.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These options are configured like <see cref="DefaultOptions"/>, except that property names are matched
+    /// case-sensitively. Protocol property names are defined by the MCP and JSON-RPC specifications, so a property such
+    /// as <c>params.Name</c> or <c>error.Code</c> is not bound to <c>name</c> or <c>code</c>.
+    /// </para>
+    /// <para>
+    /// Use these options when deserializing protocol messages yourself. User-defined data, such as tool arguments,
+    /// should continue to use <see cref="DefaultOptions"/> or caller-supplied options.
+    /// </para>
+    /// </remarks>
+    public static JsonSerializerOptions ProtocolOptions { get; } = CreateDefaultOptions(propertyNameCaseInsensitive: false);
 
     /// <summary>
     /// Creates default options to use for MCP-related serialization.
     /// </summary>
+    /// <param name="propertyNameCaseInsensitive">Whether property names are matched case-insensitively.</param>
     /// <returns>The configured options.</returns>
     [UnconditionalSuppressMessage("ReflectionAnalysis", "IL3050:RequiresDynamicCode", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
     [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access", Justification = "Converter is guarded by IsReflectionEnabledByDefault check.")]
-    private static JsonSerializerOptions CreateDefaultOptions()
+    private static JsonSerializerOptions CreateDefaultOptions(bool propertyNameCaseInsensitive)
     {
-        // Copy the configuration from the source generated context.
+        // Copy the configuration from the source generated context. The context matches protocol property names
+        // case-sensitively; DefaultOptions is also used for user-defined types (for example tool parameters),
+        // so it keeps the web default.
         JsonSerializerOptions options = new(JsonContext.Default.Options)
         {
-            // The source generated context matches protocol property names case-sensitively. These options
-            // are also used for user-defined types (for example tool parameters), so keep the web default.
-            PropertyNameCaseInsensitive = true,
+            PropertyNameCaseInsensitive = propertyNameCaseInsensitive,
         };
 
         // Chain with all supported types from MEAI.
@@ -111,7 +130,7 @@ public static partial class McpJsonUtilities
     internal static bool IsValidToolOutputSchema(JsonElement element) =>
         element.ValueKind is JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False;
 
-    // Keep in sync with CreateDefaultOptions above. Unlike DefaultOptions, property names are matched
+    // Keep in sync with CreateDefaultOptions above. Like ProtocolOptions, property names are matched
     // case-sensitively: these contracts deserialize protocol messages, whose property names are defined
     // by the MCP and JSON-RPC specifications, and must agree with the JSON-RPC envelope converter.
     [JsonSourceGenerationOptions(JsonSerializerDefaults.Web,

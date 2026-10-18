@@ -68,6 +68,37 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task BindsNestedArgumentPropertiesCaseInsensitively()
+    {
+        Mock<McpServer> mockServer = new();
+
+        McpServerTool tool = McpServerTool.Create((WeatherRequest request) => $"{request.Location?.City}/{request.Days}");
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new()
+            {
+                Name = "",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["request"] = JsonDocument.Parse("""{"LOCATION":{"CITY":"Hefei"},"Days":3}""").RootElement,
+                },
+            }),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("Hefei/3", (result.Content[0] as TextContentBlock)?.Text);
+    }
+
+    public sealed class WeatherRequest
+    {
+        public WeatherLocation? Location { get; set; }
+        public int Days { get; set; }
+    }
+
+    public sealed class WeatherLocation
+    {
+        public string? City { get; set; }
+    }
+
+    [Fact]
     public async Task SupportsCtorInjection()
     {
         MyService expectedMyService = new();
