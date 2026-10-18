@@ -22,6 +22,9 @@ var endpoint =  args[1];
 
 McpClientOptions options = new()
 {
+    // OAuth metadata discovery runs under the initial server/discover probe token.
+    // Keep slow CI handshakes from cancelling metadata requests after five seconds.
+    DiscoverProbeTimeout = TimeSpan.FromSeconds(60),
     ClientInfo = new()
     {
         Name = "ConformanceClient",
