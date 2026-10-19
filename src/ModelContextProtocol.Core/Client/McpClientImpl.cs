@@ -171,8 +171,9 @@ internal sealed partial class McpClientImpl : McpClient
     public override ServerCapabilities ServerCapabilities => _serverCapabilities ?? throw new InvalidOperationException("The client is not connected.");
 
     /// <inheritdoc/>
-    public override Implementation ServerInfo => _serverInfo ?? throw new InvalidOperationException(
-        "The client is not connected, or the connected server did not provide optional server identity metadata.");
+    public override Implementation? ServerInfo => _serverCapabilities is null
+        ? throw new InvalidOperationException("The client is not connected.")
+        : _serverInfo;
 
     /// <inheritdoc/>
     public override string? ServerInstructions => _serverInstructions;
