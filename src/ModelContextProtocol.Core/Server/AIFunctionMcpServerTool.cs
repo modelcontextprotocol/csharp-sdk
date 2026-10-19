@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -15,7 +14,6 @@ namespace ModelContextProtocol.Server;
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
-    private readonly JsonSerializerOptions _structuredContentSerializerOptions;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -227,13 +225,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         ProtocolTool = tool;
 
         _metadata = metadata;
-        _structuredContentSerializerOptions = tool.OutputSchema is not null &&
-            function.JsonSerializerOptions.DefaultIgnoreCondition is JsonIgnoreCondition.WhenWritingNull
-                ? new JsonSerializerOptions(function.JsonSerializerOptions)
-                {
-                    DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-                }
-                : function.JsonSerializerOptions;
     }
 
     /// <inheritdoc />
@@ -686,8 +677,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonElement jsonElement => jsonElement,
             JsonNode node => JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode),
             null => null,
-            _ => JsonSerializer.SerializeToElement(aiFunctionResult, _structuredContentSerializerOptions.GetTypeInfo(typeof(object))),
+            _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
         };
+
+        elementResult = AddMissingRequiredNullableProperties(elementResult);
 
         // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
         // schemas. SEP-2106 clients see the natural shape. The classification is decided
@@ -705,6 +698,111 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return elementResult;
+    }
+
+    private JsonElement? AddMissingRequiredNullableProperties(JsonElement? elementResult)
+    {
+        if (elementResult is not { } result ||
+            ProtocolTool.OutputSchema is not { } outputSchema ||
+            result.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
+        {
+            return elementResult;
+        }
+
+        JsonNode? resultNode = JsonSerializer.SerializeToNode(result, McpJsonUtilities.JsonContext.Default.JsonElement);
+        JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+        if (resultNode is null || schemaNode is null || !AddMissingRequiredNullableProperties(resultNode, schemaNode))
+        {
+            return elementResult;
+        }
+
+        return JsonSerializer.SerializeToElement(resultNode, McpJsonUtilities.JsonContext.Default.JsonNode);
+    }
+
+    private static bool AddMissingRequiredNullableProperties(JsonNode resultNode, JsonNode schemaNode)
+    {
+        bool changed = false;
+
+        if (resultNode is JsonObject resultObject && schemaNode is JsonObject schemaObject)
+        {
+            JsonArray? required = schemaObject["required"] as JsonArray;
+            JsonObject? properties = schemaObject["properties"] as JsonObject;
+
+            if (properties is not null)
+            {
+                foreach (KeyValuePair<string, JsonNode?> property in resultObject)
+                {
+                    if (property.Value is not null && properties.TryGetPropertyValue(property.Key, out JsonNode? propertySchema))
+                    {
+                        changed |= AddMissingRequiredNullableProperties(property.Value, propertySchema!);
+                    }
+                }
+            }
+
+            if (required is not null && properties is not null)
+            {
+                foreach (JsonNode? requiredProperty in required)
+                {
+                    string? propertyName = requiredProperty?.GetValue<string>();
+                    if (propertyName is not null &&
+                        !resultObject.ContainsKey(propertyName) &&
+                        properties.TryGetPropertyValue(propertyName, out JsonNode? propertySchema) &&
+                        SchemaAllowsNull(propertySchema))
+                    {
+                        resultObject[propertyName] = null;
+                        changed = true;
+                    }
+                }
+            }
+        }
+        else if (resultNode is JsonArray resultArray &&
+                 schemaNode is JsonObject { } arraySchema &&
+                 arraySchema["items"] is JsonNode itemSchema)
+        {
+            foreach (JsonNode? item in resultArray)
+            {
+                if (item is not null)
+                {
+                    changed |= AddMissingRequiredNullableProperties(item, itemSchema);
+                }
+            }
+        }
+
+        return changed;
+    }
+
+    private static bool SchemaAllowsNull(JsonNode? schemaNode)
+    {
+        if (schemaNode is JsonValue schemaValue && schemaValue.TryGetValue<bool>(out bool allowsNull))
+        {
+            return allowsNull;
+        }
+
+        if (schemaNode is not JsonObject schemaObject)
+        {
+            return false;
+        }
+
+        if (schemaObject["type"] is JsonValue typeValue && typeValue.TryGetValue<string>(out string? type))
+        {
+            return type == "null";
+        }
+
+        if (schemaObject["type"] is JsonArray types &&
+            types.Any(type => type is JsonValue value && value.TryGetValue<string>(out string? typeName) && typeName == "null"))
+        {
+            return true;
+        }
+
+        foreach (string keyword in new[] { "anyOf", "oneOf" })
+        {
+            if (schemaObject[keyword] is JsonArray alternatives && alternatives.Any(SchemaAllowsNull))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonElement? structuredContent)

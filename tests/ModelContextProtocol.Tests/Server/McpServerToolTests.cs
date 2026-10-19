@@ -534,6 +534,53 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_OmitsOptionalNullProperty()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"id":{"type":"string"},"note":{"type":"string"}},"required":["id"]}""").RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new ExplicitSchemaOutput { Id = "42", Note = null },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("note", out _));
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_EmitsRequiredNullableValueWithIgnorePolicies(string? note)
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"id":{"type":"string"},"defaultedNote":{"type":["string","null"]},"ignoredNote":{"type":["string","null"]}},"required":["id","defaultedNote","ignoredNote"]}""").RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new ExplicitSchemaOutputWithMemberIgnore { Id = "42", DefaultedNote = note, IgnoredNote = note },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        foreach (string propertyName in new[] { "defaultedNote", "ignoredNote" })
+        {
+            JsonElement noteElement = result.StructuredContent.Value.GetProperty(propertyName);
+            Assert.Equal(note is null ? JsonValueKind.Null : JsonValueKind.String, noteElement.ValueKind);
+            Assert.Equal(note, noteElement.GetString());
+        }
+
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_VoidReturningTools_ReturnsExpectedSchema()
     {
         McpServerTool tool = McpServerTool.Create(() => { });
@@ -1150,6 +1197,23 @@ public partial class McpServerToolTests
         public required string Id { get; init; }
 
         public required string? Note { get; init; }
+    }
+
+    private sealed class ExplicitSchemaOutput
+    {
+        public required string Id { get; init; }
+
+        public string? Note { get; init; }
+    }
+
+    private sealed class ExplicitSchemaOutputWithMemberIgnore
+    {
+        public required string Id { get; init; }
+
+        public string? DefaultedNote { get; init; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? IgnoredNote { get; init; }
     }
 
     private static JsonSerializerOptions CreateSerializerOptionsWithPerson()
