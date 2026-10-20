@@ -25,7 +25,12 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
             Endpoint = new("http://localhost:5000"),
         }, HttpClient, LoggerFactory);
 
-        return await McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken, loggerFactory: LoggerFactory);
+        // This server supports discovery; slow startup must not trigger legacy fallback.
+        return await McpClient.CreateAsync(transport, new()
+        {
+            DiscoverProbeTimeout = Timeout.InfiniteTimeSpan,
+            InitializationTimeout = TestConstants.DefaultTimeout,
+        }, cancellationToken: TestContext.Current.CancellationToken, loggerFactory: LoggerFactory);
     }
 
     [Fact]

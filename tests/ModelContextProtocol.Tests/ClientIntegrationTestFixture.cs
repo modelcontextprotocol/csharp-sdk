@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Tests.Utils;
 using System.Runtime.InteropServices;
 
 namespace ModelContextProtocol.Tests;
@@ -45,11 +46,23 @@ public class ClientIntegrationTestFixture
         _loggerFactory = loggerFactory;
     }
 
-    public Task<McpClient> CreateClientAsync(string clientId, McpClientOptions? clientOptions = null) =>
-        McpClient.CreateAsync(new StdioClientTransport(clientId switch
+    public Task<McpClient> CreateClientAsync(string clientId, McpClientOptions? clientOptions = null)
+    {
+        if (clientId == "test_server" && clientOptions is null)
+        {
+            // This server supports discovery; slow startup must not trigger legacy fallback.
+            clientOptions = new()
+            {
+                DiscoverProbeTimeout = Timeout.InfiniteTimeSpan,
+                InitializationTimeout = TestConstants.DefaultTimeout,
+            };
+        }
+
+        return McpClient.CreateAsync(new StdioClientTransport(clientId switch
         {
             "everything" => EverythingServerTransportOptions,
             "test_server" => TestServerTransportOptions,
             _ => throw new ArgumentException($"Unknown client ID: {clientId}")
         }), clientOptions, loggerFactory: _loggerFactory);
+    }
 }
