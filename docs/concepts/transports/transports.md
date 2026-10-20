@@ -147,6 +147,8 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 
 #### Controlling client timeout timers in tests
 
+The short <xref:ModelContextProtocol.Client.McpClientOptions.DiscoverProbeTimeout> budget excludes time spent acquiring an OAuth token. After authorization, the discovery probe receives a fresh budget. The overall <xref:ModelContextProtocol.Client.McpClientOptions.InitializationTimeout> and caller cancellation still apply.
+
 <xref:ModelContextProtocol.Client.McpClientOptions.TimeProvider> controls
 <xref:ModelContextProtocol.Client.McpClientOptions.InitializationTimeout> and
 <xref:ModelContextProtocol.Client.McpClientOptions.DiscoverProbeTimeout>. It defaults to
@@ -312,6 +314,8 @@ SSE-specific configuration options:
 |-------------------------------|--------------------------------------------------------------|----------|
 | `MaxReconnectionAttempts`     | Maximum number of reconnection attempts on stream disconnect | 5        |
 | `DefaultReconnectionInterval` | Wait time between reconnection attempts                      | 1 second |
+
+SSE connections use the legacy `initialize` handshake by default, including when automatic transport detection selects SSE. To connect to a server that intentionally supports `2026-07-28` discovery over SSE, explicitly select both `HttpTransportMode.Sse` in the transport options and `ProtocolVersion = "2026-07-28"` in `McpClientOptions`. Pinning that version while leaving transport mode as `AutoDetect` does not enable modern discovery over SSE; the client rejects the legacy initialization fallback.
 
 #### SSE server (ASP.NET Core)
 
