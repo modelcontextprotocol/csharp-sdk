@@ -72,7 +72,11 @@ public partial class McpServerToolTests
     {
         Mock<McpServer> mockServer = new();
 
-        McpServerTool tool = McpServerTool.Create((WeatherRequest request) => $"{request.Location?.City}/{request.Days}");
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions);
+        options.TypeInfoResolverChain.Add(JsonContext2.Default);
+        McpServerTool tool = McpServerTool.Create(
+            (WeatherRequest request) => $"{request.Location?.City}/{request.Days}",
+            new() { SerializerOptions = options });
 
         var result = await tool.InvokeAsync(
             new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new()
@@ -1303,6 +1307,7 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(int?))]
     [JsonSerializable(typeof(DateTimeOffset?))]
     [JsonSerializable(typeof(Person))]
+    [JsonSerializable(typeof(WeatherRequest))]
     partial class JsonContext2 : JsonSerializerContext;
 
     // ===== x-mcp-header tests =====
