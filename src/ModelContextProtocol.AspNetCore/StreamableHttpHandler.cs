@@ -81,13 +81,13 @@ internal sealed class StreamableHttpHandler(
         {
             message = await ReadJsonRpcMessageAsync(context);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
             // The POST body was not a well-formed JSON-RPC message (malformed JSON, or a request whose
             // id was explicitly null, which MCP forbids). Surface a conformant JSON-RPC error response
             // with a null id rather than letting the exception bubble up as an opaque 500.
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: The POST body did not contain a valid JSON-RPC message.",
+                $"Bad Request: The POST body did not contain a valid JSON-RPC message: {ex.Message}",
                 StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidRequest);
             return;
         }
@@ -846,23 +846,17 @@ internal sealed class StreamableHttpHandler(
             return false;
         }
 
-        bool hasProtocolVersionMeta = TryGetProtocolVersionMeta(message, out var protocolVersionMeta);
-
-        if (!McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionHeader) &&
-            !McpProtocolVersions.RequiresPerRequestMetadata(protocolVersionMeta))
+        // Legacy headers leave reserved metadata opaque. Without a header, let the core server resolve
+        // the version from the session or metadata, falling back to legacy handling when neither selects one.
+        if (string.IsNullOrEmpty(protocolVersionHeader) ||
+            McpProtocolVersions.SupportsInitializeHandshake(protocolVersionHeader))
         {
             errorDetail = null;
             return true;
         }
 
-        if (string.IsNullOrEmpty(protocolVersionHeader))
-        {
-            errorDetail = CreateHeaderMismatchError(
-                $"Bad Request: The {McpProtocolVersionHeaderName} header is required when the request body declares a per-request metadata protocol version.");
-            return false;
-        }
-
-        if (!hasProtocolVersionMeta)
+        // Header validity was checked first, so only supported modern headers reach this point.
+        if (!TryGetProtocolVersionMeta(message, out var protocolVersionMeta))
         {
             // Notifications are exempt from the required-_meta rejection: they are fire-and-forget
             // (a JSON-RPC error response has no recipient), and rejecting them silently drops

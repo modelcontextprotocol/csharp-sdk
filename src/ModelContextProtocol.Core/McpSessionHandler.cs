@@ -401,14 +401,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private async Task HandleMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
-        // Project the 2026-07-28 protocol's per-request _meta fields onto the message context before any
-        // filters run so they (and downstream handlers) can read client info / capabilities /
-        // protocol version / log level without re-parsing.
-        if (_isServer && message is JsonRpcRequest incomingRequest)
-        {
-            PopulateContextFromMeta(incomingRequest);
-        }
-
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
 
@@ -542,65 +534,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }, cancellationToken).ConfigureAwait(false);
 
         return result;
-    }
-
-    /// <summary>
-    /// Reads the 2026-07-28 protocol's per-request <c>_meta</c> fields off the request and projects them onto
-    /// <see cref="JsonRpcMessage.Context"/> so they're available without re-parsing throughout the pipeline.
-    /// </summary>
-    /// <remarks>
-    /// Per SEP-2575 the keys are <c>io.modelcontextprotocol/protocolVersion</c>,
-    /// <c>/clientInfo</c>, <c>/clientCapabilities</c>, and (optional) <c>/logLevel</c>. Any field
-    /// that's already set on the context (e.g., <see cref="JsonRpcMessageContext.ProtocolVersion"/>
-    /// populated by the HTTP transport from the <c>MCP-Protocol-Version</c> header) is left alone
-    /// unless explicitly overwritten by a non-null value parsed here.
-    /// </remarks>
-    internal static void PopulateContextFromMeta(JsonRpcRequest request)
-    {
-        if (request.Params is not JsonObject paramsObj)
-        {
-            return;
-        }
-
-        if (paramsObj["_meta"] is not JsonObject metaObj)
-        {
-            return;
-        }
-
-        var context = request.Context ??= new JsonRpcMessageContext();
-
-        if (metaObj[MetaKeys.ProtocolVersion] is JsonValue protocolVersion &&
-            protocolVersion.TryGetValue(out string? protocolVersionValue))
-        {
-            // If a transport-level header (e.g., the Streamable HTTP MCP-Protocol-Version header) already
-            // populated this, validate the body _meta matches per SEP-2575. A disagreement is reported with
-            // -32020 HeaderMismatch (the same code used for the Mcp-Method/Mcp-Name header-vs-body checks),
-            // which conformant 2026-07-28 clients recognize as a SEP-2575 signal and surface as-is rather
-            // than mistaking it for an initialize-handshake server and falling back to initialize.
-            if (context.ProtocolVersion is { } existing && !string.Equals(existing, protocolVersionValue, StringComparison.Ordinal))
-            {
-                throw new McpProtocolException(
-                    $"Header mismatch: the per-request _meta protocol version '{protocolVersionValue}' does not match the MCP-Protocol-Version header value '{existing}'.",
-                    McpErrorCode.HeaderMismatch);
-            }
-
-            context.ProtocolVersion = protocolVersionValue;
-        }
-
-        if (metaObj[MetaKeys.ClientInfo] is JsonNode clientInfoNode)
-        {
-            context.ClientInfo = JsonSerializer.Deserialize(clientInfoNode, McpJsonUtilities.JsonContext.Default.Implementation);
-        }
-
-        if (metaObj[MetaKeys.ClientCapabilities] is JsonNode clientCapabilitiesNode)
-        {
-            context.ClientCapabilities = JsonSerializer.Deserialize(clientCapabilitiesNode, McpJsonUtilities.JsonContext.Default.ClientCapabilities);
-        }
-
-        if (metaObj[MetaKeys.LogLevel] is JsonNode logLevelNode)
-        {
-            context.LogLevel = JsonSerializer.Deserialize(logLevelNode, McpJsonUtilities.JsonContext.Default.LoggingLevel);
-        }
     }
 
     /// <summary>

@@ -505,4 +505,155 @@ public class HttpClientTransportAutoDetectTests(ITestOutputHelper testOutputHelp
             MockLoggerProvider.LogMessages,
             m => m.LogLevel == LogLevel.Warning && m.Message.Contains("SSE fallback failed"));
     }
+
+    // A 400/404 on the SEP-2575 server/discover probe is protocol negotiation, not transport detection:
+    // a pre-SEP-2575 server rejects the session-less POST whether it speaks Streamable HTTP or SSE, and
+    // McpClientImpl.ConnectAsync reads exactly those two statuses as "initialize-handshake server" and
+    // retries with initialize. The SSE GET can therefore only waste a round trip here.
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.BadRequest)]
+    public async Task AutoDetectMode_SkipsSseFallback_WhenDiscoverProbeIsRejected(HttpStatusCode statusCode)
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost"),
+            TransportMode = HttpTransportMode.AutoDetect,
+            Name = "AutoDetect discover probe test client"
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+        var getCount = 0;
+
+        mockHttpHandler.RequestHandler = request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                getCount++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.MethodNotAllowed));
+            }
+
+            return Task.FromResult(new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent("Not Found"),
+            });
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            session.SendMessageAsync(
+                new JsonRpcRequest { Method = RequestMethods.ServerDiscover, Id = new RequestId(1) },
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, getCount);
+        Assert.Equal(statusCode, ex.Data["ModelContextProtocol.HttpStatusCode"]);
+        Assert.DoesNotContain(
+            MockLoggerProvider.LogMessages,
+            m => m.Message.Contains("falling back to SSE transport"));
+    }
+
+    // Skipping the SSE attempt on the discover probe must not strand an SSE-only server: the initialize
+    // retry that McpClientImpl.ConnectAsync issues next goes through this same transport and still falls
+    // back to SSE, so such a server is reached one POST later rather than not at all.
+    [Fact]
+    public async Task AutoDetectMode_StillFallsBackToSse_WhenInitializeFollowsRejectedDiscoverProbe()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost"),
+            TransportMode = HttpTransportMode.AutoDetect,
+            Name = "AutoDetect discover probe then initialize test client"
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+        var ssePipe = new Pipe();
+        var sseEndpointPostCount = 0;
+
+        await ssePipe.Writer.WriteAsync(
+            System.Text.Encoding.UTF8.GetBytes("event: endpoint\r\ndata: /sse-endpoint\r\n\r\n"),
+            TestContext.Current.CancellationToken);
+        await ssePipe.Writer.FlushAsync(TestContext.Current.CancellationToken);
+
+        mockHttpHandler.RequestHandler = request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                var content = new StreamContent(ssePipe.Reader.AsStream());
+                content.Headers.ContentType = new("text/event-stream");
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = content });
+            }
+
+            if (request.RequestUri?.AbsolutePath == "/sse-endpoint")
+            {
+                sseEndpointPostCount++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Accepted));
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent("Mcp-Session-Id required"),
+            });
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            session.SendMessageAsync(
+                new JsonRpcRequest { Method = RequestMethods.ServerDiscover, Id = new RequestId(1) },
+                TestContext.Current.CancellationToken));
+
+        await session.SendMessageAsync(
+            new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(2) },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, sseEndpointPostCount);
+
+        await ssePipe.Writer.CompleteAsync();
+    }
+
+    // The skip is scoped to the two statuses ConnectAsync acts on. Any other failure on the discover probe
+    // keeps the original fallback, because it is not evidence that an initialize retry is coming.
+    [Fact]
+    public async Task AutoDetectMode_FallsBackToSse_WhenDiscoverProbeFailsWithUnrelatedStatus()
+    {
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new Uri("http://localhost"),
+            TransportMode = HttpTransportMode.AutoDetect,
+            Name = "AutoDetect discover probe 415 test client"
+        };
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(options, httpClient, LoggerFactory);
+        var getCount = 0;
+
+        mockHttpHandler.RequestHandler = request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                getCount++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.MethodNotAllowed));
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.UnsupportedMediaType)
+            {
+                Content = new StringContent("Content-Type must be 'application/json'"),
+            });
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            session.SendMessageAsync(
+                new JsonRpcRequest { Method = RequestMethods.ServerDiscover, Id = new RequestId(1) },
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, getCount);
+    }
 }

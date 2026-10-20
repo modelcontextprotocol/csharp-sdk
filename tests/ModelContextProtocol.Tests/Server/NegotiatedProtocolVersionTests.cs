@@ -25,6 +25,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     private readonly Pipe _serverToClient = new();
     private readonly CancellationTokenSource _cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
     private readonly ServiceProvider _services;
+    private readonly McpServer _server;
     private readonly Task _serverTask;
     private readonly StreamWriter _writer;
     private readonly StreamReader _reader;
@@ -35,14 +36,15 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
         var serviceCollection = new ServiceCollection();
         serviceCollection.AddLogging();
         serviceCollection.AddSingleton<ILoggerProvider>(XunitLoggerProvider);
+        serviceCollection.AddSingleton<ILoggerProvider>(MockLoggerProvider);
         serviceCollection
             .AddMcpServer()
             .WithStreamServerTransport(_clientToServer.Reader.AsStream(), _serverToClient.Writer.AsStream())
             .WithTools<EchoTools>();
 
         _services = serviceCollection.BuildServiceProvider(validateScopes: true);
-        var server = _services.GetRequiredService<McpServer>();
-        _serverTask = server.RunAsync(_cts.Token);
+        _server = _services.GetRequiredService<McpServer>();
+        _serverTask = _server.RunAsync(_cts.Token);
 
         _writer = new StreamWriter(_clientToServer.Writer.AsStream()) { AutoFlush = true };
         _reader = new StreamReader(_serverToClient.Reader.AsStream());
@@ -69,16 +71,115 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Fact]
-    public async Task PerRequestMetadata_RejectsInitializeHandshakeVersionBeforeInitialize()
+    public async Task LegacyProtocolVersionMetadata_BeforeInitialize_IsAdvisory()
     {
         var ct = TestContext.Current.CancellationToken;
 
-        var error = Assert.IsType<JsonRpcError>(await RoundTripAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
-        Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, error.Error.Code);
-        Assert.Contains("initialize", error.Error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.IsType<JsonRpcResponse>(
+            await RoundTripAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
+        Assert.Null(_server.NegotiatedProtocolVersion);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.LogLevel >= LogLevel.Warning);
 
-        // The rejected initialize-handshake _meta request must not have established session state.
+        // The advisory legacy value must not block a subsequent modern request from selecting its era.
         Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpProtocolVersions.July2026ProtocolVersion, ct));
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, _server.NegotiatedProtocolVersion);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("true")]
+    public async Task MalformedProtocolVersionMetadata_BeforeInitialize_IsIgnored(string protocolVersionJson)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.ToolsList,
+            Params = new JsonObject
+            {
+                ["_meta"] = new JsonObject
+                {
+                    [MetaKeys.ProtocolVersion] = JsonNode.Parse(protocolVersionJson),
+                },
+            },
+        };
+
+        // An unreadable value leaves the request on the legacy path without establishing a version.
+        Assert.IsType<JsonRpcResponse>(await SendAndReceiveAsync(request, ct));
+        Assert.Null(_server.NegotiatedProtocolVersion);
+
+        var warning = Assert.Single(
+            MockLoggerProvider.LogMessages,
+            m => m.LogLevel == LogLevel.Warning && m.Message.Contains(MetaKeys.ProtocolVersion, StringComparison.Ordinal));
+        Assert.Contains(RequestMethods.ToolsList, warning.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MalformedProtocolVersionMetadata_OnServerDiscover_IsRejected()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.ServerDiscover,
+            Params = new JsonObject
+            {
+                ["_meta"] = new JsonObject
+                {
+                    [MetaKeys.ProtocolVersion] = new JsonObject(),
+                },
+            },
+        };
+
+        // server/discover exists only on per-request-metadata revisions, so it cannot fall back to legacy
+        // handling. This is what keeps a modern client from silently getting legacy treatment on a transport
+        // with no protocol version header.
+        var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
+        Assert.Contains(RequestMethods.ServerDiscover, error.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("42")]
+    [InlineData("true")]
+    public async Task ModernSession_RejectsMissingOrMalformedProtocolVersionMetadata(string? protocolVersionJson)
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 1, McpProtocolVersions.July2026ProtocolVersion, ct));
+
+        var meta = new JsonObject
+        {
+            [MetaKeys.ClientCapabilities] = new JsonObject(),
+        };
+        if (protocolVersionJson is not null)
+        {
+            meta[MetaKeys.ProtocolVersion] = JsonNode.Parse(protocolVersionJson);
+        }
+
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(2),
+            Method = RequestMethods.ToolsList,
+            Params = new JsonObject
+            {
+                ["_meta"] = meta,
+            },
+        };
+
+        // Once the era is established the metadata is required, so an unreadable value is an error rather
+        // than a reason to drop back to legacy handling.
+        var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
+        Assert.Contains(MetaKeys.ProtocolVersion, error.Error.Message, StringComparison.Ordinal);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, _server.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -110,6 +211,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
 
         Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
         Assert.Contains(MetaKeys.ClientCapabilities, error.Error.Message, StringComparison.Ordinal);
+        Assert.Null(_server.NegotiatedProtocolVersion);
     }
 
     [Fact]
@@ -142,7 +244,7 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Fact]
-    public async Task Initialize_WithReservedPerRequestMetadata_IsRejected()
+    public async Task Initialize_IgnoresFutureReservedMetadata()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -157,18 +259,101 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
                 ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
                 Meta = new JsonObject
                 {
-                    [MetaKeys.ClientInfo] = new JsonObject
-                    {
-                        ["name"] = "per-request-meta-client",
-                        ["version"] = "1.0.0",
-                    },
+                    [MetaKeys.ProtocolVersion] = McpProtocolVersions.July2026ProtocolVersion,
+                    [MetaKeys.ClientInfo] = "not-an-object",
+                    [MetaKeys.ClientCapabilities] = "not-an-object",
+                    [MetaKeys.LogLevel] = "not-a-level",
                 },
             }, McpJsonUtilities.DefaultOptions),
         };
 
+        Assert.IsType<JsonRpcResponse>(await SendAndReceiveAsync(request, ct));
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, _server.NegotiatedProtocolVersion);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.LogLevel >= LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task LegacySession_IgnoresConflictingKnownLegacyProtocolVersionMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.IsType<JsonRpcResponse>(
+            await RoundTripInitializeAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
+        Assert.IsType<JsonRpcResponse>(
+            await RoundTripAsync(id: 2, McpProtocolVersions.March2025ProtocolVersion, ct));
+
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, _server.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task LegacySession_IgnoresModernProtocolVersionMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.IsType<JsonRpcResponse>(
+            await RoundTripInitializeAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
+
+        Assert.IsType<JsonRpcResponse>(
+            await RoundTripAsync(id: 2, McpProtocolVersions.July2026ProtocolVersion, ct));
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, _server.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task LegacySession_IgnoresMalformedAuxiliaryMetadata()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.IsType<JsonRpcResponse>(
+            await RoundTripInitializeAsync(id: 1, McpProtocolVersions.November2025ProtocolVersion, ct));
+
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(2),
+            Method = RequestMethods.ToolsList,
+            Params = new JsonObject
+            {
+                ["_meta"] = new JsonObject
+                {
+                    [MetaKeys.ProtocolVersion] = new JsonObject(),
+                    [MetaKeys.ClientInfo] = "not-an-object",
+                    [MetaKeys.ClientCapabilities] = "not-an-object",
+                    [MetaKeys.LogLevel] = "not-a-level",
+                },
+            },
+        };
+
+        Assert.IsType<JsonRpcResponse>(await SendAndReceiveAsync(request, ct));
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.LogLevel >= LogLevel.Warning);
+    }
+
+    [Theory]
+    [InlineData(MetaKeys.ClientCapabilities, "\"not-an-object\"")]
+    [InlineData(MetaKeys.ClientCapabilities, "null")]
+    [InlineData(MetaKeys.ClientCapabilities, "[]")]
+    [InlineData(MetaKeys.ClientInfo, "\"not-an-object\"")]
+    [InlineData(MetaKeys.LogLevel, "\"not-a-level\"")]
+    public async Task ModernRequest_RejectsMalformedMetadata_WithoutEstablishingVersion(string key, string valueJson)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var meta = PerRequestMetadata();
+        meta[key] = JsonNode.Parse(valueJson);
+        var request = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.ToolsList,
+            Params = new JsonObject
+            {
+                ["_meta"] = meta,
+            },
+        };
+
         var error = Assert.IsType<JsonRpcError>(await SendAndReceiveAsync(request, ct));
-        Assert.Equal((int)McpErrorCode.InvalidRequest, error.Error.Code);
-        Assert.Contains(MetaKeys.ClientInfo, error.Error.Message, StringComparison.Ordinal);
+        Assert.Equal((int)McpErrorCode.InvalidParams, error.Error.Code);
+        Assert.Contains(key, error.Error.Message, StringComparison.Ordinal);
+        Assert.Null(_server.NegotiatedProtocolVersion);
+
+        Assert.IsType<JsonRpcResponse>(
+            await RoundTripInitializeAsync(id: 2, McpProtocolVersions.November2025ProtocolVersion, ct));
     }
 
     [Fact]
@@ -192,7 +377,6 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Theory]
-    [InlineData("initialize")]
     [InlineData("ping")]
     [InlineData("logging/setLevel")]
     [InlineData("resources/subscribe")]

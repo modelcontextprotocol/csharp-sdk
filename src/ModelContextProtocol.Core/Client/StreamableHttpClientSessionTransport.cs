@@ -80,8 +80,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         // for robustness. Servers occasionally emit them with 4xx codes other than 400.
         if (!response.IsSuccessStatusCode &&
             await TryReadJsonRpcErrorAsync(response, cancellationToken).ConfigureAwait(false) is { } parsedError &&
-            (response.StatusCode == HttpStatusCode.BadRequest ||
-             IsPerRequestMetadataProtocolErrorCode((McpErrorCode)parsedError.Error.Code)))
+            ShouldSurfaceJsonRpcErrorAsProtocolException(response.StatusCode, parsedError))
         {
             throw McpSessionHandler.CreateRemoteProtocolExceptionFromError(parsedError);
         }
@@ -89,10 +88,11 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         await response.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static bool IsPerRequestMetadataProtocolErrorCode(McpErrorCode code) =>
-        code is McpErrorCode.UnsupportedProtocolVersion
-             or McpErrorCode.MissingRequiredClientCapability
-             or McpErrorCode.HeaderMismatch;
+    internal static bool ShouldSurfaceJsonRpcErrorAsProtocolException(HttpStatusCode statusCode, JsonRpcError error) =>
+        statusCode == HttpStatusCode.BadRequest ||
+        (McpErrorCode)error.Error.Code is McpErrorCode.UnsupportedProtocolVersion
+                                          or McpErrorCode.MissingRequiredClientCapability
+                                          or McpErrorCode.HeaderMismatch;
 
     /// <summary>
     /// Reads a JSON-RPC error envelope from an <c>application/json</c> response body, returning
