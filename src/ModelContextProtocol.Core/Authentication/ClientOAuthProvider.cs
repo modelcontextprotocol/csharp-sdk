@@ -209,7 +209,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (request.Headers.Authorization is null && request.RequestUri is not null)
         {
             string? accessToken;
-            (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(request.RequestUri, cancellationToken).ConfigureAwait(false);
+            using (message?.Context?.RequestTimeout?.Suspend())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(request.RequestUri, cancellationToken).ConfigureAwait(false);
+            }
 
             if (!string.IsNullOrEmpty(accessToken))
             {
@@ -319,7 +323,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             throw new McpException($"The server does not support the '{BearerScheme}' authentication scheme. Server supports: [{serverSchemes}].");
         }
 
-        var accessToken = await GetAccessTokenAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
+        string accessToken;
+        using (originalJsonRpcMessage?.Context?.RequestTimeout?.Suspend())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            accessToken = await GetAccessTokenAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
+        }
 
         using var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri);
 
