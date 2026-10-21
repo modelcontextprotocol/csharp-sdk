@@ -329,12 +329,10 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
             new Dictionary<string, object?> { ["message"] = "hi" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // The client now defaults to the 2026-07-28 protocol revision, whose handshake is server/discover
-        // rather than the legacy initialize request. On the stateful Streamable HTTP fixture the
-        // request is refused, so the client downgrades to the legacy initialize.
-        var expectedHandshakeMethod = UseStreamableHttp && !Stateless
-            ? RequestMethods.Initialize
-            : RequestMethods.ServerDiscover;
+        // With default client options, only the stateless HTTP fixture uses discovery.
+        var expectedHandshakeMethod = UseStreamableHttp && Stateless
+            ? RequestMethods.ServerDiscover
+            : RequestMethods.Initialize;
         Assert.Contains(expectedHandshakeMethod, observedMethods);
         Assert.Contains(RequestMethods.ToolsList, observedMethods);
         Assert.Contains(RequestMethods.ToolsCall, observedMethods);
