@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -37,9 +38,85 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,
         }, HttpClient, LoggerFactory);
 
-        var clientOptions = new McpClientOptions();
+        var clientOptions = TestMcpClient.CreateOptions();
         configureClient?.Invoke(clientOptions);
         return await McpClient.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_SlowDiscovery_PreservesModernProtocol()
+    {
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
+
+        var discovery = new AsyncGate();
+        var timeProvider = new FakeTimeProvider();
+        await using var app = await StartServerWithGatedDiscoveryAsync(discovery);
+
+        var connecting = ConnectAsync(configureClient: options =>
+        {
+            options.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+            options.TimeProvider = timeProvider;
+        });
+        await discovery.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(new McpClientOptions().DiscoverProbeTimeout * 2);
+        discovery.Release.SetResult();
+
+        await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConnectAsync_Discovery_RespectsConfiguredDeadline(bool customProbeTimeout)
+    {
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
+
+        var discovery = new AsyncGate();
+        var timeProvider = new FakeTimeProvider();
+        var probeTimeout = new McpClientOptions().DiscoverProbeTimeout;
+        await using var app = await StartServerWithGatedDiscoveryAsync(discovery);
+
+        var connecting = ConnectAsync(configureClient: options =>
+        {
+            options.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+            options.TimeProvider = timeProvider;
+            if (customProbeTimeout)
+            {
+                options.DiscoverProbeTimeout = probeTimeout;
+            }
+        });
+        await discovery.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(customProbeTimeout ? probeTimeout : TestConstants.DefaultTimeout);
+
+        if (customProbeTimeout)
+        {
+            await Assert.ThrowsAsync<McpException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+            Assert.Equal("Initialization timed out", exception.Message);
+        }
+    }
+
+    private async Task<WebApplication> StartServerWithGatedDiscoveryAsync(AsyncGate discovery)
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(ConfigureStateless)
+            .WithMessageFilters(filters => filters.AddIncomingFilter(next => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ServerDiscover })
+                {
+                    await discovery.WaitAsync(cancellationToken);
+                }
+                await next(context, cancellationToken);
+            }));
+
+        var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        return app;
     }
 
     [Fact]

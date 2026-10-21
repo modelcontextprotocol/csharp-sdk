@@ -50,12 +50,7 @@ public class ClientIntegrationTestFixture
     {
         if (clientId == "test_server" && clientOptions is null)
         {
-            // This server supports discovery; slow startup must not trigger legacy fallback.
-            clientOptions = new()
-            {
-                DiscoverProbeTimeout = Timeout.InfiniteTimeSpan,
-                InitializationTimeout = TestConstants.DefaultTimeout,
-            };
+            clientOptions = TestMcpClient.CreateOptions();
         }
 
         return McpClient.CreateAsync(new StdioClientTransport(clientId switch
