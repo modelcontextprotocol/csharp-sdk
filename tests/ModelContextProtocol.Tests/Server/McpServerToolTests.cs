@@ -581,6 +581,151 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_PreservesRequiredDefaultValue()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"id":{"type":"string"},"count":{"type":["integer","null"]}},"required":["id","count"]}""").RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new ExplicitSchemaOutputWithDefaultValue { Id = "42", Count = 0 },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(0, result.StructuredContent.Value.GetProperty("count").GetInt32());
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_TraversesDictionaryValuesAndReferences()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""
+            {
+              "$defs": {
+                "entry": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string" },
+                    "note": { "type": ["string", "null"] }
+                  },
+                  "required": ["id", "note"]
+                }
+              },
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/entry" }
+            }
+            """).RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new Dictionary<string, ExplicitSchemaOutput> { ["entry"] = new() { Id = "42", Note = null } },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("entry").GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_TraversesAllOfRequirements()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""
+            {
+              "type": "object",
+              "properties": { "id": { "type": "string" } },
+              "allOf": [
+                {
+                  "properties": { "note": { "type": ["string", "null"] } },
+                  "required": ["note"]
+                }
+              ],
+              "required": ["id"]
+            }
+            """).RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new ExplicitSchemaOutput { Id = "42", Note = null },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_UsesPrefixItemInsteadOfTrailingItemsSchema()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""
+            {
+              "type": "array",
+              "prefixItems": [
+                {
+                  "type": "object",
+                  "properties": { "id": { "type": "string" } },
+                  "required": ["id"],
+                  "additionalProperties": false
+                }
+              ],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "note": { "type": ["string", "null"] }
+                },
+                "required": ["id", "note"]
+              }
+            }
+            """).RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new[] { new ExplicitSchemaOutput { Id = "42", Note = null } },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.False(result.StructuredContent.Value[0].TryGetProperty("note", out _));
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Theory]
+    [InlineData("{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"note\":{}},\"required\":[\"id\",\"note\"]}")]
+    [InlineData("{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\"},\"note\":{\"const\":null}},\"required\":[\"id\",\"note\"]}")]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RecognizesPermissiveNullSchemas(string schema)
+    {
+        JsonElement outputSchema = JsonDocument.Parse(schema).RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new ExplicitSchemaOutput { Id = "42", Note = null },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_VoidReturningTools_ReturnsExpectedSchema()
     {
         McpServerTool tool = McpServerTool.Create(() => { });
@@ -1214,6 +1359,13 @@ public partial class McpServerToolTests
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? IgnoredNote { get; init; }
+    }
+
+    private sealed class ExplicitSchemaOutputWithDefaultValue
+    {
+        public required string Id { get; init; }
+
+        public int Count { get; init; }
     }
 
     private static JsonSerializerOptions CreateSerializerOptionsWithPerson()

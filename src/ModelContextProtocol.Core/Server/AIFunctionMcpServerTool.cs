@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -672,15 +674,41 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        JsonElement? elementResult = aiFunctionResult switch
+        JsonElement? elementResult;
+        JsonElement? elementResultIncludingDefaults;
+        switch (aiFunctionResult)
         {
-            JsonElement jsonElement => jsonElement,
-            JsonNode node => JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode),
-            null => null,
-            _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
-        };
+            case JsonElement jsonElement:
+                elementResult = elementResultIncludingDefaults = jsonElement;
+                break;
+            case JsonNode node:
+                elementResult = elementResultIncludingDefaults = JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode);
+                break;
+            case null:
+                elementResult = elementResultIncludingDefaults = null;
+                break;
+            default:
+                JsonSerializerOptions serializerOptions = AIFunction.JsonSerializerOptions;
+                JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(typeof(object));
+                elementResult = JsonSerializer.SerializeToElement(aiFunctionResult, typeInfo);
 
-        elementResult = AddMissingRequiredNullableProperties(elementResult);
+                if (serializerOptions.DefaultIgnoreCondition is JsonIgnoreCondition.Never)
+                {
+                    elementResultIncludingDefaults = elementResult;
+                }
+                else
+                {
+                    JsonSerializerOptions includeDefaultsOptions = new(serializerOptions)
+                    {
+                        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+                    };
+                    elementResultIncludingDefaults = JsonSerializer.SerializeToElement(
+                        aiFunctionResult, includeDefaultsOptions.GetTypeInfo(typeof(object)));
+                }
+                break;
+        }
+
+        elementResult = AddMissingRequiredNullableProperties(elementResult, elementResultIncludingDefaults);
 
         // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
         // schemas. SEP-2106 clients see the natural shape. The classification is decided
@@ -700,7 +728,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return elementResult;
     }
 
-    private JsonElement? AddMissingRequiredNullableProperties(JsonElement? elementResult)
+    private JsonElement? AddMissingRequiredNullableProperties(JsonElement? elementResult, JsonElement? elementResultIncludingDefaults)
     {
         if (elementResult is not { } result ||
             ProtocolTool.OutputSchema is not { } outputSchema ||
@@ -710,8 +738,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         JsonNode? resultNode = JsonSerializer.SerializeToNode(result, McpJsonUtilities.JsonContext.Default.JsonElement);
+        JsonNode? resultNodeIncludingDefaults = elementResultIncludingDefaults is { } completeResult
+            ? JsonSerializer.SerializeToNode(completeResult, McpJsonUtilities.JsonContext.Default.JsonElement)
+            : null;
         JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
-        if (resultNode is null || schemaNode is null || !AddMissingRequiredNullableProperties(resultNode, schemaNode))
+        if (resultNode is null || schemaNode is null || !AddMissingRequiredNullableProperties(
+                resultNode,
+                resultNodeIncludingDefaults,
+                schemaNode,
+                schemaNode,
+                new HashSet<string>(StringComparer.Ordinal)))
         {
             return elementResult;
         }
@@ -719,35 +755,101 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return JsonSerializer.SerializeToElement(resultNode, McpJsonUtilities.JsonContext.Default.JsonNode);
     }
 
-    private static bool AddMissingRequiredNullableProperties(JsonNode resultNode, JsonNode schemaNode)
+    private static bool AddMissingRequiredNullableProperties(
+        JsonNode resultNode,
+        JsonNode? resultNodeIncludingDefaults,
+        JsonNode? schemaNode,
+        JsonNode schemaRoot,
+        HashSet<string> activeReferences)
     {
-        bool changed = false;
-
-        if (resultNode is JsonObject resultObject && schemaNode is JsonObject schemaObject)
+        if (schemaNode is JsonValue schemaValue && schemaValue.TryGetValue<bool>(out _))
         {
-            JsonArray? required = schemaObject["required"] as JsonArray;
-            JsonObject? properties = schemaObject["properties"] as JsonObject;
+            return false;
+        }
 
-            if (properties is not null)
+        if (schemaNode is not JsonObject schemaObject)
+        {
+            return false;
+        }
+
+        bool changed = false;
+        if (schemaObject["$ref"] is JsonValue refValue && refValue.TryGetValue<string>(out string? refText) &&
+            refText is not null && activeReferences.Add(refText))
+        {
+            if (TryResolveLocalReference(schemaRoot, refText, out JsonNode? referencedSchema))
             {
-                foreach (KeyValuePair<string, JsonNode?> property in resultObject)
+                changed |= AddMissingRequiredNullableProperties(resultNode, resultNodeIncludingDefaults, referencedSchema, schemaRoot, activeReferences);
+            }
+            activeReferences.Remove(refText);
+        }
+
+        if (resultNode is JsonObject resultObject)
+        {
+            JsonObject? resultObjectIncludingDefaults = resultNodeIncludingDefaults as JsonObject;
+            JsonObject? properties = schemaObject["properties"] as JsonObject;
+            JsonObject? patternProperties = schemaObject["patternProperties"] as JsonObject;
+            foreach (string propertyName in resultObject.Select(static property => property.Key).ToArray())
+            {
+                if (resultObject[propertyName] is not { } propertyValue)
                 {
-                    if (property.Value is not null && properties.TryGetPropertyValue(property.Key, out JsonNode? propertySchema))
+                    continue;
+                }
+
+                List<JsonNode> propertySchemas = [];
+                JsonNode? propertySchema = null;
+                bool matchedPropertySchema = properties?.TryGetPropertyValue(propertyName, out propertySchema) is true;
+                if (matchedPropertySchema && propertySchema is not null)
+                {
+                    propertySchemas.Add(propertySchema);
+                }
+
+                if (patternProperties is not null)
+                {
+                    foreach (KeyValuePair<string, JsonNode?> patternProperty in patternProperties)
                     {
-                        changed |= AddMissingRequiredNullableProperties(property.Value, propertySchema!);
+                        if (patternProperty.Value is not null && Regex.IsMatch(propertyName, patternProperty.Key) &&
+                            !propertySchemas.Contains(patternProperty.Value))
+                        {
+                            propertySchemas.Add(patternProperty.Value);
+                            matchedPropertySchema = true;
+                        }
                     }
+                }
+
+                if (!matchedPropertySchema && schemaObject["additionalProperties"] is JsonNode additionalProperties)
+                {
+                    propertySchemas.Add(additionalProperties);
+                }
+
+                JsonNode? completePropertyValue = null;
+                resultObjectIncludingDefaults?.TryGetPropertyValue(propertyName, out completePropertyValue);
+                foreach (JsonNode childSchema in propertySchemas)
+                {
+                    changed |= AddMissingRequiredNullableProperties(propertyValue, completePropertyValue, childSchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal));
                 }
             }
 
-            if (required is not null && properties is not null)
+            if (schemaObject["required"] is JsonArray required && properties is not null)
             {
                 foreach (JsonNode? requiredProperty in required)
                 {
                     string? propertyName = requiredProperty?.GetValue<string>();
-                    if (propertyName is not null &&
-                        !resultObject.ContainsKey(propertyName) &&
-                        properties.TryGetPropertyValue(propertyName, out JsonNode? propertySchema) &&
-                        SchemaAllowsNull(propertySchema))
+                    if (propertyName is null || resultObject.ContainsKey(propertyName) ||
+                        !properties.TryGetPropertyValue(propertyName, out JsonNode? propertySchema))
+                    {
+                        continue;
+                    }
+
+                    bool allowsNull = SchemaAllowsNull(propertySchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal));
+                    if (resultObjectIncludingDefaults?.TryGetPropertyValue(propertyName, out JsonNode? completePropertyValue) is true)
+                    {
+                        if (completePropertyValue is not null || allowsNull)
+                        {
+                            resultObject[propertyName] = completePropertyValue?.DeepClone();
+                            changed = true;
+                        }
+                    }
+                    else if (allowsNull)
                     {
                         resultObject[propertyName] = null;
                         changed = true;
@@ -755,24 +857,289 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 }
             }
         }
-        else if (resultNode is JsonArray resultArray &&
-                 schemaNode is JsonObject { } arraySchema &&
-                 arraySchema["items"] is JsonNode itemSchema)
+
+        if (resultNode is JsonArray resultArray)
         {
-            foreach (JsonNode? item in resultArray)
+            JsonArray? resultArrayIncludingDefaults = resultNodeIncludingDefaults as JsonArray;
+            JsonArray? prefixItems = schemaObject["prefixItems"] as JsonArray;
+            JsonNode? items = schemaObject["items"];
+            for (int i = 0; i < resultArray.Count; i++)
             {
-                if (item is not null)
+                JsonNode? itemSchema = prefixItems is not null && i < prefixItems.Count ? prefixItems[i] : items;
+                if (resultArray[i] is { } item && itemSchema is not null)
                 {
-                    changed |= AddMissingRequiredNullableProperties(item, itemSchema);
+                    JsonNode? completeItem = resultArrayIncludingDefaults is not null && i < resultArrayIncludingDefaults.Count
+                        ? resultArrayIncludingDefaults[i]
+                        : null;
+                    changed |= AddMissingRequiredNullableProperties(item, completeItem, itemSchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal));
                 }
             }
+        }
+
+        if (schemaObject["allOf"] is JsonArray allOf)
+        {
+            foreach (JsonNode? branch in allOf)
+            {
+                if (branch is not null)
+                {
+                    changed |= AddMissingRequiredNullableProperties(resultNode, resultNodeIncludingDefaults, branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal));
+                }
+            }
+        }
+
+        if (schemaObject["anyOf"] is JsonArray anyOf)
+        {
+            changed |= ApplyApplicableCompositionBranch(resultNode, resultNodeIncludingDefaults, anyOf, schemaRoot, exactlyOne: false);
+        }
+
+        if (schemaObject["oneOf"] is JsonArray oneOf)
+        {
+            changed |= ApplyApplicableCompositionBranch(resultNode, resultNodeIncludingDefaults, oneOf, schemaRoot, exactlyOne: true);
         }
 
         return changed;
     }
 
-    private static bool SchemaAllowsNull(JsonNode? schemaNode)
+    private static bool ApplyApplicableCompositionBranch(
+        JsonNode resultNode,
+        JsonNode? resultNodeIncludingDefaults,
+        JsonArray branches,
+        JsonNode schemaRoot,
+        bool exactlyOne)
     {
+        List<JsonNode> applicableBranches = [];
+        foreach (JsonNode? branch in branches)
+        {
+            if (branch is not null && SchemaCouldMatch(resultNode, branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal)))
+            {
+                applicableBranches.Add(branch);
+            }
+        }
+
+        if (applicableBranches.Count == 0 || (exactlyOne && applicableBranches.Count != 1))
+        {
+            return false;
+        }
+
+        IEnumerable<JsonNode> branchesToApply = exactlyOne
+            ? applicableBranches
+            : applicableBranches.OrderBy(branch => CountMissingNullableRequirements(resultNode, branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal))).Take(1);
+        bool changed = false;
+        foreach (JsonNode branch in branchesToApply)
+        {
+            changed |= AddMissingRequiredNullableProperties(resultNode, resultNodeIncludingDefaults, branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal));
+        }
+
+        return changed;
+    }
+
+    private static int CountMissingNullableRequirements(JsonNode resultNode, JsonNode schemaNode, JsonNode schemaRoot, HashSet<string> activeReferences)
+    {
+        if (schemaNode is not JsonObject schemaObject)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        if (resultNode is JsonObject resultObject && schemaObject["required"] is JsonArray required && schemaObject["properties"] is JsonObject properties)
+        {
+            foreach (JsonNode? requiredProperty in required)
+            {
+                string? propertyName = requiredProperty?.GetValue<string>();
+                if (propertyName is not null && !resultObject.ContainsKey(propertyName) &&
+                    properties.TryGetPropertyValue(propertyName, out JsonNode? propertySchema) &&
+                    SchemaAllowsNull(propertySchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal)))
+                {
+                    count++;
+                }
+            }
+        }
+
+        if (schemaObject["$ref"] is JsonValue refValue && refValue.TryGetValue<string>(out string? refText) &&
+            refText is not null && activeReferences.Add(refText) && TryResolveLocalReference(schemaRoot, refText, out JsonNode? referencedSchema))
+        {
+            count += CountMissingNullableRequirements(resultNode, referencedSchema!, schemaRoot, activeReferences);
+            activeReferences.Remove(refText);
+        }
+
+        if (schemaObject["allOf"] is JsonArray allOf)
+        {
+            foreach (JsonNode? branch in allOf)
+            {
+                if (branch is not null)
+                {
+                    count += CountMissingNullableRequirements(resultNode, branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal));
+                }
+            }
+        }
+
+        return count;
+    }
+
+    private static bool SchemaCouldMatch(JsonNode? instance, JsonNode? schemaNode, JsonNode schemaRoot, HashSet<string> activeReferences)
+    {
+        if (schemaNode is JsonValue booleanSchema && booleanSchema.TryGetValue<bool>(out bool isAllowed))
+        {
+            return isAllowed;
+        }
+
+        if (schemaNode is not JsonObject schemaObject)
+        {
+            return true;
+        }
+
+        if (schemaObject["$ref"] is JsonValue refValue && refValue.TryGetValue<string>(out string? refText) &&
+            refText is not null && activeReferences.Add(refText))
+        {
+            if (!TryResolveLocalReference(schemaRoot, refText, out JsonNode? referencedSchema) ||
+                !SchemaCouldMatch(instance, referencedSchema, schemaRoot, activeReferences))
+            {
+                activeReferences.Remove(refText);
+                return false;
+            }
+            activeReferences.Remove(refText);
+        }
+
+        if (schemaObject["type"] is JsonValue typeValue && typeValue.TryGetValue<string>(out string? type) &&
+            !ValueMatchesType(instance, type))
+        {
+            return false;
+        }
+
+        if (schemaObject["type"] is JsonArray types && !types.Any(typeNode =>
+                typeNode is JsonValue typeName && typeName.TryGetValue<string>(out string? name) && ValueMatchesType(instance, name)))
+        {
+            return false;
+        }
+
+        if (schemaObject.TryGetPropertyValue("const", out JsonNode? constValue) && !JsonNodesEqual(instance, constValue))
+        {
+            return false;
+        }
+
+        if (schemaObject["enum"] is JsonArray enumValues && !enumValues.Any(value => JsonNodesEqual(instance, value)))
+        {
+            return false;
+        }
+
+        if (instance is JsonObject instanceObject)
+        {
+            if (schemaObject["required"] is JsonArray required && schemaObject["properties"] is JsonObject properties)
+            {
+                foreach (JsonNode? requiredProperty in required)
+                {
+                    string? propertyName = requiredProperty?.GetValue<string>();
+                    if (propertyName is not null && !instanceObject.ContainsKey(propertyName) &&
+                        (!properties.TryGetPropertyValue(propertyName, out JsonNode? propertySchema) ||
+                         !SchemaAllowsNull(propertySchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal))))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            JsonObject? propertiesForInstance = schemaObject["properties"] as JsonObject;
+            JsonObject? patternProperties = schemaObject["patternProperties"] as JsonObject;
+            foreach (KeyValuePair<string, JsonNode?> property in instanceObject)
+            {
+                bool matched = false;
+                if (propertiesForInstance?.TryGetPropertyValue(property.Key, out JsonNode? propertySchema) is true)
+                {
+                    matched = true;
+                    if (!SchemaCouldMatch(property.Value, propertySchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal)))
+                    {
+                        return false;
+                    }
+                }
+
+                if (patternProperties is not null)
+                {
+                    foreach (KeyValuePair<string, JsonNode?> patternProperty in patternProperties)
+                    {
+                        if (Regex.IsMatch(property.Key, patternProperty.Key))
+                        {
+                            matched = true;
+                            if (!SchemaCouldMatch(property.Value, patternProperty.Value, schemaRoot, new HashSet<string>(StringComparer.Ordinal)))
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                }
+
+                if (!matched && schemaObject["additionalProperties"] is JsonValue additionalBoolean &&
+                    additionalBoolean.TryGetValue<bool>(out bool allowsAdditionalProperties) && !allowsAdditionalProperties)
+                {
+                    return false;
+                }
+            }
+        }
+
+        if (instance is JsonArray instanceArray)
+        {
+            JsonArray? prefixItems = schemaObject["prefixItems"] as JsonArray;
+            JsonNode? items = schemaObject["items"];
+            for (int i = 0; i < instanceArray.Count; i++)
+            {
+                JsonNode? itemSchema = prefixItems is not null && i < prefixItems.Count ? prefixItems[i] : items;
+                if (itemSchema is not null && !SchemaCouldMatch(instanceArray[i], itemSchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal)))
+                {
+                    return false;
+                }
+            }
+        }
+
+        if (schemaObject["allOf"] is JsonArray allOf &&
+            allOf.Any(branch => !SchemaCouldMatch(instance, branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal))))
+        {
+            return false;
+        }
+
+        if (schemaObject["anyOf"] is JsonArray anyOf &&
+            !anyOf.Any(branch => SchemaCouldMatch(instance, branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal))))
+        {
+            return false;
+        }
+
+        if (schemaObject["oneOf"] is JsonArray oneOf &&
+            oneOf.Count(branch => SchemaCouldMatch(instance, branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal))) != 1)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ValueMatchesType(JsonNode? value, string? type) => type switch
+    {
+        "null" => value is null,
+        "object" => value is JsonObject,
+        "array" => value is JsonArray,
+        "string" => value is JsonValue jsonValue && jsonValue.TryGetValue<string>(out _),
+        "boolean" => value is JsonValue jsonValue && jsonValue.TryGetValue<bool>(out _),
+        "integer" => value is JsonValue jsonValue && jsonValue.TryGetValue<JsonElement>(out JsonElement element) && element.ValueKind == JsonValueKind.Number && element.TryGetInt64(out _),
+        "number" => value is JsonValue jsonValue && jsonValue.TryGetValue<JsonElement>(out JsonElement element) && element.ValueKind == JsonValueKind.Number,
+        _ => true,
+    };
+
+    private static bool JsonNodesEqual(JsonNode? left, JsonNode? right)
+    {
+        if (left is null || right is null)
+        {
+            return left is null && right is null;
+        }
+
+        return JsonSerializer.SerializeToElement(left, McpJsonUtilities.JsonContext.Default.JsonNode).GetRawText() ==
+            JsonSerializer.SerializeToElement(right, McpJsonUtilities.JsonContext.Default.JsonNode).GetRawText();
+    }
+
+    private static bool SchemaAllowsNull(JsonNode? schemaNode, JsonNode schemaRoot, HashSet<string> activeReferences)
+    {
+        if (schemaNode is null)
+        {
+            return true;
+        }
+
         if (schemaNode is JsonValue schemaValue && schemaValue.TryGetValue<bool>(out bool allowsNull))
         {
             return allowsNull;
@@ -783,26 +1150,119 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return false;
         }
 
-        if (schemaObject["type"] is JsonValue typeValue && typeValue.TryGetValue<string>(out string? type))
+        if (schemaObject["$ref"] is JsonValue refValue && refValue.TryGetValue<string>(out string? refText) && refText is not null)
         {
-            return type == "null";
-        }
-
-        if (schemaObject["type"] is JsonArray types &&
-            types.Any(type => type is JsonValue value && value.TryGetValue<string>(out string? typeName) && typeName == "null"))
-        {
-            return true;
-        }
-
-        foreach (string keyword in new[] { "anyOf", "oneOf" })
-        {
-            if (schemaObject[keyword] is JsonArray alternatives && alternatives.Any(SchemaAllowsNull))
+            if (!activeReferences.Add(refText))
             {
                 return true;
             }
+
+            bool referenceAllowsNull = TryResolveLocalReference(schemaRoot, refText, out JsonNode? referencedSchema) &&
+                SchemaAllowsNull(referencedSchema, schemaRoot, activeReferences);
+            activeReferences.Remove(refText);
+            if (!referenceAllowsNull)
+            {
+                return false;
+            }
         }
 
-        return false;
+        if (schemaObject["type"] is JsonValue typeValue && typeValue.TryGetValue<string>(out string? type) && type != "null")
+        {
+            return false;
+        }
+
+        if (schemaObject["type"] is JsonArray types &&
+            !types.Any(typeNode => typeNode is JsonValue value && value.TryGetValue<string>(out string? name) && name == "null"))
+        {
+            return false;
+        }
+
+        if (schemaObject.TryGetPropertyValue("const", out JsonNode? constValue) && constValue is not null)
+        {
+            return false;
+        }
+
+        if (schemaObject["enum"] is JsonArray enumValues && !enumValues.Any(static value => value is null))
+        {
+            return false;
+        }
+
+        if (schemaObject["allOf"] is JsonArray allOf &&
+            allOf.Any(branch => !SchemaAllowsNull(branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal))))
+        {
+            return false;
+        }
+
+        if (schemaObject["anyOf"] is JsonArray anyOf &&
+            !anyOf.Any(branch => SchemaAllowsNull(branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal))))
+        {
+            return false;
+        }
+
+        if (schemaObject["oneOf"] is JsonArray oneOf &&
+            oneOf.Count(branch => SchemaAllowsNull(branch, schemaRoot, new HashSet<string>(StringComparer.Ordinal))) != 1)
+        {
+            return false;
+        }
+
+        if (schemaObject["not"] is JsonNode notSchema && SchemaAllowsNull(notSchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal)))
+        {
+            return false;
+        }
+
+        if (schemaObject["if"] is JsonNode ifSchema)
+        {
+            bool ifMatchesNull = SchemaCouldMatch(null, ifSchema, schemaRoot, new HashSet<string>(StringComparer.Ordinal));
+            JsonNode? conditionalBranch = ifMatchesNull ? schemaObject["then"] : schemaObject["else"];
+            if (conditionalBranch is not null && !SchemaAllowsNull(conditionalBranch, schemaRoot, new HashSet<string>(StringComparer.Ordinal)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryResolveLocalReference(JsonNode schemaRoot, string reference, out JsonNode? resolvedSchema)
+    {
+        resolvedSchema = null;
+        if (!reference.StartsWith('#'))
+        {
+            return false;
+        }
+
+        string pointer = Uri.UnescapeDataString(reference[1..]);
+        if (pointer.Length == 0)
+        {
+            resolvedSchema = schemaRoot;
+            return true;
+        }
+
+        if (!pointer.StartsWith('/'))
+        {
+            return false;
+        }
+
+        JsonNode? current = schemaRoot;
+        foreach (string rawSegment in pointer[1..].Split('/'))
+        {
+            string segment = rawSegment.Replace("~1", "/", StringComparison.Ordinal).Replace("~0", "~", StringComparison.Ordinal);
+            if (current is JsonObject currentObject && currentObject.TryGetPropertyValue(segment, out JsonNode? child))
+            {
+                current = child;
+            }
+            else if (current is JsonArray currentArray && int.TryParse(segment, out int index) && index >= 0 && index < currentArray.Count)
+            {
+                current = currentArray[index];
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        resolvedSchema = current;
+        return true;
     }
 
     private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonElement? structuredContent)
