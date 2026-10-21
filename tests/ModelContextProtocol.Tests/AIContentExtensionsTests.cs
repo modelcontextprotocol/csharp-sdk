@@ -151,6 +151,43 @@ public class AIContentExtensionsTests
         Assert.NotNull(functionResult.Result);
     }
 
+    [Fact]
+    public void ToContentBlock_FunctionResultWithStringResult_TextIsTheResult()
+    {
+        FunctionResultContent functionResult = new("call_123", "Weather in Paris: sunny");
+
+        var toolResult = Assert.IsType<ToolResultContentBlock>(functionResult.ToContentBlock());
+
+        Assert.Equal("call_123", toolResult.ToolUseId);
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(toolResult.Content));
+        Assert.Equal("\"Weather in Paris: sunny\"", text.Text);
+    }
+
+    [Fact]
+    public void ToContentBlock_FunctionResultWithJsonElementResult_TextIsTheResult()
+    {
+        JsonElement value = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["temperature"] = 22 }, McpJsonUtilities.DefaultOptions);
+        FunctionResultContent functionResult = new("call_123", value);
+
+        var toolResult = Assert.IsType<ToolResultContentBlock>(functionResult.ToContentBlock());
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(toolResult.Content));
+        Assert.Equal("""{"temperature":22}""", text.Text);
+        Assert.NotNull(toolResult.StructuredContent);
+        Assert.Equal(22, toolResult.StructuredContent.Value.GetProperty("temperature").GetInt32());
+    }
+
+    [Fact]
+    public void ToContentBlock_FunctionResultWithAIContentResult_ConvertsTheContent()
+    {
+        FunctionResultContent functionResult = new("call_123", new TextContent("Weather in Paris: sunny"));
+
+        var toolResult = Assert.IsType<ToolResultContentBlock>(functionResult.ToContentBlock());
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(toolResult.Content));
+        Assert.Equal("Weather in Paris: sunny", text.Text);
+    }
+
     // Tests for anonymous types in AdditionalProperties (sampling pipeline regression fix)
     // These tests require reflection-based serialization and will be skipped when reflection is disabled.
 
