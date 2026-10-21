@@ -11,8 +11,8 @@ namespace ModelContextProtocol.Tests;
 
 public class CancellationTests : ClientServerTestBase
 {
-    private readonly TaskCompletionSource _toolWaiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private readonly TaskCompletionSource _toolCanceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _toolWaiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _toolCanceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public CancellationTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -41,14 +41,14 @@ public class CancellationTests : ClientServerTestBase
 
     private async Task SignalThenWaitForCancellation(CancellationToken cancellationToken)
     {
-        _toolWaiting.TrySetResult();
+        _toolWaiting.TrySetResult(true);
         try
         {
             await Task.Delay(Timeout.Infinite, cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            _toolCanceled.TrySetResult();
+            _toolCanceled.TrySetResult(true);
             throw;
         }
     }
