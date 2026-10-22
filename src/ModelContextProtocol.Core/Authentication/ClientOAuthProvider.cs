@@ -543,13 +543,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ["response_type"] = "code",
             ["code_challenge"] = codeChallenge,
             ["code_challenge_method"] = "S256",
+            ["state"] = state,
         };
-
-        // Legacy callbacks may already supply and validate their own state.
-        if (_validateAuthorizationResponseState || !_additionalAuthorizationParameters.ContainsKey("state"))
-        {
-            queryParamsDictionary["state"] = state;
-        }
 
         if (resourceUri is not null)
         {

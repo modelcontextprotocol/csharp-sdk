@@ -62,7 +62,7 @@ dotnet run
 
 ## OAuth Configuration
 
-The sample uses `AuthorizationCallbackHandler` to return both the `code` and `state` parameters from the redirect to the SDK. State is generated uniquely for each authorization transaction and must match exactly before the SDK exchanges the code. The legacy `AuthorizationRedirectDelegate` remains supported, but returns only a code and does not enable SDK state validation. Applications using that delegate can continue to supply their own `state` through `AdditionalAuthorizationParameters` and validate it themselves. When neither callback is configured, the built-in handler prompts for the full redirect URL rather than just the code.
+The sample uses `AuthorizationCallbackHandler` to return both the `code` and `state` parameters from the redirect to the SDK. State is generated uniquely for each authorization transaction and must match exactly before the SDK exchanges the code. The legacy `AuthorizationRedirectDelegate` remains supported, but returns only a code and does not enable SDK state validation. For all callback paths, `state` is SDK-generated and cannot be overridden through `AdditionalAuthorizationParameters`. When neither callback is configured, the built-in handler prompts for the full redirect URL rather than just the code.
 
 The client is configured with:
 - **Client ID**: `demo-client`

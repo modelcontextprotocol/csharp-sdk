@@ -79,10 +79,6 @@ public sealed class ClientOAuthOptions
     /// is used. Use <see cref="AuthorizationCallbackHandler"/> to enable SDK state validation.
     /// </para>
     /// <para>
-    /// Applications that supply their own <c>state</c> through <see cref="AdditionalAuthorizationParameters"/>
-    /// must validate the returned state in this delegate.
-    /// </para>
-    /// <para>
     /// This property cannot be configured together with <see cref="AuthorizationCallbackHandler"/>.
     /// </para>
     /// </remarks>
@@ -117,12 +113,9 @@ public sealed class ClientOAuthOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Parameters specified cannot override or append to automatically set parameters like
-    /// <c>redirect_uri</c>, which should instead be configured via <see cref="RedirectUri"/>.
-    /// The <c>state</c> parameter is also reserved when using <see cref="AuthorizationCallbackHandler"/>
-    /// or the default handler, and is generated uniquely for each authorization transaction.
-    /// For compatibility, applications using <see cref="AuthorizationRedirectDelegate"/> may supply
-    /// their own <c>state</c> value and validate it themselves.
+    /// Parameters specified cannot override or append to any automatically set parameters like
+    /// <c>redirect_uri</c> or <c>state</c>. The redirect URI should instead be configured via
+    /// <see cref="RedirectUri"/>, while state is generated uniquely for each authorization transaction.
     /// </para>
     /// </remarks>
     public IDictionary<string, string> AdditionalAuthorizationParameters { get; set; } = new Dictionary<string, string>();
