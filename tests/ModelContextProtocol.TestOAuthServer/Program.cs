@@ -28,6 +28,8 @@ public sealed class Program
     private readonly ConcurrentDictionary<string, ClientInfo> _clients = new();
 
     private readonly ConcurrentQueue<string> _metadataRequests = new();
+    private int _authorizationRequestCount;
+    private int _tokenRequestCount;
 
     private readonly RSA _rsa;
     private readonly string _keyId;
@@ -106,6 +108,12 @@ public sealed class Program
 
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
+
+    /// <summary>Gets the number of requests received by the authorization endpoint.</summary>
+    public int AuthorizationRequestCount => Volatile.Read(ref _authorizationRequestCount);
+
+    /// <summary>Gets the number of requests received by the token endpoint.</summary>
+    public int TokenRequestCount => Volatile.Read(ref _tokenRequestCount);
 
     /// <summary>
     /// Entry point for the application.
@@ -300,6 +308,8 @@ public sealed class Program
             [FromQuery] string? state,
             [FromQuery] string? resource) =>
         {
+            Interlocked.Increment(ref _authorizationRequestCount);
+
             // Validate client
             if (!_clients.TryGetValue(client_id, out var client))
             {
@@ -381,6 +391,8 @@ public sealed class Program
         // Token endpoint
         app.MapPost("/token", async (HttpContext context) =>
         {
+            Interlocked.Increment(ref _tokenRequestCount);
+
             var form = await context.Request.ReadFormAsync();
 
             // Authenticate client
