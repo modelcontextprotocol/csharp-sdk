@@ -54,6 +54,41 @@ public class AuthServerMetadataCancellationTests(ITestOutputHelper outputHelper)
         await _metadata.Canceled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
     }
 
+    [Fact]
+    public async Task AuthServerMetadataDiscovery_HttpTimeout_TriesNextEndpoint()
+    {
+        await using var app = await StartMcpServerAsync();
+
+        var handler = new MetadataTimeoutHandler
+        {
+            InnerHandler = SocketsHttpHandler,
+        };
+        using var httpClient = new HttpClient(handler, disposeHandler: false);
+        ConfigureHttpClient(httpClient);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+            },
+        }, httpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport,
+            loggerFactory: LoggerFactory,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(handler.TimeoutInjected);
+        Assert.Contains(
+            "/.well-known/openid-configuration",
+            TestOAuthServer.MetadataRequests);
+    }
+
     private HttpClient CreateHttpClientWithGatedAuthServerMetadata()
     {
         // The shared SocketsHttpHandler is owned and disposed by the base class.
@@ -74,6 +109,30 @@ public class AuthServerMetadataCancellationTests(ITestOutputHelper outputHelper)
                 AuthorizationCallbackHandler = (_, _) => throw new InvalidOperationException("Authorization should not be reached."),
             },
         }, httpClient, LoggerFactory);
+
+    private sealed class MetadataTimeoutHandler : DelegatingHandler
+    {
+        public bool TimeoutInjected { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.AbsolutePath ==
+                "/.well-known/oauth-authorization-server")
+            {
+                Assert.False(cancellationToken.IsCancellationRequested);
+                TimeoutInjected = true;
+
+                throw new TaskCanceledException(
+                    "Simulated HttpClient timeout.",
+                    new TimeoutException(),
+                    new CancellationToken(canceled: true));
+            }
+
+            return base.SendAsync(request, cancellationToken);
+        }
+    }
 
     // Holds the authorization server metadata requests until they are canceled.
     private sealed class GatedAuthServerMetadataHandler(AsyncGate gate) : DelegatingHandler
