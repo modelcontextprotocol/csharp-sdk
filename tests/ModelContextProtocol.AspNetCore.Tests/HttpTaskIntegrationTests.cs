@@ -6,6 +6,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Security.Claims;
 
@@ -30,7 +31,7 @@ public class HttpTaskIntegrationTests(ITestOutputHelper testOutputHelper) : Kest
             new HttpClientTransportOptions { Endpoint = new("http://localhost:5000") },
             HttpClient,
             LoggerFactory);
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
@@ -67,7 +68,7 @@ public class HttpTaskIntegrationTests(ITestOutputHelper testOutputHelper) : Kest
             new HttpClientTransportOptions { Endpoint = new("http://localhost:5000") },
             HttpClient,
             LoggerFactory);
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
@@ -120,7 +121,7 @@ public class HttpTaskIntegrationTests(ITestOutputHelper testOutputHelper) : Kest
             new HttpClientTransportOptions { Endpoint = new("http://localhost:5000") },
             HttpClient,
             LoggerFactory);
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
@@ -166,7 +167,7 @@ public class HttpTaskIntegrationTests(ITestOutputHelper testOutputHelper) : Kest
             new HttpClientTransportOptions { Endpoint = new("http://localhost:5000") },
             HttpClient,
             LoggerFactory);
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
@@ -217,7 +218,7 @@ public class HttpTaskIntegrationTests(ITestOutputHelper testOutputHelper) : Kest
             new HttpClientTransportOptions { Endpoint = new("http://localhost:5000") },
             HttpClient,
             LoggerFactory);
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
