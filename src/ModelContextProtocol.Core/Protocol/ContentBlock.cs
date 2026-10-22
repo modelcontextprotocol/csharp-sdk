@@ -172,7 +172,7 @@ public abstract class ContentBlock
                             icons = [];
                             while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
                             {
-                                icons.Add(JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.Icon) ??
+                                icons.Add(JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<Icon>()) ??
                                     throw new JsonException("Unexpected null item in icons array."));
                             }
                         }
@@ -183,7 +183,7 @@ public abstract class ContentBlock
                         break;
 
                     case "annotations":
-                        annotations = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.Annotations);
+                        annotations = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<Annotations>());
                         break;
 
                     case "_meta":

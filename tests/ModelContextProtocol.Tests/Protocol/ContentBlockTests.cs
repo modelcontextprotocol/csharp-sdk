@@ -6,6 +6,57 @@ namespace ModelContextProtocol.Tests.Protocol;
 
 public class ContentBlockTests
 {
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    public void NestedAnnotations_UsesCallerOptions(int preset, bool alternateCasing)
+    {
+        var options = GetNestedReadOptions(preset);
+        string priority = alternateCasing ? "Priority" : "priority";
+        string json = """{"content":[{"type":"text","text":"ok","annotations":{"PRIORITY":0.5}}]}""".Replace("PRIORITY", priority);
+
+        var result = JsonSerializer.Deserialize<CallToolResult>(json, options);
+
+        var block = Assert.IsType<TextContentBlock>(Assert.Single(Assert.IsType<CallToolResult>(result).Content));
+        Assert.NotNull(block.Annotations);
+        Assert.Equal(alternateCasing && !options.PropertyNameCaseInsensitive ? null : (double?)0.5, block.Annotations.Priority);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    public void NestedIcons_UsesCallerOptions(int preset, bool alternateCasing)
+    {
+        var options = GetNestedReadOptions(preset);
+        string source = alternateCasing ? "Src" : "src";
+        string json = """{"content":[{"type":"resource_link","uri":"file:///test","name":"test","icons":[{"SOURCE":"https://example.com/icon.png"}]}]}""".Replace("SOURCE", source);
+
+        if (alternateCasing && !options.PropertyNameCaseInsensitive)
+        {
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<CallToolResult>(json, options));
+            return;
+        }
+
+        var result = JsonSerializer.Deserialize<CallToolResult>(json, options);
+        var block = Assert.IsType<ResourceLinkBlock>(Assert.Single(Assert.IsType<CallToolResult>(result).Content));
+        Assert.Equal("https://example.com/icon.png", Assert.Single(Assert.IsAssignableFrom<IList<Icon>>(block.Icons)).Source);
+    }
+
+    private static JsonSerializerOptions GetNestedReadOptions(int preset) => preset switch
+    {
+        0 => McpJsonUtilities.DefaultOptions,
+        1 => McpJsonUtilities.ProtocolOptions,
+        _ => new(McpJsonUtilities.ProtocolOptions) { PropertyNameCaseInsensitive = true },
+    };
+
     [Fact]
     public void ResourceLinkBlock_SerializationRoundTrip_PreservesAllProperties()
     {
