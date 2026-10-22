@@ -49,16 +49,41 @@ public sealed class ClientOAuthOptions
     public IEnumerable<string>? Scopes { get; set; }
 
     /// <summary>
-    /// Gets or sets the authorization redirect delegate for handling the OAuth authorization flow.
+    /// Gets or sets the callback that handles the OAuth authorization flow.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This delegate is responsible for handling the OAuth authorization URL and obtaining the authorization code.
-    /// If not specified, a default implementation will be used that prompts the user to enter the code manually.
+    /// This callback receives the authorization and redirect URIs in an
+    /// <see cref="AuthorizationCallbackContext"/> and returns the authorization response.
+    /// If neither this callback nor <see cref="AuthorizationRedirectDelegate"/> is specified, a default
+    /// implementation prompts the user to enter the full redirect URL manually.
     /// </para>
     /// <para>
     /// Custom implementations might open a browser, start an HTTP listener, or use other mechanisms to capture
-    /// the authorization code from the OAuth redirect.
+    /// the authorization response. They must return the <c>code</c> and <c>state</c> query parameters
+    /// from the redirect URI callback. The SDK requires an exact state match before exchanging the code.
+    /// </para>
+    /// <para>
+    /// This property cannot be configured together with <see cref="AuthorizationRedirectDelegate"/>.
+    /// </para>
+    /// </remarks>
+    public Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>>? AuthorizationCallbackHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets the legacy authorization redirect delegate for handling the OAuth authorization flow.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This delegate returns only the authorization code and cannot provide the <c>state</c> parameter
+    /// from the authorization response. Consequently, SDK state validation is skipped when this delegate
+    /// is used. Use <see cref="AuthorizationCallbackHandler"/> to enable SDK state validation.
+    /// </para>
+    /// <para>
+    /// Applications that supply their own <c>state</c> through <see cref="AdditionalAuthorizationParameters"/>
+    /// must validate the returned state in this delegate.
+    /// </para>
+    /// <para>
+    /// This property cannot be configured together with <see cref="AuthorizationCallbackHandler"/>.
     /// </para>
     /// </remarks>
     public AuthorizationRedirectDelegate? AuthorizationRedirectDelegate { get; set; }
@@ -92,8 +117,12 @@ public sealed class ClientOAuthOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Parameters specified cannot override or append to any automatically set parameters like the "redirect_uri",
-    /// which should instead be configured via <see cref="RedirectUri"/>.
+    /// Parameters specified cannot override or append to automatically set parameters like
+    /// <c>redirect_uri</c>, which should instead be configured via <see cref="RedirectUri"/>.
+    /// The <c>state</c> parameter is also reserved when using <see cref="AuthorizationCallbackHandler"/>
+    /// or the default handler, and is generated uniquely for each authorization transaction.
+    /// For compatibility, applications using <see cref="AuthorizationRedirectDelegate"/> may supply
+    /// their own <c>state</c> value and validate it themselves.
     /// </para>
     /// </remarks>
     public IDictionary<string, string> AdditionalAuthorizationParameters { get; set; } = new Dictionary<string, string>();

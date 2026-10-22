@@ -56,11 +56,13 @@ dotnet run
 3. The client initiates OAuth 2.0 authorization code flow:
    - Opens a browser to the authorization URL at the OAuth server
    - Starts a local HTTP listener on `http://localhost:1179/callback` to receive the authorization code
-   - Exchanges the authorization code for an access token
+   - Validates that the returned `state` matches the authorization request before exchanging the code for an access token
 4. The client uses the access token to authenticate with the MCP server
 5. The client lists available tools and calls the `GetAlerts` tool for Washington state
 
 ## OAuth Configuration
+
+The sample uses `AuthorizationCallbackHandler` to return both the `code` and `state` parameters from the redirect to the SDK. State is generated uniquely for each authorization transaction and must match exactly before the SDK exchanges the code. The legacy `AuthorizationRedirectDelegate` remains supported, but returns only a code and does not enable SDK state validation. Applications using that delegate can continue to supply their own `state` through `AdditionalAuthorizationParameters` and validate it themselves. When neither callback is configured, the built-in handler prompts for the full redirect URL rather than just the code.
 
 The client is configured with:
 - **Client ID**: `demo-client`

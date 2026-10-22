@@ -30,7 +30,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly string? _configuredScopes;
     private readonly IDictionary<string, string> _additionalAuthorizationParameters;
     private readonly Func<IReadOnlyList<Uri>, Uri?> _authServerSelector;
-    private readonly AuthorizationRedirectDelegate _authorizationRedirectDelegate;
+    private readonly Func<AuthorizationCallbackContext, CancellationToken, Task<AuthorizationResult?>> _authorizationCallbackHandler;
+    private readonly bool _validateAuthorizationResponseState;
     private readonly Uri? _clientMetadataDocumentUri;
 
     // _dcrClientName, _dcrClientUri, _dcrInitialAccessToken and _dcrResponseDelegate are used for dynamic client registration (RFC 7591)
@@ -82,8 +83,36 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Set up authorization server selection strategy
         _authServerSelector = options.AuthServerSelector ?? DefaultAuthServerSelector;
 
-        // Set up authorization URL handler (use default if not provided)
-        _authorizationRedirectDelegate = options.AuthorizationRedirectDelegate ?? DefaultAuthorizationUrlHandler;
+        var authorizationRedirectDelegate = options.AuthorizationRedirectDelegate;
+        if (options.AuthorizationCallbackHandler is not null && authorizationRedirectDelegate is not null)
+        {
+            throw new ArgumentException(
+                $"{nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} and {nameof(ClientOAuthOptions.AuthorizationRedirectDelegate)} cannot both be configured.",
+                nameof(options));
+        }
+
+        if (options.AuthorizationCallbackHandler is not null)
+        {
+            _authorizationCallbackHandler = options.AuthorizationCallbackHandler;
+            _validateAuthorizationResponseState = true;
+        }
+        else if (authorizationRedirectDelegate is not null)
+        {
+            _authorizationCallbackHandler = async (context, cancellationToken) => new AuthorizationResult
+            {
+                Code = await authorizationRedirectDelegate(
+                    context.AuthorizationUri,
+                    context.RedirectUri,
+                    cancellationToken).ConfigureAwait(false),
+            };
+            // Code-only callbacks cannot provide response state. Preserve their existing behavior.
+            _validateAuthorizationResponseState = false;
+        }
+        else
+        {
+            _authorizationCallbackHandler = DefaultAuthorizationUrlHandler;
+            _validateAuthorizationResponseState = true;
+        }
 
         _dcrClientName = options.DynamicClientRegistration?.ClientName;
         _dcrClientUri = options.DynamicClientRegistration?.ClientUri;
@@ -100,20 +129,32 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private static Uri? DefaultAuthServerSelector(IReadOnlyList<Uri> availableServers) => availableServers.FirstOrDefault();
 
     /// <summary>
-    /// Default authorization URL handler that displays the URL to the user for manual input.
+    /// Default authorization URL handler that displays the URL to the user and parses the resulting redirect URL.
     /// </summary>
-    /// <param name="authorizationUrl">The authorization URL to handle.</param>
-    /// <param name="redirectUri">The redirect URI where the authorization code will be sent.</param>
+    /// <param name="context">The context containing the authorization and redirect URIs.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
-    /// <returns>The authorization code entered by the user, or null if none was provided.</returns>
-    private static Task<string?> DefaultAuthorizationUrlHandler(Uri authorizationUrl, Uri redirectUri, CancellationToken cancellationToken)
+    /// <returns>The authorization result parsed from the redirect URL.</returns>
+    private static Task<AuthorizationResult?> DefaultAuthorizationUrlHandler(
+        AuthorizationCallbackContext context,
+        CancellationToken cancellationToken)
     {
         Console.WriteLine($"Please open the following URL in your browser to authorize the application:");
-        Console.WriteLine($"{authorizationUrl}");
+        Console.WriteLine($"{context.AuthorizationUri}");
         Console.WriteLine();
-        Console.Write("Enter the authorization code from the redirect URL: ");
-        var authorizationCode = Console.ReadLine();
-        return Task.FromResult<string?>(authorizationCode);
+        Console.Write("Enter the full redirect URL: ");
+        var redirectUrl = Console.ReadLine();
+        if (!Uri.TryCreate(redirectUrl, UriKind.Absolute, out var responseUri))
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "The entered redirect URL is not a valid absolute URL. Paste the full redirect URL from the browser address bar.");
+        }
+
+        var queryParams = HttpUtility.ParseQueryString(responseUri.Query);
+        return Task.FromResult<AuthorizationResult?>(new()
+        {
+            Code = queryParams["code"],
+            State = queryParams["state"],
+        });
     }
 
     internal override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, JsonRpcMessage? message, CancellationToken cancellationToken)
@@ -456,24 +497,42 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         AuthorizationServerMetadata authServerMetadata,
         CancellationToken cancellationToken)
     {
-        var codeVerifier = GenerateCodeVerifier();
+        var codeVerifier = GenerateRandomBase64UrlValue();
         var codeChallenge = GenerateCodeChallenge(codeVerifier);
+        var state = GenerateRandomBase64UrlValue();
 
-        var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge);
-        var authCode = await _authorizationRedirectDelegate(authUrl, _redirectUri, cancellationToken).ConfigureAwait(false);
+        var authUrl = BuildAuthorizationUrl(protectedResourceMetadata, authServerMetadata, codeChallenge, state);
+        var authResult = await _authorizationCallbackHandler(
+            new AuthorizationCallbackContext
+            {
+                AuthorizationUri = authUrl,
+                RedirectUri = _redirectUri,
+            },
+            cancellationToken).ConfigureAwait(false);
 
-        if (string.IsNullOrEmpty(authCode))
+        if (authResult is null)
         {
-            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(AuthorizationRedirectDelegate)} returned a null or empty authorization code.");
+            ThrowFailedToHandleUnauthorizedResponse($"The {nameof(ClientOAuthOptions.AuthorizationCallbackHandler)} returned a null authorization result.");
         }
 
-        return await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authCode!, codeVerifier, cancellationToken).ConfigureAwait(false);
+        if (_validateAuthorizationResponseState)
+        {
+            ValidateStateResponse(authResult!.State, state);
+        }
+
+        if (string.IsNullOrEmpty(authResult.Code))
+        {
+            ThrowFailedToHandleUnauthorizedResponse("The authorization callback returned a null or empty authorization code.");
+        }
+
+        return await ExchangeCodeForTokenAsync(protectedResourceMetadata, authServerMetadata, authResult.Code!, codeVerifier, cancellationToken).ConfigureAwait(false);
     }
 
     private Uri BuildAuthorizationUrl(
         ProtectedResourceMetadata protectedResourceMetadata,
         AuthorizationServerMetadata authServerMetadata,
-        string codeChallenge)
+        string codeChallenge,
+        string state)
     {
         var resourceUri = GetResourceUri(protectedResourceMetadata);
 
@@ -485,6 +544,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             ["code_challenge"] = codeChallenge,
             ["code_challenge_method"] = "S256",
         };
+
+        // Legacy callbacks may already supply and validate their own state.
+        if (_validateAuthorizationResponseState || !_additionalAuthorizationParameters.ContainsKey("state"))
+        {
+            queryParamsDictionary["state"] = state;
+        }
 
         if (resourceUri is not null)
         {
@@ -934,7 +999,22 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         yield return (new Uri($"{hostBase}{ProtectedResourceMetadataWellKnownPath}"), new Uri(hostBase));
     }
 
-    private static string GenerateCodeVerifier()
+    private static void ValidateStateResponse(string? state, string expectedState)
+    {
+        if (string.IsNullOrEmpty(state))
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "The authorization response did not include the required state parameter.");
+        }
+
+        if (!string.Equals(state, expectedState, StringComparison.Ordinal))
+        {
+            ThrowFailedToHandleUnauthorizedResponse(
+                "The authorization response state did not match the state sent in the authorization request.");
+        }
+    }
+
+    private static string GenerateRandomBase64UrlValue()
     {
 #if NET9_0_OR_GREATER
         Span<byte> bytes = stackalloc byte[32];

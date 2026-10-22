@@ -28,6 +28,7 @@ public sealed class Program
     private readonly ConcurrentDictionary<string, ClientInfo> _clients = new();
 
     private readonly ConcurrentQueue<string> _metadataRequests = new();
+    private int _authorizationCodeTokenRequestCount;
 
     private readonly RSA _rsa;
     private readonly string _keyId;
@@ -92,6 +93,9 @@ public sealed class Program
 
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
+
+    /// <summary>Gets the number of authorization-code token exchange requests received.</summary>
+    public int AuthorizationCodeTokenRequestCount => Volatile.Read(ref _authorizationCodeTokenRequestCount);
 
     /// <summary>
     /// Entry point for the application.
@@ -401,6 +405,7 @@ public sealed class Program
 
             if (grant_type == "authorization_code")
             {
+                Interlocked.Increment(ref _authorizationCodeTokenRequestCount);
                 var code = form["code"].ToString();
                 var code_verifier = form["code_verifier"].ToString();
                 var redirect_uri = form["redirect_uri"].ToString();

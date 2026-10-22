@@ -24,5 +24,10 @@ namespace ModelContextProtocol.Authentication;
 /// the authorization code from the callback. The authorization code is typically provided as
 /// a query parameter in the redirect URI callback.
 /// </para>
+/// <para>
+/// This delegate returns only the authorization code, so the SDK cannot validate the response's
+/// <c>state</c> parameter. Use <see cref="ClientOAuthOptions.AuthorizationCallbackHandler"/> to return
+/// both the code and state and enable SDK state validation.
+/// </para>
 /// </remarks>
 public delegate Task<string?> AuthorizationRedirectDelegate(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken);
