@@ -618,7 +618,18 @@ internal sealed partial class McpServerImpl : McpServer
 
     /// <inheritdoc/>
     public override Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
-        => _sessionHandler.SendMessageAsync(message, cancellationToken);
+    {
+        if (message is JsonRpcNotification { Method: NotificationMethods.ResourceUpdatedNotification } notification &&
+            IsJuly2026OrLaterProtocol() &&
+            !(notification.Params is JsonObject paramsObject &&
+              paramsObject["_meta"] is JsonObject meta &&
+              meta.ContainsKey(MetaKeys.SubscriptionId)))
+        {
+            return SendResourceUpdatedNotificationAsync(notification, cancellationToken);
+        }
+
+        return _sessionHandler.SendMessageAsync(message, cancellationToken);
+    }
 
     /// <inheritdoc/>
     public override IAsyncDisposable RegisterNotificationHandler(string method, Func<JsonRpcNotification, CancellationToken, ValueTask> handler)
@@ -891,7 +902,7 @@ internal sealed partial class McpServerImpl : McpServer
                         : null,
                 };
 
-                // Track this subscription so list-changed notifications can be fanned out to it, tagged with
+                // Track this subscription so change notifications can be fanned out to it, tagged with
                 // the right subscriptionId, and routed back over the stream this request opened.
                 var subscription = new ActiveSubscription(
                     jsonRpcRequest.Id,
@@ -976,12 +987,48 @@ internal sealed partial class McpServerImpl : McpServer
     }
 
     /// <summary>
+    /// Delivers an application-sent resource update only to modern listen streams that were granted its URI.
+    /// Legacy sessions continue to use the ordinary session-wide send path in <see cref="SendMessageAsync"/>.
+    /// </summary>
+    private async Task SendResourceUpdatedNotificationAsync(JsonRpcNotification notification, CancellationToken cancellationToken)
+    {
+        if (notification.Params is not JsonObject paramsObject ||
+            paramsObject["uri"] is not JsonValue uriNode ||
+            !uriNode.TryGetValue<string>(out string? uri) || string.IsNullOrEmpty(uri))
+        {
+            throw new ArgumentException("A resource update notification must contain a string 'uri' parameter.", nameof(notification));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        foreach (var subscription in _activeSubscriptions.Values)
+        {
+            if (subscription.Granted.ResourceSubscriptions?.Contains(uri, StringComparer.Ordinal) != true)
+            {
+                continue;
+            }
+
+            try
+            {
+                await SendSubscriptionNotificationAsync(subscription, notification.Method, notification.Params, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                // A closed subscription stream must not prevent delivery to other matching streams.
+                SubscriptionNotificationFailed(notification.Method, subscription.Id.ToString(), ex);
+            }
+        }
+    }
+
+    /// <summary>
     /// Sends <paramref name="method"/> over <paramref name="subscription"/>'s stream, tagging it with the
     /// SEP-2575 <c>_meta</c> subscription id so clients sharing a channel (notably stdio) can demultiplex it.
     /// </summary>
     private Task SendSubscriptionNotificationAsync(ActiveSubscription subscription, string method, JsonNode? paramsNode, CancellationToken cancellationToken)
     {
-        var paramsObject = paramsNode as JsonObject ?? new JsonObject();
+        // Each subscription gets its own metadata. Do not add the subscription id to the application's
+        // original params or reuse a JsonNode that is already parented by another notification.
+        var paramsObject = paramsNode is JsonObject source ? (JsonObject)source.DeepClone() : new JsonObject();
         if (paramsObject["_meta"] is not JsonObject meta)
         {
             meta = new JsonObject();
@@ -1002,7 +1049,7 @@ internal sealed partial class McpServerImpl : McpServer
             Context = new JsonRpcMessageContext { RelatedTransport = subscription.RelatedTransport },
         };
 
-        return SendMessageAsync(notification, cancellationToken);
+        return _sessionHandler.SendMessageAsync(notification, cancellationToken);
     }
 
     /// <summary>
