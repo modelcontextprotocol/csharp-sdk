@@ -12,7 +12,8 @@ internal sealed class OAuthServerMetadata
     /// REQUIRED. The authorization server's issuer identifier, which is a URL that uses the "https" scheme and has no query or fragment components.
     /// </summary>
     [JsonPropertyName("issuer")]
-    public required string Issuer { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Issuer { get; init; }
 
     /// <summary>
     /// Gets or sets the authorization endpoint URL.

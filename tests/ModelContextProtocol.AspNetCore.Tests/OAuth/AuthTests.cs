@@ -831,6 +831,135 @@ public class AuthTests : OAuthTestBase
             TestOAuthServer.MetadataRequests);
     }
 
+    [Theory]
+    [InlineData(OAuthServerUrl)]
+    [InlineData(OAuthServerUrl + "/tenant")]
+    public async Task CanAuthenticate_WhenAuthorizationServerMetadataIssuerMatches(string expectedIssuer)
+    {
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.AuthorizationServers = [expectedIssuer];
+        });
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        await using var client = await McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(1, TestOAuthServer.TokenRequestCount);
+    }
+
+    [Theory]
+    [InlineData(OAuthServerUrl, "https://attacker.example")]
+    [InlineData(OAuthServerUrl, OAuthServerUrl + "/")]
+    [InlineData(OAuthServerUrl, "HTTPS://LOCALHOST:7029")]
+    [InlineData(OAuthServerUrl + "/tenant", OAuthServerUrl + "/%74enant")]
+    public async Task CannotAuthenticate_WhenAuthorizationServerMetadataIssuerMismatches(string expectedIssuer, string metadataIssuer)
+    {
+        using var switchScope = new LegacyFallbackSwitchScope(true);
+        TestOAuthServer.MetadataIssuerOverride = metadataIssuer;
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.AuthorizationServers = [expectedIssuer];
+        });
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("does not match the expected issuer", ex.Message);
+        Assert.Single(TestOAuthServer.MetadataRequests);
+        Assert.Equal(0, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(0, TestOAuthServer.TokenRequestCount);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.Message.Contains(LegacyOAuthMetadataFallbackSwitch));
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationServerMetadataOmitsIssuer()
+    {
+        using var switchScope = new LegacyFallbackSwitchScope(true);
+        TestOAuthServer.IncludeIssuerInMetadata = false;
+
+        await using var app = await StartMcpServerAsync();
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = HandleAuthorizationUrlAsync,
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("did not provide the required issuer", ex.Message);
+        Assert.Single(TestOAuthServer.MetadataRequests);
+        Assert.Equal(0, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(0, TestOAuthServer.TokenRequestCount);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.Message.Contains(LegacyOAuthMetadataFallbackSwitch));
+    }
+
+    [Fact]
+    public async Task AuthorizationRedirectDelegate_DoesNotSkipMetadataIssuerValidation()
+    {
+        TestOAuthServer.MetadataIssuerOverride = "https://attacker.example";
+        var authorizationRedirectCalled = false;
+        await using var app = await StartMcpServerAsync();
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationRedirectDelegate = (uri, redirect, ct) =>
+                {
+                    authorizationRedirectCalled = true;
+                    return HandleAuthorizationUrlAsync(uri, redirect, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("does not match the expected issuer", ex.Message);
+        Assert.False(authorizationRedirectCalled);
+        Assert.Single(TestOAuthServer.MetadataRequests);
+        Assert.Equal(0, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(0, TestOAuthServer.TokenRequestCount);
+    }
+
     [Fact]
     public async Task CanAuthenticate_WithResourceMetadataPathFallbacks()
     {
@@ -1184,8 +1313,10 @@ public class AuthTests : OAuthTestBase
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
-    [Fact]
-    public async Task CanAuthenticate_WithLegacyServerWithoutProtectedResourceMetadata()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CanAuthenticate_WithLegacyServerWithoutProtectedResourceMetadata(bool includeIssuer)
     {
         // 2025-03-26 backcompat: server does NOT serve PRM, but DOES serve auth server metadata.
         // The client should fall back to using the MCP server's origin as the auth server
@@ -1223,7 +1354,7 @@ public class AuthTests : OAuthTestBase
                 context.Response.ContentType = "application/json";
                 await context.Response.WriteAsync($$"""
                     {
-                        "issuer": "{{OAuthServerUrl}}",
+                        {{(includeIssuer ? $"\"issuer\": \"{OAuthServerUrl}\"," : "")}}
                         "authorization_endpoint": "{{McpServerUrl}}/authorize",
                         "token_endpoint": "{{McpServerUrl}}/token",
                         "registration_endpoint": "{{McpServerUrl}}/register",
@@ -1297,6 +1428,9 @@ public class AuthTests : OAuthTestBase
 
         await using var client = await McpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(1, TestOAuthServer.TokenRequestCount);
     }
 
     [Theory]

@@ -5,7 +5,11 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 /// <remarks>
 /// Authorization server metadata must advertise the <c>S256</c> PKCE method. If metadata discovery fails,
-/// authorization fails before requesting an authorization code or exchanging tokens. For trusted legacy
+/// authorization fails before requesting an authorization code or exchanging tokens. When protected resource
+/// metadata is available, the authorization server metadata issuer must exactly match the selected authorization
+/// server identifier, without normalizing URI case, trailing slashes, or percent-encoding. Missing or mismatched
+/// issuers immediately stop discovery. These issuer checks are skipped for the 2025-03-26 legacy path without
+/// protected resource metadata, where discovery uses the server origin rather than the canonical issuer. For trusted legacy
 /// deployments without protected resource metadata and without usable authorization server metadata, the process-wide
 /// <c>ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback</c> <see cref="AppContext"/> switch
 /// can explicitly enable the 2025-03-26 default endpoint fallback. It is disabled by default and does not

@@ -69,7 +69,7 @@ The client is configured with:
 - **OAuth Server**: `https://localhost:7029`
 - **Protected Resource**: `http://localhost:7071`
 
-The authorization server must advertise `S256` PKCE support in its metadata. The test server does this by default. The 1.x SDK rejects missing PKCE advertisement and, by default, unavailable authorization server metadata; see [OAuth PKCE metadata validation](../../docs/concepts/transports/transports.md#oauth-pkce-metadata-validation-1x) for the narrowly scoped, process-wide legacy compatibility switch and its security requirements.
+The authorization server must advertise `S256` PKCE support in its metadata. When protected resource metadata is available, its metadata `issuer` must also exactly match the selected authorization server identifier. The test server satisfies both requirements by default. The 1.x SDK rejects missing PKCE advertisement and, by default, unavailable authorization server metadata; see [OAuth PKCE metadata validation](../../docs/concepts/transports/transports.md#oauth-pkce-metadata-validation-1x) for the issuer matching rules, narrowly scoped process-wide legacy compatibility switch, and security requirements.
 
 ## Available Tools
 

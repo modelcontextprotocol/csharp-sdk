@@ -93,6 +93,16 @@ public sealed class Program
     public bool ExpectResource { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether authorization server metadata includes an issuer.
+    /// </summary>
+    public bool IncludeIssuerInMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets an issuer value that overrides the authorization server's metadata issuer.
+    /// </summary>
+    public string? MetadataIssuerOverride { get; set; }
+
+    /// <summary>
     /// Gets or sets the code challenge methods advertised by metadata endpoints.
     /// </summary>
     /// <remarks>
@@ -234,7 +244,7 @@ public sealed class Program
 
             var metadata = new OAuthServerMetadata
             {
-                Issuer = $"{_url}{issuerPath}",
+                Issuer = IncludeIssuerInMetadata ? MetadataIssuerOverride ?? $"{_url}{issuerPath}" : null,
                 AuthorizationEndpoint = $"{_url}/authorize",
                 TokenEndpoint = $"{_url}/token",
                 JwksUri = $"{_url}/.well-known/jwks.json",
