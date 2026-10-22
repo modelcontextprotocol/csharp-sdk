@@ -62,11 +62,11 @@ While the candidate version uses a prerelease suffix (e.g., `X.Y.Z-preview.N`, `
 
 Going to GA drops the suffix entirely: `2.0.0-rc.2` → `2.0.0`.
 
-This is purely about how to *compute* the next version. It does **not** declare any new policy about what kinds of changes are permitted between previews — refer to the existing [versioning documentation](../../../../docs/versioning.html) for breaking-change policy.
+This is purely about how to *compute* the next version. It does **not** declare any new policy about what kinds of changes are permitted between previews — refer to the existing [versioning documentation](../../../../docs/versioning.md) for breaking-change policy.
 
 ### Branch context
 
-The "previous release" lookup is constrained to tags matching `v{MAJOR}.*` when assessing from a `release/{MAJOR}.x` servicing branch. On `main`, the lookup is unconstrained (most recent published release globally).
+The "previous release" lookup selects the highest semver among published releases that are ancestors of the target commit, constrained to tags matching `v{MAJOR}.*` when assessing from a `release/{MAJOR}.x` servicing branch. On `main`, there is no MAJOR filter. It is not a date-ordered lookup; see [release-branches.md](../../shared-resources/release-branches.md#previous-release-tag-lookup).
 
 The MAJOR/MINOR/PATCH classification criteria above are unchanged regardless of branch.
 

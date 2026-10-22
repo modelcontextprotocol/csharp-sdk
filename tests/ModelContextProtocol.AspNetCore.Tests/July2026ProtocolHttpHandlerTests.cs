@@ -24,10 +24,10 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
             options.ServerInfo = new Implementation { Name = nameof(July2026ProtocolHttpHandlerTests), Version = "1" };
         }).WithHttpTransport(options =>
         {
-            // Stateless = false maps the GET/DELETE endpoints and opts the author into sessions. Starting with
+            // SessionMode = HttpServerSessionMode.Stateful maps the GET/DELETE endpoints and opts the author into sessions. Starting with
             // the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions, so such a request is
-            // refused on a session-enabled server. Stateless = true (the default) serves them natively.
-            options.Stateless = stateless;
+            // refused on a session-enabled server. SessionMode = HttpServerSessionMode.Stateless (the default) serves them natively.
+            options.SessionMode = stateless ? HttpServerSessionMode.Stateless : HttpServerSessionMode.Stateful;
         });
 
         _app = Builder.Build();
@@ -69,7 +69,7 @@ public class July2026ProtocolHttpHandlerTests(ITestOutputHelper outputHelper) : 
     public async Task Request_OnStatefulServer_IsRefused_WithUnsupportedProtocolVersionError()
     {
         // Starting with the 2026-07-28 protocol revision, Streamable HTTP no longer supports sessions (SEP-2567),
-        // so the server cannot honor it when configured with sessions (Stateless = false). The server refuses that
+        // so the server cannot honor it when configured with sessions (SessionMode = HttpServerSessionMode.Stateful). The server refuses that
         // version with UnsupportedProtocolVersion (excluding it from Supported) so a dual-path client falls back
         // to the initialize handshake.
         await StartAsync(stateless: false);

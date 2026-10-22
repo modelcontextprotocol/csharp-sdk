@@ -620,9 +620,11 @@ public class StreamableHttpClientConformanceTests(ITestOutputHelper outputHelper
             TransportMode = HttpTransportMode.StreamableHttp,
         }, HttpClient, LoggerFactory);
 
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
         await using var client = await McpClient.CreateAsync(
             transport,
-            new McpClientOptions { ProtocolVersion = "2026-07-28" },
+            clientOptions,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 

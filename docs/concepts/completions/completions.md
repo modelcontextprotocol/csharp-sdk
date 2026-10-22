@@ -26,7 +26,7 @@ Register a completion handler when building the server. The handler receives a r
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport(o => o.Stateless = true)
+    .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateless)
     .WithPrompts<MyPrompts>()
     .WithResources<MyResources>()
     .WithCompleteHandler(async (ctx, ct) =>

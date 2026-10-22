@@ -145,6 +145,23 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 });
 ```
 
+#### Controlling client timeout timers in tests
+
+The short <xref:ModelContextProtocol.Client.McpClientOptions.DiscoverProbeTimeout> budget excludes time spent acquiring an OAuth token. After authorization, the discovery probe receives a fresh budget. The overall <xref:ModelContextProtocol.Client.McpClientOptions.InitializationTimeout> and caller cancellation still apply.
+
+<xref:ModelContextProtocol.Client.McpClientOptions.TimeProvider> controls
+<xref:ModelContextProtocol.Client.McpClientOptions.InitializationTimeout> and
+<xref:ModelContextProtocol.Client.McpClientOptions.DiscoverProbeTimeout>. It defaults to
+`TimeProvider.System`. Tests can set it to a `FakeTimeProvider` from the
+`Microsoft.Extensions.TimeProvider.Testing` package and advance time explicitly instead
+of waiting for real deadlines.
+
+Use synchronization signals to wait until the request or authorization phase being tested
+has started before advancing the clock. Fake time does not control HTTP processing or
+task scheduling, so keep a real-time outer test deadline as a safety bound. The client
+time provider does not change `HttpClient.Timeout`, OAuth token expiration, or
+<xref:ModelContextProtocol.Client.HttpClientTransportOptions.ConnectionTimeout>.
+
 #### Resuming sessions
 
 Streamable HTTP supports session resumption. Save the session ID, server capabilities, and server info from the original session, then use <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*> to reconnect:
@@ -168,13 +185,16 @@ await using var client = await McpClient.ResumeSessionAsync(transport, new Resum
 Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:Microsoft.AspNetCore.Builder.McpEndpointRouteBuilderExtensions.MapMcp*> method maps the Streamable HTTP endpoint at the specified route (root by default).
 
 ```csharp
+using ModelContextProtocol.AspNetCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        // Recommended for servers that don't need server-to-client requests.
-        options.Stateless = true;
+        // Stateless mode is the default and recommended for
+        // servers that don't need server-to-client requests.
+        options.SessionMode = HttpServerSessionMode.Stateless;
     })
     .WithTools<MyTools>();
 
@@ -183,7 +203,7 @@ app.MapMcp();
 app.Run();
 ```
 
-By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `Stateless = false` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Stateless and Stateful](xref:stateless).
+By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `SessionMode = HttpServerSessionMode.Stateful` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Stateless and Stateful](xref:stateless).
 
 #### Host name validation
 
@@ -295,22 +315,26 @@ SSE-specific configuration options:
 | `MaxReconnectionAttempts`     | Maximum number of reconnection attempts on stream disconnect | 5        |
 | `DefaultReconnectionInterval` | Wait time between reconnection attempts                      | 1 second |
 
+SSE connections use the legacy `initialize` handshake by default, including when automatic transport detection selects SSE. To connect to a server that intentionally supports `2026-07-28` discovery over SSE, explicitly select both `HttpTransportMode.Sse` in the transport options and `ProtocolVersion = "2026-07-28"` in `McpClientOptions`. Pinning that version while leaving transport mode as `AutoDetect` does not enable modern discovery over SSE; the client rejects the legacy initialization fallback.
+
 #### SSE server (ASP.NET Core)
 
-The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9004`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
+The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9004`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `SessionMode = HttpServerSessionMode.Stateless`.
 
 **Why SSE is disabled by default.** The SSE transport separates request and response channels: clients `POST` JSON-RPC messages to `/message` and receive all responses through a long-lived `GET` SSE stream on `/sse`. Because the `POST` endpoint returns `202 Accepted` immediately — before the handler even runs — there is **no HTTP-level backpressure** on handler concurrency. A client (or attacker) can flood the server with tool calls without waiting for prior requests to complete. In contrast, Streamable HTTP holds each `POST` response open until the handler finishes, providing natural backpressure. For a detailed comparison and mitigations if you must use SSE, see [Request backpressure](xref:stateless#request-backpressure).
 
 To enable legacy SSE, set `EnableLegacySse` to `true`:
 
 ```csharp
+using ModelContextProtocol.AspNetCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
         // SSE requires stateful mode; opt in explicitly because stateless mode is the default.
-        options.Stateless = false;
+        options.SessionMode = HttpServerSessionMode.Stateful;
 
 #pragma warning disable MCP9004 // EnableLegacySse is obsolete
         // Enable legacy SSE endpoints for clients that don't support Streamable HTTP.

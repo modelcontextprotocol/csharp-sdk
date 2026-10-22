@@ -32,12 +32,11 @@ public abstract partial class McpServer : McpSession
     /// the <c>Server</c> property of the <see cref="RequestContext{TParams}"/> passed to a handler; on the
     /// root <see cref="McpServer"/> (for example one constructed manually over a
     /// <see cref="System.IO.Stream"/>) it is <see langword="null"/>.
-    /// It is also <see langword="null"/> in stateless transport mode, where server-to-client requests are
-    /// unsupported.
     /// </para>
     /// <para>
-    /// Server implementations can check these capabilities to determine which features
-    /// are available when interacting with the client.
+    /// This property reports capabilities declared by the client. Their presence does not guarantee that the
+    /// transport supports server-to-client requests. Methods such as sampling, roots, and elicitation reject
+    /// those requests when the transport cannot safely deliver them, including in stateless mode.
     /// </para>
     /// </remarks>
     public abstract ClientCapabilities? ClientCapabilities { get; }

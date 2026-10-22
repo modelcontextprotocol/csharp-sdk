@@ -1,4 +1,5 @@
 using HttpContext.Tools;
+using ModelContextProtocol.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,7 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        options.Stateless = true;
+        options.SessionMode = HttpServerSessionMode.Stateless;
     })
     .WithTools<ContextTools>();
 

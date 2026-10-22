@@ -17,6 +17,11 @@ internal sealed class OutgoingRequestInterceptingMcpServer(
 
     public override ClientCapabilities? ClientCapabilities => server.ClientCapabilities;
 
+    // The interceptor replaces the session's server-to-client channel, so it can deliver requests even
+    // when the underlying transport cannot (for example a stateless HTTP request, where a background task
+    // parks the request in an IMcpTaskStore and the client answers it on a later, unrelated request).
+    internal override bool SupportsServerToClientRequests => true;
+
     public override Implementation? ClientInfo => server.ClientInfo;
 
     public override McpServerOptions ServerOptions => server.ServerOptions;

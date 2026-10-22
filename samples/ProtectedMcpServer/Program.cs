@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Net.Http.Headers;
 using ModelContextProtocol.AspNetCore.Authentication;
+using ModelContextProtocol.AspNetCore;
 using ProtectedMcpServer.Tools;
 using System.Net.Http.Headers;
 using System.Security.Claims;
@@ -90,10 +91,10 @@ builder.Services.AddMcpServer()
     .WithTools<WeatherTools>()
     .WithHttpTransport(options =>
     {
-        // Stateless mode is recommended for servers that don't need server-to-client
-        // requests like sampling or elicitation. It enables horizontal scaling without
-        // session affinity and works with clients that don't send Mcp-Session-Id.
-        options.Stateless = true;
+        // Stateless mode is the default and recommended for servers that don't need 2025-11-25
+        // protocol revision server-to-client requests like sampling or elicitation. Stateless model enables
+        // horizontal scaling without session affinity and works with clients that don't send Mcp-Session-Id.
+        options.SessionMode = HttpServerSessionMode.Stateless;
     });
 
 // Configure HttpClientFactory for weather.gov API

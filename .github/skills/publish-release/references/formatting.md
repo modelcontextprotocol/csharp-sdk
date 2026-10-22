@@ -27,7 +27,7 @@ When the user requests changes to existing release notes:
 
 1. Fetch the current release body and save it to a local file
 2. **Breaking change audit**: Run the full breaking-changes skill audit on the commit range, just as for new release notes — this includes examining PRs, reconciling labels, offering to comment on PRs, and getting user confirmation. Also extract any breaking changes already documented in the existing release body; these must be preserved and reconciled with the audit results.
-3. **Preamble check**: Verify the release has a preamble (text before the first `##` heading). If missing, compose one. The versioning documentation link belongs under the `## Breaking Changes` heading, not in the preamble.
+3. **Preamble check**: Verify the release has a preamble (text before the first `##` heading). If missing, compose one. The versioning documentation link belongs under the `## Breaking Changes` heading, not in the preamble, and must use the `v{MAJOR}` slug for the released version — see [release-branches.md](../../shared-resources/release-branches.md#versioning-documentation-links).
 4. Write the **entire** corrected body to a separate local file (ensuring proper line breaks between all sections, entries, and paragraphs)
 5. Run `git diff --no-index` between the original and updated files and **always** present the raw diff output directly in the response as a fenced code block with `diff` syntax highlighting. Do not summarize or paraphrase the diff — always show the complete diff to the user. Require explicit confirmation before uploading. For published releases (not drafts), also offer to save the original body to a permanent local file, noting that GitHub does not retain prior versions of release notes.
 6. Upload the complete file using `gh release edit --notes-file <file>`
@@ -47,8 +47,25 @@ After every release body update:
 
 - [ ] Preamble exists before the first `##` heading
 - [ ] If `## Breaking Changes` section exists, it begins with the versioning docs link paragraph before the numbered list
+- [ ] The versioning docs link uses the `v{MAJOR}` slug for the released version (e.g. `/v2/versioning.html`), never the unslugged `/versioning.html`
 - [ ] Line count matches expected structure (~80+ lines for a typical release)
 - [ ] Section headings (`## Breaking Changes`, `## What's Changed`, etc.) each appear on their own line
 - [ ] Bullet entries are each on their own line
 - [ ] No stray characters at the start of the body
 - [ ] Preview the release on GitHub to confirm rendering
+
+## AI Disclosure
+
+A draft release body created by an agent carries a concise AI-generated disclosure at the bottom:
+
+```markdown
+> [!NOTE]
+> These release notes were drafted with GitHub Copilot and reviewed before publishing.
+```
+
+Keep it on the draft. Removing it is the **user's** decision, made as part of their final sign-off
+once they have reviewed the notes line by line and are satisfied the content is theirs. Never remove
+it on your own initiative, and never reintroduce it after the user has removed it.
+
+This exception applies only to release notes, which get a dedicated human review before publishing.
+Disclosures on pull request descriptions, issues, and comments always remain.

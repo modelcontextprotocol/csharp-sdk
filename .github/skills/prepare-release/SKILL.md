@@ -18,6 +18,27 @@ Use the shared [release branch reference](../shared-resources/release-branches.m
 
 Work through each step sequentially. Present findings at each step and get user confirmation before proceeding. Skip any step that has no applicable items.
 
+### Step 0: Sync With Upstream
+
+Every later step reads branches, tags, and file contents from the local repository. Stale local refs
+produce assessments that are wrong in ways that look plausible: a missing tag makes a released
+version invisible, and a stale branch hides merged PRs. Establish a complete, current view before
+reading anything.
+
+1. Identify the remote that points at the canonical repository (`modelcontextprotocol/csharp-sdk`).
+   Do not assume it is named `origin` — in a fork-based checkout `origin` is often the fork:
+   `git remote -v`
+2. Fetch that remote's branches **and tags**, pruning deleted refs:
+   `git fetch {upstream} --prune --prune-tags --tags`
+3. Confirm the tag for the most recent published release exists locally and resolves:
+   `git rev-parse --verify v{previous}^{commit}`
+
+Report what changed as a result of the fetch — new tags, updated branch heads — so the user can see
+whether the starting state was stale.
+
+Read every subsequent step's branch state from the remote-tracking refs (`{upstream}/main`,
+`{upstream}/release/{MAJOR}.x`), not from local branches, which may lag or have diverged.
+
 ### Step 1: Select Source Branch
 
 List candidate source/base branches via:
@@ -40,9 +61,21 @@ The user may provide:
 - **No context** — show the last 5 commits on the selected source/base branch (noting HEAD) and offer the option to enter a branch or tag name instead
 
 Once the target is established:
-1. Determine the previous release tag from `gh release list` (most recent **published** release — exclude drafts with `--exclude-drafts`). Use the selected source/base branch context: on `release/{MAJOR}.x`, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, use the most recent published release globally.
+1. Determine the previous release tag from `gh release list` — the **highest semver** among published releases that are ancestors of the target commit (exclude drafts with `--exclude-drafts`). Do not order by publication date; see [release-branches.md](../shared-resources/release-branches.md#previous-release-tag-lookup) for why the two differ and what breaks. On `release/{MAJOR}.x`, restrict candidates to tags matching `v{MAJOR}.*`; on `main`, there is no MAJOR filter.
 2. Get the full list of PRs merged between the previous release tag and the target commit on the selected branch.
 3. Read `src/Directory.Build.props` **at the target commit**. Extract `<VersionPrefix>` and `<VersionSuffix>`; the **candidate version** is `{VersionPrefix}` plus `-{VersionSuffix}` when the suffix is present (for example, `2.0.0-preview.1`).
+4. **Verify the previous release tag is an ancestor of the target commit:**
+   `git merge-base --is-ancestor v{previous} {target}`
+
+   If it is not an ancestor, stop and report. The two histories have diverged, which means the
+   selected source branch is not a continuation of the previous release. Every downstream
+   conclusion would be wrong: the PR range would be computed across unrelated history, and the
+   ApiCompat baseline in Step 7 would report the previous release's entire API surface as removed.
+   This is a source-selection problem, not a compatibility problem — do not attempt to suppress it.
+
+   The usual cause is that the previous release shipped from a different branch than the one
+   selected. Re-run Step 1 and choose the branch that actually contains the previous release, or
+   confirm with the user that a divergent source is intended and why.
 
 ### Step 3: Categorize and Attribute
 
@@ -98,7 +131,7 @@ After the version is confirmed:
 2. Update `src/Directory.Build.props`:
    - Set `<VersionPrefix>` to the confirmed stable component
    - Set `<VersionSuffix>` for prerelease versions, or clear it for stable versions; add the element if it is missing
-   - Update `<PackageValidationBaselineVersion>` when appropriate. For the `2.0.0-preview` series, baseline is `1.3.0` (latest shipped 1.x). For subsequent stable releases, baseline is the previous shipped version of the same MAJOR or the latest stable from the previous MAJOR.
+   - Update `<PackageValidationBaselineVersion>` when appropriate, per the rule in [references/apicompat-apidiff.md](references/apicompat-apidiff.md#updating-the-baseline-version). Read the current value from `src/Directory.Build.props` and derive the correct one from the versions actually published; never copy a version from an example. Show the derivation — current value, published versions considered, resulting value, and whether it changes — and get confirmation before editing. **If the value changes, the [baseline-transition suppression audit](references/apicompat-apidiff.md#baseline-transition-suppression-audit) is mandatory.**
 3. Build the solution to verify the version change compiles: `dotnet build`
 
 This step creates local changes only — nothing is committed or pushed yet.
@@ -109,11 +142,19 @@ Run API compatibility validation against the baseline version. Follow [reference
 
 1. Run `dotnet pack` to trigger package validation against `PackageValidationBaselineVersion`
 2. Capture the ApiCompat output (compatibility issues, warnings, suppressions)
-3. If there are unexpected compatibility breaks:
+3. **If `PackageValidationBaselineVersion` changed in this release, run the baseline-transition suppression audit before interpreting anything else.** Moving the baseline makes suppressions written for the old baseline stale, and the resulting failure looks exactly like a mass breaking change.
+4. If there are unexpected compatibility breaks:
+   - **First, check whether the output says `Unnecessary suppressions found`.** That is a hard failure in its own right, and the CP0001/CP0002/CP0005 lines beneath it are the listing of *unused suppression entries*, not live API breaks. Regenerate the suppression file and cross-check the API diff before believing them.
+   - **Then sanity-check the scale.** A large number of errors reporting *missing* API surface —
+     especially spanning whole feature areas — almost always means the baseline does not belong to
+     this branch's history, or that stale suppressions are being listed. Re-verify the ancestry check
+     from Step 2 before interpreting a single error. Never suppress your way out of this.
    - Cross-reference with the breaking change audit from Step 4
    - Present any unaccounted breaks to the user
-   - If breaks are intentional, add appropriate entries to `CompatibilitySuppressions.xml` in the affected project directory
-4. Record the ApiCompat results for inclusion in the PR description
+   - If breaks are intentional, add appropriate entries to `CompatibilitySuppressions.xml` in the affected project directory — only after the suppression audit is complete
+5. **Never adjust the thing being validated against in order to pass.** Do not change `PackageValidationBaselineVersion` to silence errors, do not set `ApiCompatPermitUnnecessarySuppressions`, do not `NoWarn` CP diagnostics, and do not disable package validation. The baseline is determined by what shipped; suppressions record user-confirmed intentional breaks. If validation fails unexpectedly, stop and report.
+6. Confirm the plain CI-equivalent run passes with no generation flags: `dotnet clean -c Release; dotnet pack -c Release`
+7. Record the per-package ApiCompat results — baseline, generated entry count, retained/removed suppressions, plain pack result — for Step 12 and the PR description
 
 ### Step 8: Generate API Diff Report
 
@@ -154,18 +195,62 @@ Stage all documentation changes for inclusion in the release commit.
 Compose the release notes that will appear in the PR description and serve as the foundation for the **publish-release** skill. This is a draft — the final release notes will be refreshed when the GitHub release is created.
 
 1. **Preamble** — Draft a short paragraph summarizing the release theme. Present it to the user for review and editing. The preamble is **required**.
-2. **Breaking Changes** — sorted most → least impactful (from Step 4 results). Include the versioning docs link.
+2. **Breaking Changes** — sorted most → least impactful (from Step 4 results). Include the versioning docs link, using the `v{MAJOR}` slug for the version being released — see [release-branches.md](../shared-resources/release-branches.md#versioning-documentation-links).
 3. **What's Changed** — chronological; includes breaking change PRs
 4. **Documentation Updates** — chronological
 5. **Test Improvements** — chronological
 6. **Repository Infrastructure Updates** — chronological
 7. **Acknowledgements**:
    - New contributors (first contribution in this release)
-   - Issue reporters (cite resolving PRs)
+   - Issue reporters (cite resolving PRs) — **excluding maintainers**. Acknowledgements exist to
+     thank the community; a maintainer filing an issue in their own repository is ordinary
+     project work, not a contribution to credit. Determine maintainer status via
+     `gh api repos/{owner}/{repo}/collaborators/{user}/permission --jq .permission` and omit
+     anyone with `admin` or `write`. Maintainers still appear in the reviewers bullet.
    - PR reviewers (single bullet, sorted by review count, no count shown)
 8. **Full Changelog** link using the exact tag, including any suffix (for example, `v1.3.1` or `v2.0.0-preview.1`)
 
 Omit empty sections. Present each section for user review before proceeding. Tag references in templates use `v{version}` exactly, including prerelease suffixes; the Full Changelog link compares the previous tag to the suffixed tag when applicable.
+
+### Step 10b: Review Categorization and Acknowledgements With the User
+
+**Do this before committing, and never defer it to the Step 12 summary.** Showing the finished
+notes is not a substitute for this step. A complete, well-formatted set of release notes reads as
+correct and does not invite scrutiny; users routinely approve it and then find miscategorized
+entries afterward, once the PR is already open. Ask targeted questions while the answers are still
+cheap to apply.
+
+Present two compact review artifacts and stop for a response after each.
+
+**1. Categorization table.** Every PR, its assigned section, and the reason — not just the
+borderline ones, since the user cannot correct a call they were not shown:
+
+| PR | Title | Section | Why |
+|---|---|---|---|
+| #{number} | {title} | {section} | {what the placement turned on} |
+
+Then explicitly surface the judgment calls, naming the PRs and the reasoning that made each one
+close:
+
+> These were the close calls: {PRs} touch code but not shipped packages, so I placed them under
+> {section}. Any of these belong in a different section?
+
+Flag as a close call any PR that touches `samples/` or `tests/` but not `src/`, any PR placed in
+"What's Changed" whose changes are confined to non-shipping paths, and any PR whose title suggests
+a different section than the one you assigned.
+
+**2. Acknowledgements roster.** Each person, why they are listed, and their maintainer status:
+
+| Person | Reason | Maintainer? |
+|---|---|---|
+| @{handle} | {contribution or issue, and the PR that resolved it} | {yes/no — if yes, omit per Step 10 item 7} |
+
+Show entries you excluded and why, so the user can overrule the omission. Ask directly whether the
+remaining list is right, since acknowledgement errors are about people and are the least
+comfortable thing to correct after publication.
+
+Apply any corrections before Step 11. Record what changed so the same misclassification is not
+reintroduced when publish-release refreshes the notes for late-arriving PRs.
 
 ### Step 11: Commit Changes
 
@@ -191,13 +276,18 @@ Present **all** of the following details to the user for review. The user must c
    docs/experimental.md — Added new experimental API reference
    ```
 6. **Draft release notes** — the complete release notes from Step 10
-7. **API Compatibility results** — the ApiCompat output from Step 7
+7. **API Compatibility results** — the per-package table from Step 7: baseline version, generated suppression count, retained/removed stale suppressions, and plain-pack result. Do not state that ApiCompat passed without these. Call out any change to `PackageValidationBaselineVersion` or to any suppression file explicitly.
 8. **API Diff report** — the API diff from Step 8
 9. **Proposed PR title** (e.g., `Release v2.0.0-preview.1`, `Release v1.3.1`)
 10. **Proposed PR description** — the assembled content combining release notes, ApiCompat, and ApiDiff
 
 After presenting all details, explicitly ask the user:
 > Would you like to push the branch and create the pull request?
+
+Confirm the Step 10b review actually happened before asking. If categorization and acknowledgements
+were never reviewed as their own decisions, go back and do that first — this gate is about
+publishing mechanics, and burying content questions in it is how miscategorized entries reach an
+open PR.
 
 **Do not proceed without explicit "yes" confirmation.**
 
@@ -213,12 +303,22 @@ Only after explicit user confirmation in Step 12:
    - **Description**: The assembled PR description (see PR Description Template below)
    - **Labels**: Apply appropriate labels (e.g., `release`)
 3. Present the PR URL to the user
+4. **Monitor CI to completion.** Creating the PR does not end this step. Watch every check on the new head SHA until it reaches a terminal state:
+   ```sh
+   gh pr checks {pr-number} --watch
+   ```
+   Then report a per-check table and an overall verdict of **green**, **running**, or **blocked**. Do not hand off with only the PR URL and an invitation to review — the user should not be the one to discover a red build.
+5. **On failure**, retrieve the logs yourself (`gh run view {run-id} --log-failed`), distinguish product/API validation failures from infrastructure or tooling flakiness, and diagnose before proposing a rerun. For ApiCompat failures, apply the interpretation rules in [references/apicompat-apidiff.md](references/apicompat-apidiff.md) before concluding the release is breaking. Present the diagnosis and a proposed fix, then stop — pushing a fix needs the same explicit approval as the original push.
+6. **Restart monitoring after every subsequent push** to the release branch, against the new head SHA. Checks from a previous SHA are stale and must not be reported as current.
 
 **Important**: No draft GitHub release is created at this point. The **publish-release** skill handles release creation after this PR is merged.
 
 ## Edge Cases
 
-- **PR spans categories**: categorize by primary intent
+- **PR spans categories**: categorize by primary intent, and surface it as a close call at Step 10b
+- **PR adds sample code or tests but no `src/` changes**: Documentation Updates or Test Improvements, not "What's Changed" — the shipped packages did not change
+- **Issue reporter is a maintainer**: omit the acknowledgement; show it as an exclusion at Step 10b so the user can overrule
+- **User recategorizes after the PR is open**: update the PR body, and record the correction so publish-release does not re-derive the original category
 - **Copilot timeline missing**: fall back to `Co-authored-by` trailers to determine whether `@Copilot` should be a co-author; if still unclear, use `@Copilot` as primary author
 - **No breaking changes**: omit the Breaking Changes section from release notes entirely
 - **Single breaking change**: use the same numbered format as multiple
@@ -227,12 +327,21 @@ Only after explicit user confirmation in Step 12:
 - **Proposed MAJOR does not match branch MAJOR**: if the proposed version's MAJOR doesn't match the branch's MAJOR (for example, proposing `2.0.0-preview.2` on `release/1.x`), flag this as a warning and ask the user to confirm. Do not hard-fail. This is informational, not a policy enforcement.
 - **Prerelease bump**: when the candidate version has a suffix like `preview.N`, the SemVer assessment may simply increment `N` rather than computing MAJOR/MINOR/PATCH. Refer to the SemVer assessment guide's Prereleases section.
 - **No previous release**: if this is the first release, there is no previous tag; gather all PRs merged to the target
+- **Previous release tag is not an ancestor of the target**: stop and re-select the source branch per Step 2. Do not compute a PR range or interpret ApiCompat results across divergent history, and do not suppress the resulting errors
+- **Previous release tag missing locally**: re-run the Step 0 fetch with `--tags` before concluding the release does not exist; a tag absent locally is far more often a stale checkout than an unpublished release
 - **ApiCompat tooling unavailable**: fall back to `dotnet pack` output; note in the PR description that full ApiCompat was run via package validation only
+- **`Unnecessary suppressions found` in ApiCompat output**: the CP lines that follow are unused suppression entries, not live breaks. Run the baseline-transition suppression audit and cross-check the API diff before treating the release as breaking
+- **Baseline version changed during preparation**: run the suppression audit for every shipping package, and decide deliberately between advancing the baseline (clearing stale suppressions) and keeping the existing one. Report the choice and its rationale at Step 12
+- **ApiCompat passes locally but CI fails**: check whether local runs used generation flags. Only `dotnet clean -c Release; dotnet pack -c Release` reproduces CI
+- **A check never starts**: a workflow skipped by a path filter or stuck in a queue is not a pass. Compare against the check set on previous release PRs before declaring green
+- **Checks green on an earlier SHA**: stale. Re-watch against the current head after every push
+- **CI fails for infrastructure reasons**: a single rerun is reasonable if the cause is clearly runner, network, or feed related. State the reason. Never rerun a product or API validation failure to make it disappear
 - **API diff tool installation fails**: do not fall back to a manual summary; pause and present the installation error to the user, offering options to troubleshoot, skip the API diff section, or abort the release preparation
 - **No changelogs in repo**: skip changelog updates; note in the summary
 - **Branch already exists**: if `release-{version}` already exists locally or remotely, ask the user whether to reuse it, delete and recreate, or choose a different name
-- **PackageValidationBaselineVersion update**: for the `2.0.0-preview` series, use `1.3.0`; for subsequent stable releases, use the previous shipped version of the same MAJOR or the latest stable from the previous MAJOR
-- **CompatibilitySuppressions.xml**: when intentional breaks are found, add suppression entries and include the file in the commit; existing suppressions should be preserved
+- **PackageValidationBaselineVersion update**: derive it per [references/apicompat-apidiff.md](references/apicompat-apidiff.md#updating-the-baseline-version) from the versions actually published, and show the derivation for confirmation. A change to this property makes the baseline-transition suppression audit mandatory
+- **CompatibilitySuppressions.xml**: when intentional breaks are found, add suppression entries and include the file in the commit. Preserve existing suppressions **unless the baseline moved** — the audit may prove tracked entries stale, in which case removing them is the fix, not a regression
+- **Versioning link for a brand-new MAJOR**: the `/v{MAJOR}/versioning.html` path does not exist until the release is published and the Publish Docs workflow runs. The link is forward-referencing at prepare time, like the release-notes tag link. Use the slugged form anyway; do not fall back to the unslugged URL.
 - **User declines PR creation**: if the user declines at Step 12, leave the local branch intact so they can review, modify, or push manually
 
 ## PR Description Template
@@ -248,7 +357,7 @@ The PR description combines release notes, ApiCompat, and ApiDiff into a single 
 
 ### Breaking Changes
 
-Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/versioning.html) documentation for details on versioning and breaking change policies.
+Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/v{MAJOR}/versioning.html) documentation for details on versioning and breaking change policies.
 
 1. **Description #PR**
    * Detail of the break
@@ -303,14 +412,14 @@ Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/vers
 
 The release notes section within the PR description uses the same format as the final GitHub release notes (used by the **publish-release** skill). This ensures consistency between the PR and the published release. Tag examples such as `v2.0.0-preview.1` are valid and should be used verbatim when the version has a prerelease suffix.
 
-Omit empty sections. The preamble is **always required** — it is not inside a section heading.
+Omit empty sections. The preamble is **always required** — it is not inside a section heading. The versioning link uses the `v{MAJOR}` slug for the version being released — see [release-branches.md](../shared-resources/release-branches.md#versioning-documentation-links).
 
 ```markdown
 [Preamble — REQUIRED. Summarize the release theme.]
 
 ## Breaking Changes
 
-Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/versioning.html) documentation for details on versioning and breaking change policies.
+Refer to the [C# SDK Versioning](https://csharp.sdk.modelcontextprotocol.io/v{MAJOR}/versioning.html) documentation for details on versioning and breaking change policies.
 
 1. **Description #PR**
    * Detail of the break

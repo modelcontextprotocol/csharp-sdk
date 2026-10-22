@@ -12,7 +12,7 @@ The C# SDK tracks implementation of MCP spec components using the [modelcontextp
 
 ### Next spec revision
 
-The next MCP specification revision is being developed in the [protocol repository](https://github.com/modelcontextprotocol/modelcontextprotocol).
+The C# SDK's standing plan is to release support for each new MCP specification revision alongside the specification, as it did for the 2026-07-28 revision. Accepted SEPs are tracked on the revision's project board throughout development so implementation is ready when the revision is published. The next revision is being developed in the [protocol repository](https://github.com/modelcontextprotocol/modelcontextprotocol).
 
 ### Feedback and end-to-end scenarios
 

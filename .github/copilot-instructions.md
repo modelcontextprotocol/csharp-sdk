@@ -9,11 +9,17 @@ This repository contains the official C# SDK for the Model Context Protocol (MCP
 - Never chain commit and push in the same command. Commit first, report what was committed, then wait for explicit push instructions. This creates a mandatory decision point.
 
 ### AI-Generated Content Disclosure
-When posting any content to GitHub under a user's credentials — opening pull requests, creating issues, commenting on pull requests or issues, posting review comments, or taking any other public-facing action — include a concise, visible note at the bottom indicating that the content was AI/Copilot-generated.
+When posting any content to GitHub under a user's credentials — opening pull requests, creating issues, commenting on pull requests or issues, posting review comments, or taking any other public-facing action — include a concise, visible note (e.g. a `> [!NOTE]` alert) at the bottom indicating that the content was AI/Copilot-generated.
 
 This disclosure is not required when:
 - The account is a recognized bot or Copilot app account (for example, `github-actions[bot]` or `copilot`), where the AI origin is already apparent from the account identity.
 - The user explicitly asks to omit the disclosure.
+
+**Draft release notes** are a special case. Include the disclosure while the release is a draft, but
+remind the user at the publishing handoff that they may remove it once they have thoroughly reviewed
+and signed off on the notes — the published notes then stand as their own reviewed work. Removing it
+is always the user's decision; never remove it on your own initiative, and never reintroduce it once
+the user has removed it.
 
 ## Critical: Always Build and Test
 
@@ -51,14 +57,14 @@ The SDK consists of three main packages:
 
 ### Naming Conventions
 - Use `McpClient`, `McpServer`, `McpSession` for MCP-related classes (capitalize MCP)
-- Prefix MCP-specific types with `Mcp` (e.g., `McpException`, `McpEndpoint`)
+- Prefix MCP-specific types with `Mcp` (e.g., `McpException`, `McpServerOptions`)
 - Use descriptive names for parameters with `[Description("...")]` attributes when exposing to MCP
 
 ## Architecture Patterns
 
 ### Dependency Injection
 - Use Microsoft.Extensions.DependencyInjection patterns
-- Register services with `.AddMcpServer()` and `.AddMcpClient()` extension methods
+- Register the server with the `.AddMcpServer()` extension method
 - Support both builder patterns and options configuration
 
 ### JSON Serialization
@@ -68,7 +74,7 @@ The SDK consists of three main packages:
 - Set `JsonIgnoreCondition.WhenWritingNull` for optional properties to minimize payload size
 - Use `JsonSerializerDefaults.Web` for camelCase property naming
 - Protocol types are decorated with `[JsonSerializable]` attributes for AOT support
-- Custom converters: `CustomizableJsonStringEnumConverter` for flexible enum serialization
+- When reflection-based serialization is enabled, user-defined enums are serialized as strings with the built-in `JsonStringEnumConverter`; Native AOT enums require source-generated converter metadata such as `JsonStringEnumConverter<TEnum>`.
 
 ### Async Patterns
 - All I/O operations should be async
@@ -240,7 +246,7 @@ Two primary transport implementations with different invariants:
   - Default to `McpJsonUtilities.DefaultOptions` if not specified
   - Can use reflection-based serialization or custom source generators
   
-- **Enum handling**: `CustomizableJsonStringEnumConverter` for flexible enum serialization
+- **Enum handling**: reflection-based serialization uses the built-in `JsonStringEnumConverter`; Native AOT enums require source-generated converter metadata such as `JsonStringEnumConverter<TEnum>`
 
 ## Architecture and Design Patterns
 
@@ -249,7 +255,7 @@ Two primary transport implementations with different invariants:
 - **IMcpServerBuilder** pattern provides fluent API for configuring servers via DI
 - Server primitives (tools, prompts, resources) are discovered via reflection using attributes
 - Support both attribute-based registration (`WithTools<T>()`) and instance-based (`WithTools(target)`)
-- Use `McpServerFactory` to create server instances with configured options
+- Use `McpServer.Create` to create server instances with configured options
 
 ### Tool/Prompt/Resource Discovery
 - Tools, prompts, and resources use attribute-based discovery: `[McpServerTool]`, `[McpServerPrompt]`, `[McpServerResource]`

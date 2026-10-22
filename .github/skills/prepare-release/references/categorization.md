@@ -11,14 +11,30 @@ Feature work, bug fixes, API improvements, performance enhancements, and any oth
 - Changes that span code + docs (categorize based on the primary intent)
 
 ### Documentation Updates
-PRs whose **sole purpose** is documentation. Examples:
+PRs whose **sole purpose** is documentation, guidance, or examples. Examples:
 - Fixing typos in docs
 - Adding or improving XML doc comments (when not part of a functional change)
 - Updating conceptual documentation (e.g., files in `docs/`)
 - README updates
 - Adding CONTRIBUTING.md or similar guides
+- **Adding or improving samples** under `samples/`, including new executable sample projects
+- Clarifying how consumers should use existing behavior, even when the PR touches tests to
+  demonstrate or lock in that behavior
 
-**Important**: A PR that changes code AND updates docs should go in "What's Changed" — only pure documentation PRs belong here. However, documentation PRs should still be studied during the breaking change audit, as they may document changes that were not properly flagged as breaking.
+**The test that matters is whether the shipped packages changed**, not whether the PR contains
+code. A PR that adds a whole new sample application is still a documentation update: nothing in
+`src/` shipped differently because of it. Ask "would a consumer upgrading the NuGet package
+observe any difference?" If no, it belongs here.
+
+**Important**: A PR that changes shipped product code under `src/` AND updates docs should go in
+"What's Changed" — only PRs that leave the shipped surface untouched belong here. However,
+documentation PRs should still be studied during the breaking change audit, as they may document
+changes that were not properly flagged as breaking.
+
+Categorize conservatively: when a PR could plausibly land in either "What's Changed" or
+"Documentation Updates", prefer "Documentation Updates" and surface the call to the user at the
+categorization review. Overstating a docs PR as product work inflates the apparent scope of a
+release, and it is the error users notice and correct.
 
 ### Repository Infrastructure Updates
 PRs that maintain the development environment but don't affect the shipped product or test coverage. Examples:
@@ -114,3 +130,6 @@ Sort entries within each section by **merge date** (chronological order, oldest 
 * @user submitted issue #1234 (resolved by #5678)
 * @user1 @user2 @user3 reviewed pull requests
 ```
+
+Do not acknowledge maintainers as issue reporters or new contributors; see Step 10 item 7. They
+belong only in the reviewers bullet.

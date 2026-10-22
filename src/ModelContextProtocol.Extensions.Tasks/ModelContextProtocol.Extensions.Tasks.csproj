@@ -9,8 +9,6 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress the experimental MCP warnings for internal usage -->
     <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002</NoWarn>
-    <!-- New package with no published baseline yet -->
-    <EnablePackageValidation>false</EnablePackageValidation>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">
