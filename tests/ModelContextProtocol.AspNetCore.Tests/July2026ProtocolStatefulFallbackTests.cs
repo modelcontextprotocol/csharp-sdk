@@ -83,7 +83,7 @@ public class July2026ProtocolStatefulFallbackTests(ITestOutputHelper outputHelpe
 
         // Default options: ProtocolVersion is null, which now prefers the 2026-07-28 protocol revision and probes
         // with server/discover before falling back to an initialize handshake.
-        var clientOptions = new McpClientOptions();
+        var clientOptions = TestMcpClient.CreateOptions();
         configureClient?.Invoke(clientOptions);
         return await McpClient.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
     }
