@@ -221,7 +221,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         }, HttpClient, LoggerFactory);
 
         // Default options prefer 2026-07-28 but allow automatic fallback to an initialize-handshake server.
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+        await using var client = await TestMcpClient.CreateAsync(transport,
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal(McpProtocolVersions.June2025ProtocolVersion, client.NegotiatedProtocolVersion);
@@ -308,7 +308,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         }, HttpClient, LoggerFactory);
 
         // Default options prefer 2026-07-28 but allow automatic fallback to an initialize-handshake server.
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+        await using var client = await TestMcpClient.CreateAsync(transport,
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
@@ -354,10 +354,10 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
 
         var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
         {
-            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-            {
-                ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
-            }, loggerFactory: LoggerFactory, cancellationToken: ct);
+            var clientOptions = TestMcpClient.CreateOptions();
+            clientOptions.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+            await using var client = await McpClient.CreateAsync(transport, clientOptions,
+                loggerFactory: LoggerFactory, cancellationToken: ct);
         });
 
         Assert.Equal(McpErrorCode.HeaderMismatch, exception.ErrorCode);
@@ -408,9 +408,8 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
 
         var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
         {
-            await using var client = await McpClient.CreateAsync(
+            await using var client = await TestMcpClient.CreateAsync(
                 transport,
-                new McpClientOptions(),
                 loggerFactory: LoggerFactory,
                 cancellationToken: ct);
         });
@@ -481,10 +480,10 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             Endpoint = new("http://localhost:5000/mcp"),
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+        await using var client = await McpClient.CreateAsync(transport, clientOptions,
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         await client.ListToolsAsync(cancellationToken: ct);
 
@@ -541,10 +540,10 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             OwnsSession = false,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+        await using var client = await McpClient.CreateAsync(transport, clientOptions,
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal("", discoverSessionId);
     }
