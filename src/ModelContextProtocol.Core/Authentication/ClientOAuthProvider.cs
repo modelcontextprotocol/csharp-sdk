@@ -513,7 +513,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, string? resourceUri, CancellationToken cancellationToken)
     {
         // Tracks whether at least one well-known endpoint returned a structurally valid metadata document.
-        // This distinguishes "no metadata document was found" (eligible for the 2025-03-26 legacy fallback)
+        // This distinguishes "no metadata document was found" (eligible for the opt-in 2025-03-26 legacy fallback)
         // from "a metadata document exists but failed PKCE validation" (must not fall back to synthesized defaults).
         var metadataDocumentFound = false;
         McpException? pkceValidationFailure = null;
@@ -634,8 +634,14 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (resourceUri is null)
         {
+            if (!AppContext.TryGetSwitch("ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback", out var enabled) || !enabled)
+            {
+                ThrowFailedToHandleUnauthorizedResponse("Authorization server metadata could not be discovered, so PKCE support could not be verified.");
+            }
+
             // 2025-03-26 backcompat: when PRM is unavailable and no auth server metadata document was
-            // discovered, fall back to default endpoint paths per the 2025-03-26 spec.
+            // discovered, allow explicitly opted-in hosts to use the default endpoint paths.
+            LogUsingLegacyOAuthMetadataFallback(authServerUri);
             return BuildDefaultAuthServerMetadata(authServerUri);
         }
 
@@ -1586,6 +1592,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Authorization server metadata from {Endpoint} does not satisfy PKCE requirements; skipping it and trying the next discovery endpoint.")]
     partial void LogAuthServerMetadataMissingPkceSupport(Exception ex, Uri endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Using legacy OAuth metadata fallback for {AuthorizationServer} because ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback is enabled. PKCE support could not be verified. Use this switch only for trusted deployments whose PKCE support has been independently established.")]
+    partial void LogUsingLegacyOAuthMetadataFallback(Uri authorizationServer);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Performing dynamic client registration with {RegistrationEndpoint}")]
     partial void LogPerformingDynamicClientRegistration(Uri registrationEndpoint);
