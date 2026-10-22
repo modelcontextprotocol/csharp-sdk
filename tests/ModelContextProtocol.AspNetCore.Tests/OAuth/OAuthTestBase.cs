@@ -81,7 +81,7 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
         }
     }
 
-    protected async Task<WebApplication> StartMcpServerAsync(string path = "", string? authScheme = null, Action<WebApplication>? configureMiddleware = null)
+    protected async Task<WebApplication> StartMcpServerAsync(string path = "", string? authScheme = null, Action<WebApplication>? configureMiddleware = null, string? tokenAudience = null)
     {
         // Wait for the OAuth server to be ready before starting the MCP server.
         // This prevents race conditions in CI where the OAuth server may not be
@@ -90,7 +90,10 @@ public abstract class OAuthTestBase : KestrelInMemoryTest, IAsyncDisposable
 
         Builder.Services.Configure<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme, options =>
         {
-            options.TokenValidationParameters.ValidAudience = $"{McpServerUrl}{path}";
+            // Default to the MCP server URL as the expected token audience (RFC 8707).
+            // Pass tokenAudience to model an authorization server (e.g. Microsoft Entra ID)
+            // that does not support RFC 8707 and issues tokens whose audience is the client ID.
+            options.TokenValidationParameters.ValidAudience = tokenAudience ?? $"{McpServerUrl}{path}";
         });
 
         var app = Builder.Build();
