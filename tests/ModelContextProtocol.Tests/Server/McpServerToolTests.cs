@@ -1023,6 +1023,33 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotLookUpValuesPresentInCompleteSnapshot()
+    {
+        const int itemCount = 100;
+        JsonElement outputSchema = JsonDocument.Parse("""
+            {"type":"object","properties":{"items":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"note":{"type":["string","null"]}},"required":["id","note"]}}},"required":["items"]}
+            """).RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        GetterCountedCollectionStructuredOutput output = new(
+            Enumerable.Range(0, itemCount).Select(index => new ExplicitSchemaCollectionItem { Id = index.ToString() }).ToList());
+        McpServerTool tool = McpServerTool.Create(
+            () => output,
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(itemCount, result.StructuredContent.Value.GetProperty("items").GetArrayLength());
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+        // Structured output, text output, and the complete-value snapshot each access the collection once.
+        Assert.Equal(3, output.ItemsGetterCalls);
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_ExplicitSchema_RepairsNestedDefaultValueInPasses()
     {
         JsonElement outputSchema = JsonDocument.Parse("""
@@ -1894,6 +1921,27 @@ public partial class McpServerToolTests
                 return "42";
             }
         }
+    }
+
+    private sealed class GetterCountedCollectionStructuredOutput(List<ExplicitSchemaCollectionItem> items)
+    {
+        public int ItemsGetterCalls { get; private set; }
+
+        public List<ExplicitSchemaCollectionItem> Items
+        {
+            get
+            {
+                ItemsGetterCalls++;
+                return items;
+            }
+        }
+    }
+
+    private sealed class ExplicitSchemaCollectionItem
+    {
+        public required string Id { get; init; }
+
+        public string? Note { get; init; }
     }
 
     private struct NestedDefaultedStructuredChild
