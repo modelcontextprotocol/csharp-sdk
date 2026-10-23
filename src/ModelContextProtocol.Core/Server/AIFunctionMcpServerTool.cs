@@ -20,6 +20,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
     private readonly Lazy<JsonSchema?> _outputSchema;
+    private readonly Lazy<JsonTypeInfo> _serializerTypeInfoIncludingDefaults;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -230,6 +231,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         AIFunction = function;
         ProtocolTool = tool;
         _outputSchema = new Lazy<JsonSchema?>(BuildOutputSchema, LazyThreadSafetyMode.ExecutionAndPublication);
+        _serializerTypeInfoIncludingDefaults = new Lazy<JsonTypeInfo>(() =>
+        {
+            JsonSerializerOptions options = new(AIFunction.JsonSerializerOptions)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+            };
+            return options.GetTypeInfo(typeof(object));
+        }, LazyThreadSafetyMode.ExecutionAndPublication);
 
         _metadata = metadata;
     }
@@ -680,40 +689,25 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         JsonElement? elementResult;
-        JsonElement? elementResultIncludingDefaults;
         switch (aiFunctionResult)
         {
             case JsonElement jsonElement:
-                elementResult = elementResultIncludingDefaults = jsonElement;
+                elementResult = jsonElement;
                 break;
             case JsonNode node:
-                elementResult = elementResultIncludingDefaults = JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode);
+                elementResult = JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode);
                 break;
             case null:
-                elementResult = elementResultIncludingDefaults = null;
+                elementResult = null;
                 break;
             default:
                 JsonSerializerOptions serializerOptions = AIFunction.JsonSerializerOptions;
                 JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(typeof(object));
                 elementResult = JsonSerializer.SerializeToElement(aiFunctionResult, typeInfo);
-
-                if (serializerOptions.DefaultIgnoreCondition is JsonIgnoreCondition.Never)
-                {
-                    elementResultIncludingDefaults = elementResult;
-                }
-                else
-                {
-                    JsonSerializerOptions includeDefaultsOptions = new(serializerOptions)
-                    {
-                        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-                    };
-                    elementResultIncludingDefaults = JsonSerializer.SerializeToElement(
-                        aiFunctionResult, includeDefaultsOptions.GetTypeInfo(typeof(object)));
-                }
                 break;
         }
 
-        elementResult = AddMissingRequiredNullableProperties(elementResult, elementResultIncludingDefaults, aiFunctionResult);
+        elementResult = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult);
 
         // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
         // schemas. SEP-2106 clients see the natural shape. The classification is decided
@@ -735,7 +729,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private JsonElement? AddMissingRequiredNullableProperties(
         JsonElement? elementResult,
-        JsonElement? elementResultIncludingDefaults,
         object? originalResult)
     {
         if (elementResult is not { } result ||
@@ -746,14 +739,26 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         JsonNode? resultNode = JsonSerializer.SerializeToNode(result, McpJsonUtilities.JsonContext.Default.JsonElement);
-        JsonNode? resultNodeIncludingDefaults = elementResultIncludingDefaults is { } completeResult
-            ? JsonSerializer.SerializeToNode(completeResult, McpJsonUtilities.JsonContext.Default.JsonElement)
-            : null;
         JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
         JsonSchema? schema = _outputSchema.Value;
         if (resultNode is null || schemaNode is null || schema is null)
         {
             return elementResult;
+        }
+
+        if (IsSchemaValid(schema, resultNode))
+        {
+            return elementResult;
+        }
+
+        JsonNode? resultNodeIncludingDefaults = resultNode;
+        if (originalResult is not null and not JsonElement and not JsonNode &&
+            AIFunction.JsonSerializerOptions.DefaultIgnoreCondition is not JsonIgnoreCondition.Never)
+        {
+            JsonElement completeResult = JsonSerializer.SerializeToElement(
+                originalResult, _serializerTypeInfoIncludingDefaults.Value);
+            resultNodeIncludingDefaults = JsonSerializer.SerializeToNode(
+                completeResult, McpJsonUtilities.JsonContext.Default.JsonElement);
         }
 
         JsonNode? repairedResult = RepairStructuredResult(
@@ -809,7 +814,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 serializerOptions,
                 contexts);
 
-            if (candidates.Count == 0 || !TryFindValidCandidateSet(schema, workingResult, candidates, out JsonNode? repaired))
+            if (candidates.Count == 0 || !TryFindCandidateSet(schema, workingResult, candidates, out JsonNode? repaired))
             {
                 return null;
             }
@@ -905,24 +910,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     AppendJsonPointer(contextEntry.Key, propertyName),
                     out JsonNode? completeValue);
 
-                bool hasSourceValue = TryGetSourceValue(
-                    originalResult,
-                    contextEntry.Key,
-                    propertyName,
-                    serializerOptions,
-                    out JsonNode? sourceValue);
-
                 if (hasCompleteValue)
                 {
                     candidates.Add(new RepairCandidate(contextEntry.Key, propertyName, completeValue?.DeepClone()));
                 }
-                else if (hasSourceValue)
+                else if (TryGetSourceValue(
+                    originalResult,
+                    contextEntry.Key,
+                    propertyName,
+                    serializerOptions,
+                    out JsonNode? sourceValue))
                 {
                     candidates.Add(new RepairCandidate(contextEntry.Key, propertyName, sourceValue));
-                }
-                else
-                {
-                    candidates.Add(new RepairCandidate(contextEntry.Key, propertyName, null));
                 }
             }
         }
@@ -930,7 +929,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return candidates;
     }
 
-    private static bool TryFindValidCandidateSet(
+    private static bool TryFindCandidateSet(
         JsonSchema schema,
         JsonNode originalResult,
         IReadOnlyList<RepairCandidate> candidates,
@@ -942,8 +941,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return false;
         }
 
-        // Prefer larger repairs, but cap schema evaluations for unusually broad unions so a
-        // single tool call cannot trigger an exponential search.
+        // Prefer the full repair first, then small subsets so discriminated unions do not
+        // spend the evaluation budget excluding unrelated branch properties.
         const int maxCandidateSetEvaluations = 256;
         bool[] included = Enumerable.Repeat(true, candidates.Count).ToArray();
         int evaluations = 0;
@@ -977,7 +976,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return true;
         }
 
-        bool SearchExclusions(int nextIndex, int remaining)
+        bool SearchInclusions(int nextIndex, int remaining)
         {
             if (remaining == 0)
             {
@@ -986,13 +985,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             for (int i = nextIndex; i <= candidates.Count - remaining; i++)
             {
-                included[i] = false;
-                if (SearchExclusions(i + 1, remaining - 1))
+                included[i] = true;
+                if (SearchInclusions(i + 1, remaining - 1))
                 {
                     return true;
                 }
 
-                included[i] = true;
+                included[i] = false;
                 if (evaluations >= maxCandidateSetEvaluations)
                 {
                     return false;
@@ -1008,9 +1007,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return true;
         }
 
-        for (int excludedCount = 1; excludedCount < candidates.Count; excludedCount++)
+        for (int i = 0; i < included.Length; i++)
         {
-            if (SearchExclusions(0, excludedCount))
+            included[i] = false;
+        }
+
+        for (int includedCount = 1; includedCount < candidates.Count; includedCount++)
+        {
+            if (SearchInclusions(0, includedCount))
             {
                 repairedResult = matchingResult;
                 return true;
@@ -1022,7 +1026,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
         }
 
-        return false;
+        // A restored parent may expose required descendants on the next pass. Only
+        // source-backed candidates are created, and the caller publishes a result only
+        // after the complete schema validates.
+        repairedResult = originalResult.DeepClone();
+        foreach (RepairCandidate candidate in candidates)
+        {
+            ApplyRepairCandidate(repairedResult, candidate);
+        }
+
+        return true;
     }
 
     private static void ApplyRepairCandidate(JsonNode resultNode, RepairCandidate candidate)
@@ -1115,10 +1128,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonNode? additionalProperties = schemaObject["additionalProperties"];
             foreach (KeyValuePair<string, JsonNode?> property in objectInstance)
             {
-                if (schemaObject["properties"] is JsonObject explicitProperties && explicitProperties.ContainsKey(property.Key))
-                {
-                    continue;
-                }
+                bool isExplicitProperty = schemaObject["properties"] is JsonObject explicitProperties &&
+                    explicitProperties.ContainsKey(property.Key);
 
                 bool matchedPattern = false;
                 if (patternProperties is not null)
@@ -1139,7 +1150,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     }
                 }
 
-                if (!matchedPattern && additionalProperties is not null)
+                if (!isExplicitProperty && !matchedPattern && additionalProperties is not null)
                 {
                     CollectSchemaContexts(
                         property.Value,
@@ -1166,6 +1177,24 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         itemSchema,
                         schemaRoot,
                         AppendJsonPointer(instancePath, i.ToString(CultureInfo.InvariantCulture)),
+                        contexts,
+                        new HashSet<string>(activeReferences, StringComparer.Ordinal));
+                }
+            }
+        }
+
+        if (instanceNode is JsonObject dependencyInstance &&
+            schemaObject["dependentSchemas"] is JsonObject dependentSchemas)
+        {
+            foreach (KeyValuePair<string, JsonNode?> dependentSchema in dependentSchemas)
+            {
+                if (dependentSchema.Value is not null && dependencyInstance.ContainsKey(dependentSchema.Key))
+                {
+                    CollectSchemaContexts(
+                        instanceNode,
+                        dependentSchema.Value,
+                        schemaRoot,
+                        instancePath,
                         contexts,
                         new HashSet<string>(activeReferences, StringComparer.Ordinal));
                 }
@@ -1284,8 +1313,82 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return false;
         }
 
+        if (!WasOmittedBySupportedIgnoreCondition(
+                sourceValue, propertyInfo, serializerOptions))
+        {
+            return false;
+        }
+
         value = SerializeSourceValue(sourceValue, declaredType, serializerOptions, propertyInfo);
         return sourceValue is null || value is not null;
+    }
+
+    private static bool WasOmittedBySupportedIgnoreCondition(
+        object? value,
+        JsonPropertyInfo? propertyInfo,
+        JsonSerializerOptions serializerOptions)
+    {
+        JsonIgnoreAttribute? ignoreAttribute = propertyInfo?.AttributeProvider is ICustomAttributeProvider attributeProvider
+            ? attributeProvider.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true)
+                .OfType<JsonIgnoreAttribute>()
+                .FirstOrDefault()
+            : null;
+
+        bool omittedByMemberIgnore = ignoreAttribute?.Condition switch
+        {
+            JsonIgnoreCondition.WhenWritingNull => value is null,
+            JsonIgnoreCondition.WhenWritingDefault =>
+                propertyInfo is not null && IsDefaultValue(value, propertyInfo.PropertyType),
+            _ => false,
+        };
+
+        if (propertyInfo?.ShouldSerialize is not null && !omittedByMemberIgnore)
+        {
+            // A caller-provided predicate may enforce redaction. Its result must not be
+            // overridden by recovering a value that the member ignore rule would serialize.
+            return false;
+        }
+
+        JsonIgnoreCondition ignoreCondition = ignoreAttribute?.Condition ?? serializerOptions.DefaultIgnoreCondition;
+        return ignoreCondition switch
+        {
+            JsonIgnoreCondition.WhenWritingNull => value is null,
+            // Global default-ignore omissions are present in the full serialization with
+            // DefaultIgnoreCondition.Never. Only member-level ignores need source recovery.
+            JsonIgnoreCondition.WhenWritingDefault =>
+                ignoreAttribute is not null &&
+                propertyInfo is not null &&
+                IsDefaultValue(value, propertyInfo.PropertyType),
+            _ => false,
+        };
+    }
+
+    private static bool IsDefaultValue(object? value, Type valueType)
+    {
+        if (value is null)
+        {
+            return true;
+        }
+
+        Type effectiveType = Nullable.GetUnderlyingType(valueType) ?? valueType;
+        return effectiveType.IsValueType && value.Equals(CreateDefaultValue(effectiveType));
+    }
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2067:Type argument does not satisfy DynamicallyAccessedMemberTypes requirements",
+        Justification = "This helper is called only for value types; zero-initializing them does not invoke constructors.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2072:Type argument does not satisfy DynamicallyAccessedMemberTypes requirements",
+        Justification = "This helper is called only for value types; zero-initializing them does not invoke constructors.")]
+    private static object CreateDefaultValue(Type valueType)
+    {
+#if NETSTANDARD2_0
+        return System.Runtime.Serialization.FormatterServices.GetUninitializedObject(valueType);
+#else
+        return System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(valueType);
+#endif
     }
 
     private static bool TryGetSourceObjectAtPath(
@@ -1352,9 +1455,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 return false;
             }
 
-            if (value is IDictionary dictionary && dictionary.Contains(segment))
+            if (value is IDictionary dictionary && TryGetDictionaryValue(dictionary, segment, serializerOptions, out object? dictionaryValue))
             {
-                value = dictionary[segment];
+                value = dictionaryValue;
                 continue;
             }
 
@@ -1388,6 +1491,62 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return true;
+    }
+
+    private static bool TryGetDictionaryValue(
+        IDictionary dictionary,
+        string propertyName,
+        JsonSerializerOptions serializerOptions,
+        out object? value)
+    {
+        value = null;
+        JsonTypeInfo dictionaryTypeInfo;
+        try
+        {
+            dictionaryTypeInfo = serializerOptions.GetTypeInfo(dictionary.GetType());
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+
+        if (dictionaryTypeInfo.Kind != JsonTypeInfoKind.Dictionary ||
+            dictionaryTypeInfo.KeyType is null ||
+            dictionaryTypeInfo.ElementType is not { } valueType ||
+            dictionaryTypeInfo.CreateObject?.Invoke() is not IDictionary singleEntry)
+        {
+            return false;
+        }
+
+        object? placeholderValue = valueType.IsValueType
+            ? CreateDefaultValue(valueType)
+            : null;
+
+        foreach (DictionaryEntry entry in dictionary)
+        {
+            if (entry.Key is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                singleEntry.Clear();
+                singleEntry.Add(entry.Key, placeholderValue);
+                JsonElement serialized = JsonSerializer.SerializeToElement(singleEntry, dictionaryTypeInfo);
+                if (serialized.ValueKind == JsonValueKind.Object && serialized.TryGetProperty(propertyName, out _))
+                {
+                    value = entry.Value;
+                    return true;
+                }
+            }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException or InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryGetSourceMember(
@@ -1471,10 +1630,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             JsonSerializerOptions effectiveOptions = serializerOptions;
             JsonConverter? propertyConverter = GetPropertyConverter(propertyInfo, valueType);
-            if (propertyConverter is not null)
+            if (propertyConverter is not null || propertyInfo?.NumberHandling is not null)
             {
                 effectiveOptions = new JsonSerializerOptions(serializerOptions);
-                effectiveOptions.Converters.Insert(0, propertyConverter);
+                if (propertyConverter is not null)
+                {
+                    effectiveOptions.Converters.Insert(0, propertyConverter);
+                }
+
+                if (propertyInfo?.NumberHandling is { } numberHandling)
+                {
+                    effectiveOptions.NumberHandling = numberHandling;
+                }
             }
 
             JsonTypeInfo typeInfo = effectiveOptions.GetTypeInfo(valueType);
