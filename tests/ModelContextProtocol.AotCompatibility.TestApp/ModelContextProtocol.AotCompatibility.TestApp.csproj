@@ -12,15 +12,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="..\Common\Utils\TestConstants.cs" Link="TestConstants.cs" />
+    <Compile Include="..\Common\Utils\TestMcpClient.cs" Link="TestMcpClient.cs" />
+
     <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Apps\ModelContextProtocol.Extensions.Apps.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Skills\ModelContextProtocol.Extensions.Skills.csproj" />
 
     <TrimmerRootAssembly Include="ModelContextProtocol.Core" />
     <TrimmerRootAssembly Include="ModelContextProtocol" />
     <TrimmerRootAssembly Include="ModelContextProtocol.AspNetCore" />
     <TrimmerRootAssembly Include="ModelContextProtocol.Extensions.Apps" />
+    <TrimmerRootAssembly Include="ModelContextProtocol.Extensions.Skills" />
   </ItemGroup>
 
 </Project>
