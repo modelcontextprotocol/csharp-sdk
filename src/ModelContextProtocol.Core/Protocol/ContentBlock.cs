@@ -3,10 +3,12 @@ using System.Buffers.Text;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -76,6 +78,28 @@ public abstract class ContentBlock
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ContentBlock>
     {
+        private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> s_nestedReadOptions = new();
+
+        private static JsonTypeInfo<T> GetNestedTypeInfo<T>(JsonSerializerOptions options)
+        {
+            // JsonSerializer freezes options, but direct converter callers may still change them.
+            JsonSerializerOptions nestedOptions = options.IsReadOnly
+                ? s_nestedReadOptions.GetValue(options, CreateNestedReadOptions)
+                : CreateNestedReadOptions(options);
+            return nestedOptions.GetTypeInfo<T>();
+        }
+
+        private static JsonSerializerOptions CreateNestedReadOptions(JsonSerializerOptions callerOptions)
+        {
+            // A caller context may register ContentBlock without discovering the types read by
+            // this custom converter. Keep caller contracts first, then supply the SDK metadata
+            // (including nested collection types) using the same settings and converters.
+            JsonSerializerOptions nestedOptions = new(callerOptions);
+            nestedOptions.TypeInfoResolverChain.Add(McpJsonUtilities.JsonContext.Default);
+            nestedOptions.MakeReadOnly();
+            return nestedOptions;
+        }
+
         /// <inheritdoc/>
         public override ContentBlock? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -172,7 +196,7 @@ public abstract class ContentBlock
                             icons = [];
                             while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
                             {
-                                icons.Add(JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<Icon>()) ??
+                                icons.Add(JsonSerializer.Deserialize(ref reader, GetNestedTypeInfo<Icon>(options)) ??
                                     throw new JsonException("Unexpected null item in icons array."));
                             }
                         }
@@ -183,7 +207,7 @@ public abstract class ContentBlock
                         break;
 
                     case "annotations":
-                        annotations = JsonSerializer.Deserialize(ref reader, options.GetTypeInfo<Annotations>());
+                        annotations = JsonSerializer.Deserialize(ref reader, GetNestedTypeInfo<Annotations>(options));
                         break;
 
                     case "_meta":
