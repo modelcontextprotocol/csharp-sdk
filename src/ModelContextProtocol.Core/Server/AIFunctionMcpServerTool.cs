@@ -1,11 +1,16 @@
 using Microsoft.Extensions.AI;
+using Json.Schema;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
+using System.Collections;
 using System.ComponentModel;
+using System.Globalization;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -14,6 +19,8 @@ namespace ModelContextProtocol.Server;
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
+    private readonly Lazy<JsonSchema?> _outputSchema;
+    private readonly Lazy<JsonTypeInfo> _serializerTypeInfoIncludingDefaults;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -223,6 +230,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         AIFunction = function;
         ProtocolTool = tool;
+        _outputSchema = new Lazy<JsonSchema?>(BuildOutputSchema, LazyThreadSafetyMode.ExecutionAndPublication);
+        _serializerTypeInfoIncludingDefaults = new Lazy<JsonTypeInfo>(() =>
+        {
+            JsonSerializerOptions options = new(AIFunction.JsonSerializerOptions)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+            };
+            return options.GetTypeInfo(typeof(object));
+        }, LazyThreadSafetyMode.ExecutionAndPublication);
 
         _metadata = metadata;
     }
@@ -672,13 +688,26 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        JsonElement? elementResult = aiFunctionResult switch
+        JsonElement? elementResult;
+        switch (aiFunctionResult)
         {
-            JsonElement jsonElement => jsonElement,
-            JsonNode node => JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode),
-            null => null,
-            _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
-        };
+            case JsonElement jsonElement:
+                elementResult = jsonElement;
+                break;
+            case JsonNode node:
+                elementResult = JsonSerializer.SerializeToElement(node, McpJsonUtilities.JsonContext.Default.JsonNode);
+                break;
+            case null:
+                elementResult = null;
+                break;
+            default:
+                JsonSerializerOptions serializerOptions = AIFunction.JsonSerializerOptions;
+                JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(typeof(object));
+                elementResult = JsonSerializer.SerializeToElement(aiFunctionResult, typeInfo);
+                break;
+        }
+
+        elementResult = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult);
 
         // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
         // schemas. SEP-2106 clients see the natural shape. The classification is decided
@@ -696,6 +725,999 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return elementResult;
+    }
+
+    private JsonElement? AddMissingRequiredNullableProperties(
+        JsonElement? elementResult,
+        object? originalResult)
+    {
+        if (elementResult is not { } result ||
+            ProtocolTool.OutputSchema is not { } outputSchema ||
+            result.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
+        {
+            return elementResult;
+        }
+
+        JsonNode? resultNode = JsonSerializer.SerializeToNode(result, McpJsonUtilities.JsonContext.Default.JsonElement);
+        JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+        JsonSchema? schema = _outputSchema.Value;
+        if (resultNode is null || schemaNode is null || schema is null)
+        {
+            return elementResult;
+        }
+
+        if (IsSchemaValid(schema, resultNode))
+        {
+            return elementResult;
+        }
+
+        JsonNode? resultNodeIncludingDefaults = resultNode;
+        if (originalResult is not null and not JsonElement and not JsonNode &&
+            AIFunction.JsonSerializerOptions.DefaultIgnoreCondition is not JsonIgnoreCondition.Never)
+        {
+            JsonElement completeResult = JsonSerializer.SerializeToElement(
+                originalResult, _serializerTypeInfoIncludingDefaults.Value);
+            resultNodeIncludingDefaults = JsonSerializer.SerializeToNode(
+                completeResult, McpJsonUtilities.JsonContext.Default.JsonElement);
+        }
+
+        JsonNode? repairedResult = RepairStructuredResult(
+            resultNode,
+            resultNodeIncludingDefaults,
+            schemaNode,
+            schema,
+            originalResult,
+            AIFunction.JsonSerializerOptions);
+
+        return repairedResult is null
+            ? elementResult
+            : JsonSerializer.SerializeToElement(repairedResult, McpJsonUtilities.JsonContext.Default.JsonNode);
+    }
+
+    /// <summary>
+    /// Restores omitted required properties only when the complete result validates against the
+    /// published schema.  The serializer can omit a value because of either the global ignore
+    /// policy or a member-level <see cref="JsonIgnoreAttribute"/>.  Candidate values are therefore
+    /// read from the source object when the second serialization snapshot does not contain them.
+    /// </summary>
+    private static JsonNode? RepairStructuredResult(
+        JsonNode resultNode,
+        JsonNode? resultNodeIncludingDefaults,
+        JsonNode schemaNode,
+        JsonSchema schema,
+        object? originalResult,
+        JsonSerializerOptions serializerOptions)
+    {
+        // An explicit schema may deliberately omit optional nulls.  Preserve that valid output
+        // before looking for missing required members.
+        if (IsSchemaValid(schema, resultNode))
+        {
+            return null;
+        }
+
+        JsonNode workingResult = resultNode.DeepClone();
+        for (int pass = 0; pass < 32; pass++)
+        {
+            Dictionary<string, SchemaObjectContext> contexts = new(StringComparer.Ordinal);
+            CollectSchemaContexts(
+                workingResult,
+                schemaNode,
+                schemaNode,
+                string.Empty,
+                contexts,
+                new HashSet<string>(StringComparer.Ordinal));
+
+            List<RepairCandidate> candidates = CreateRepairCandidates(
+                workingResult,
+                resultNodeIncludingDefaults,
+                originalResult,
+                serializerOptions,
+                contexts);
+
+            if (candidates.Count == 0 || !TryFindCandidateSet(schema, workingResult, candidates, out JsonNode? repaired))
+            {
+                return null;
+            }
+
+            if (repaired is null)
+            {
+                return null;
+            }
+
+            workingResult = repaired;
+            if (IsSchemaValid(schema, workingResult))
+            {
+                return workingResult;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryBuildJsonSchema(JsonNode schemaNode, out JsonSchema? schema)
+    {
+        try
+        {
+            JsonElement schemaElement = JsonSerializer.SerializeToElement(schemaNode, McpJsonUtilities.JsonContext.Default.JsonNode);
+            schema = JsonSchema.Build(schemaElement);
+            return true;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
+        {
+            schema = null;
+            return false;
+        }
+    }
+
+    private JsonSchema? BuildOutputSchema()
+    {
+        if (ProtocolTool.OutputSchema is not { } outputSchema)
+        {
+            return null;
+        }
+
+        JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+        return schemaNode is not null && TryBuildJsonSchema(schemaNode, out JsonSchema? schema)
+            ? schema
+            : null;
+    }
+
+    private static bool IsSchemaValid(JsonSchema schema, JsonNode instance)
+    {
+        try
+        {
+            JsonElement instanceElement = JsonSerializer.SerializeToElement(instance, McpJsonUtilities.JsonContext.Default.JsonNode);
+            return schema.Evaluate(instanceElement).IsValid;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static List<RepairCandidate> CreateRepairCandidates(
+        JsonNode resultNode,
+        JsonNode? resultNodeIncludingDefaults,
+        object? originalResult,
+        JsonSerializerOptions serializerOptions,
+        Dictionary<string, SchemaObjectContext> contexts)
+    {
+        List<RepairCandidate> candidates = [];
+        HashSet<string> seen = new(StringComparer.Ordinal);
+
+        foreach (KeyValuePair<string, SchemaObjectContext> contextEntry in contexts)
+        {
+            if (!TryGetNodeAtPath(resultNode, contextEntry.Key, out JsonNode? parentNode) || parentNode is not JsonObject parentObject)
+            {
+                continue;
+            }
+
+            foreach (string propertyName in contextEntry.Value.Required)
+            {
+                if (parentObject.ContainsKey(propertyName))
+                {
+                    continue;
+                }
+
+                string candidateKey = contextEntry.Key + "\u0000" + propertyName;
+                if (!seen.Add(candidateKey))
+                {
+                    continue;
+                }
+
+                bool hasCompleteValue = TryGetNodeAtPath(
+                    resultNodeIncludingDefaults,
+                    AppendJsonPointer(contextEntry.Key, propertyName),
+                    out JsonNode? completeValue);
+
+                if (hasCompleteValue)
+                {
+                    candidates.Add(new RepairCandidate(contextEntry.Key, propertyName, completeValue?.DeepClone()));
+                }
+                else if (TryGetSourceValue(
+                    originalResult,
+                    contextEntry.Key,
+                    propertyName,
+                    serializerOptions,
+                    out JsonNode? sourceValue))
+                {
+                    candidates.Add(new RepairCandidate(contextEntry.Key, propertyName, sourceValue));
+                }
+            }
+        }
+
+        return candidates;
+    }
+
+    private static bool TryFindCandidateSet(
+        JsonSchema schema,
+        JsonNode originalResult,
+        IReadOnlyList<RepairCandidate> candidates,
+        out JsonNode? repairedResult)
+    {
+        repairedResult = null;
+        if (candidates.Count == 0)
+        {
+            return false;
+        }
+
+        // Prefer the full repair first, then small subsets so discriminated unions do not
+        // spend the evaluation budget excluding unrelated branch properties.
+        const int maxCandidateSetEvaluations = 256;
+        bool[] included = Enumerable.Repeat(true, candidates.Count).ToArray();
+        int evaluations = 0;
+        JsonNode? matchingResult = null;
+
+        bool TryCurrentSet()
+        {
+            if (evaluations >= maxCandidateSetEvaluations)
+            {
+                return false;
+            }
+
+            evaluations++;
+            JsonNode candidateResult = originalResult.DeepClone();
+            bool hasIncludedCandidate = false;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (included[i])
+                {
+                    ApplyRepairCandidate(candidateResult, candidates[i]);
+                    hasIncludedCandidate = true;
+                }
+            }
+
+            if (!hasIncludedCandidate || !IsSchemaValid(schema, candidateResult))
+            {
+                return false;
+            }
+
+            matchingResult = candidateResult;
+            return true;
+        }
+
+        bool SearchInclusions(int nextIndex, int remaining)
+        {
+            if (remaining == 0)
+            {
+                return TryCurrentSet();
+            }
+
+            for (int i = nextIndex; i <= candidates.Count - remaining; i++)
+            {
+                included[i] = true;
+                if (SearchInclusions(i + 1, remaining - 1))
+                {
+                    return true;
+                }
+
+                included[i] = false;
+                if (evaluations >= maxCandidateSetEvaluations)
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
+        if (TryCurrentSet())
+        {
+            repairedResult = matchingResult;
+            return true;
+        }
+
+        for (int i = 0; i < included.Length; i++)
+        {
+            included[i] = false;
+        }
+
+        for (int includedCount = 1; includedCount < candidates.Count; includedCount++)
+        {
+            if (SearchInclusions(0, includedCount))
+            {
+                repairedResult = matchingResult;
+                return true;
+            }
+
+            if (evaluations >= maxCandidateSetEvaluations)
+            {
+                break;
+            }
+        }
+
+        // A restored parent may expose required descendants on the next pass. Only
+        // source-backed candidates are created, and the caller publishes a result only
+        // after the complete schema validates.
+        repairedResult = originalResult.DeepClone();
+        foreach (RepairCandidate candidate in candidates)
+        {
+            ApplyRepairCandidate(repairedResult, candidate);
+        }
+
+        return true;
+    }
+
+    private static void ApplyRepairCandidate(JsonNode resultNode, RepairCandidate candidate)
+    {
+        if (TryGetNodeAtPath(resultNode, candidate.ParentPath, out JsonNode? parentNode) && parentNode is JsonObject parentObject)
+        {
+            parentObject[candidate.PropertyName] = candidate.Value?.DeepClone();
+        }
+    }
+
+    private sealed class SchemaObjectContext
+    {
+        internal HashSet<string> Required { get; } = new(StringComparer.Ordinal);
+    }
+
+    private sealed record RepairCandidate(string ParentPath, string PropertyName, JsonNode? Value);
+
+    private static void CollectSchemaContexts(
+        JsonNode? instanceNode,
+        JsonNode? schemaNode,
+        JsonNode schemaRoot,
+        string instancePath,
+        Dictionary<string, SchemaObjectContext> contexts,
+        HashSet<string> activeReferences)
+    {
+        if (schemaNode is JsonValue schemaValue && schemaValue.TryGetValue<bool>(out _))
+        {
+            return;
+        }
+
+        if (schemaNode is not JsonObject schemaObject)
+        {
+            return;
+        }
+
+        if (schemaObject["$ref"] is JsonValue refValue &&
+            refValue.TryGetValue<string>(out string? refText) &&
+            refText is not null &&
+            activeReferences.Add(refText + "|" + instancePath))
+        {
+            if (TryResolveLocalReference(schemaRoot, refText, out JsonNode? referencedSchema))
+            {
+                CollectSchemaContexts(instanceNode, referencedSchema, schemaRoot, instancePath, contexts, activeReferences);
+            }
+
+            activeReferences.Remove(refText + "|" + instancePath);
+        }
+
+        SchemaObjectContext context = GetOrCreateSchemaContext(contexts, instancePath);
+        if (schemaObject["required"] is JsonArray required)
+        {
+            foreach (JsonNode? requiredProperty in required)
+            {
+                if (requiredProperty?.GetValue<string>() is string propertyName)
+                {
+                    context.Required.Add(propertyName);
+                }
+            }
+        }
+
+        if (schemaObject["properties"] is JsonObject properties)
+        {
+            foreach (KeyValuePair<string, JsonNode?> property in properties)
+            {
+                if (property.Value is null)
+                {
+                    continue;
+                }
+
+                if (instanceNode is not JsonObject instanceObject ||
+                    !instanceObject.TryGetPropertyValue(property.Key, out JsonNode? propertyInstance) ||
+                    propertyInstance is null)
+                {
+                    continue;
+                }
+
+                CollectSchemaContexts(
+                    propertyInstance,
+                    property.Value,
+                    schemaRoot,
+                    AppendJsonPointer(instancePath, property.Key),
+                    contexts,
+                    new HashSet<string>(activeReferences, StringComparer.Ordinal));
+            }
+        }
+
+        if (instanceNode is JsonObject objectInstance)
+        {
+            JsonObject? patternProperties = schemaObject["patternProperties"] as JsonObject;
+            JsonNode? additionalProperties = schemaObject["additionalProperties"];
+            foreach (KeyValuePair<string, JsonNode?> property in objectInstance)
+            {
+                bool isExplicitProperty = schemaObject["properties"] is JsonObject explicitProperties &&
+                    explicitProperties.ContainsKey(property.Key);
+
+                bool matchedPattern = false;
+                if (patternProperties is not null)
+                {
+                    foreach (KeyValuePair<string, JsonNode?> patternProperty in patternProperties)
+                    {
+                        if (patternProperty.Value is not null && Regex.IsMatch(property.Key, patternProperty.Key))
+                        {
+                            matchedPattern = true;
+                            CollectSchemaContexts(
+                                property.Value,
+                                patternProperty.Value,
+                                schemaRoot,
+                                AppendJsonPointer(instancePath, property.Key),
+                                contexts,
+                                new HashSet<string>(activeReferences, StringComparer.Ordinal));
+                        }
+                    }
+                }
+
+                if (!isExplicitProperty && !matchedPattern && additionalProperties is not null)
+                {
+                    CollectSchemaContexts(
+                        property.Value,
+                        additionalProperties,
+                        schemaRoot,
+                        AppendJsonPointer(instancePath, property.Key),
+                        contexts,
+                        new HashSet<string>(activeReferences, StringComparer.Ordinal));
+                }
+            }
+        }
+
+        if (instanceNode is JsonArray arrayInstance)
+        {
+            JsonArray? prefixItems = schemaObject["prefixItems"] as JsonArray;
+            JsonNode? items = schemaObject["items"];
+            for (int i = 0; i < arrayInstance.Count; i++)
+            {
+                JsonNode? itemSchema = prefixItems is not null && i < prefixItems.Count ? prefixItems[i] : items;
+                if (itemSchema is not null)
+                {
+                    CollectSchemaContexts(
+                        arrayInstance[i],
+                        itemSchema,
+                        schemaRoot,
+                        AppendJsonPointer(instancePath, i.ToString(CultureInfo.InvariantCulture)),
+                        contexts,
+                        new HashSet<string>(activeReferences, StringComparer.Ordinal));
+                }
+            }
+        }
+
+        if (instanceNode is JsonObject dependencyInstance &&
+            schemaObject["dependentSchemas"] is JsonObject dependentSchemas)
+        {
+            foreach (KeyValuePair<string, JsonNode?> dependentSchema in dependentSchemas)
+            {
+                if (dependentSchema.Value is not null && dependencyInstance.ContainsKey(dependentSchema.Key))
+                {
+                    CollectSchemaContexts(
+                        instanceNode,
+                        dependentSchema.Value,
+                        schemaRoot,
+                        instancePath,
+                        contexts,
+                        new HashSet<string>(activeReferences, StringComparer.Ordinal));
+                }
+            }
+        }
+
+        foreach (string compositionKeyword in new[] { "allOf", "anyOf", "oneOf" })
+        {
+            if (schemaObject[compositionKeyword] is not JsonArray composition)
+            {
+                continue;
+            }
+
+            foreach (JsonNode? branch in composition)
+            {
+                if (branch is not null)
+                {
+                    CollectSchemaContexts(
+                        instanceNode,
+                        branch,
+                        schemaRoot,
+                        instancePath,
+                        contexts,
+                        new HashSet<string>(activeReferences, StringComparer.Ordinal));
+                }
+            }
+        }
+
+        if (schemaObject["if"] is JsonNode ifSchema)
+        {
+            if (schemaObject["then"] is JsonNode thenSchema)
+            {
+                CollectSchemaContexts(instanceNode, thenSchema, schemaRoot, instancePath, contexts, new HashSet<string>(activeReferences, StringComparer.Ordinal));
+            }
+
+            if (schemaObject["else"] is JsonNode elseSchema)
+            {
+                CollectSchemaContexts(instanceNode, elseSchema, schemaRoot, instancePath, contexts, new HashSet<string>(activeReferences, StringComparer.Ordinal));
+            }
+        }
+    }
+
+    private static SchemaObjectContext GetOrCreateSchemaContext(Dictionary<string, SchemaObjectContext> contexts, string instancePath)
+    {
+        if (!contexts.TryGetValue(instancePath, out SchemaObjectContext? context))
+        {
+            contexts[instancePath] = context = new SchemaObjectContext();
+        }
+
+        return context;
+    }
+
+    private static string AppendJsonPointer(string parentPath, string segment)
+    {
+        string escapedSegment = segment.Replace("~", "~0").Replace("/", "~1");
+        return parentPath.Length == 0 ? "/" + escapedSegment : parentPath + "/" + escapedSegment;
+    }
+
+    private static bool TryGetNodeAtPath(JsonNode? root, string path, out JsonNode? value)
+    {
+        value = root;
+        if (path.Length == 0)
+        {
+            return root is not null;
+        }
+
+        if (!path.StartsWith("/", StringComparison.Ordinal))
+        {
+            value = null;
+            return false;
+        }
+
+        foreach (string rawSegment in path.Substring(1).Split('/'))
+        {
+            string segment = rawSegment.Replace("~1", "/").Replace("~0", "~");
+            if (value is JsonObject objectValue && objectValue.TryGetPropertyValue(segment, out JsonNode? objectChild))
+            {
+                value = objectChild;
+            }
+            else if (value is JsonArray arrayValue && int.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out int index) &&
+                index >= 0 && index < arrayValue.Count)
+            {
+                value = arrayValue[index];
+            }
+            else
+            {
+                value = null;
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryGetSourceValue(
+        object? sourceRoot,
+        string parentPath,
+        string propertyName,
+        JsonSerializerOptions serializerOptions,
+        out JsonNode? value)
+    {
+        value = null;
+        if (sourceRoot is null || !TryGetSourceObjectAtPath(sourceRoot, parentPath, serializerOptions, out object? sourceParent) || sourceParent is null)
+        {
+            return false;
+        }
+
+        if (!TryGetSourceMember(
+                sourceParent,
+                propertyName,
+                serializerOptions,
+                out object? sourceValue,
+                out Type? declaredType,
+                out JsonPropertyInfo? propertyInfo))
+        {
+            return false;
+        }
+
+        if (!WasOmittedBySupportedIgnoreCondition(
+                sourceValue, propertyInfo, serializerOptions))
+        {
+            return false;
+        }
+
+        value = SerializeSourceValue(sourceValue, declaredType, serializerOptions, propertyInfo);
+        return sourceValue is null || value is not null;
+    }
+
+    private static bool WasOmittedBySupportedIgnoreCondition(
+        object? value,
+        JsonPropertyInfo? propertyInfo,
+        JsonSerializerOptions serializerOptions)
+    {
+        JsonIgnoreAttribute? ignoreAttribute = propertyInfo?.AttributeProvider is ICustomAttributeProvider attributeProvider
+            ? attributeProvider.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true)
+                .OfType<JsonIgnoreAttribute>()
+                .FirstOrDefault()
+            : null;
+
+        bool omittedByMemberIgnore = ignoreAttribute?.Condition switch
+        {
+            JsonIgnoreCondition.WhenWritingNull => value is null,
+            JsonIgnoreCondition.WhenWritingDefault =>
+                propertyInfo is not null && IsDefaultValue(value, propertyInfo.PropertyType),
+            _ => false,
+        };
+
+        if (propertyInfo?.ShouldSerialize is not null && !omittedByMemberIgnore)
+        {
+            // A caller-provided predicate may enforce redaction. Its result must not be
+            // overridden by recovering a value that the member ignore rule would serialize.
+            return false;
+        }
+
+        JsonIgnoreCondition ignoreCondition = ignoreAttribute?.Condition ?? serializerOptions.DefaultIgnoreCondition;
+        return ignoreCondition switch
+        {
+            JsonIgnoreCondition.WhenWritingNull => value is null,
+            // Global default-ignore omissions are present in the full serialization with
+            // DefaultIgnoreCondition.Never. Only member-level ignores need source recovery.
+            JsonIgnoreCondition.WhenWritingDefault =>
+                ignoreAttribute is not null &&
+                propertyInfo is not null &&
+                IsDefaultValue(value, propertyInfo.PropertyType),
+            _ => false,
+        };
+    }
+
+    private static bool IsDefaultValue(object? value, Type valueType)
+    {
+        if (value is null)
+        {
+            return true;
+        }
+
+        Type effectiveType = Nullable.GetUnderlyingType(valueType) ?? valueType;
+        return effectiveType.IsValueType && value.Equals(CreateDefaultValue(effectiveType));
+    }
+
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2067:Type argument does not satisfy DynamicallyAccessedMemberTypes requirements",
+        Justification = "This helper is called only for value types; zero-initializing them does not invoke constructors.")]
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+        "Trimming",
+        "IL2072:Type argument does not satisfy DynamicallyAccessedMemberTypes requirements",
+        Justification = "This helper is called only for value types; zero-initializing them does not invoke constructors.")]
+    private static object CreateDefaultValue(Type valueType)
+    {
+#if NETSTANDARD2_0
+        return System.Runtime.Serialization.FormatterServices.GetUninitializedObject(valueType);
+#else
+        return System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(valueType);
+#endif
+    }
+
+    private static bool TryGetSourceObjectAtPath(
+        object sourceRoot,
+        string path,
+        JsonSerializerOptions serializerOptions,
+        out object? value)
+    {
+        value = sourceRoot;
+        if (path.Length == 0)
+        {
+            return true;
+        }
+
+        if (!path.StartsWith("/", StringComparison.Ordinal))
+        {
+            value = null;
+            return false;
+        }
+
+        foreach (string rawSegment in path.Substring(1).Split('/'))
+        {
+            string segment = rawSegment.Replace("~1", "/").Replace("~0", "~");
+            if (value is null)
+            {
+                return false;
+            }
+
+            if (value is JsonNode jsonNode)
+            {
+                if (jsonNode is JsonObject jsonObject && jsonObject.TryGetPropertyValue(segment, out JsonNode? childNode))
+                {
+                    value = childNode;
+                    continue;
+                }
+
+                if (jsonNode is JsonArray jsonArray && int.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out int jsonIndex) &&
+                    jsonIndex >= 0 && jsonIndex < jsonArray.Count)
+                {
+                    value = jsonArray[jsonIndex];
+                    continue;
+                }
+
+                value = null;
+                return false;
+            }
+
+            if (value is JsonElement jsonElement)
+            {
+                if (jsonElement.ValueKind == JsonValueKind.Object && jsonElement.TryGetProperty(segment, out JsonElement childElement))
+                {
+                    value = childElement;
+                    continue;
+                }
+
+                if (jsonElement.ValueKind == JsonValueKind.Array && int.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out int elementIndex) &&
+                    elementIndex >= 0 && elementIndex < jsonElement.GetArrayLength())
+                {
+                    value = jsonElement[elementIndex];
+                    continue;
+                }
+
+                value = null;
+                return false;
+            }
+
+            if (value is IDictionary dictionary && TryGetDictionaryValue(dictionary, segment, serializerOptions, out object? dictionaryValue))
+            {
+                value = dictionaryValue;
+                continue;
+            }
+
+            if (int.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out int index) && value is IEnumerable enumerable)
+            {
+                int currentIndex = 0;
+                bool found = false;
+                foreach (object? item in enumerable)
+                {
+                    if (currentIndex++ == index)
+                    {
+                        value = item;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found)
+                {
+                    continue;
+                }
+            }
+
+            if (!TryGetSourceMember(value, segment, serializerOptions, out object? memberValue, out _, out _))
+            {
+                value = null;
+                return false;
+            }
+
+            value = memberValue;
+        }
+
+        return true;
+    }
+
+    private static bool TryGetDictionaryValue(
+        IDictionary dictionary,
+        string propertyName,
+        JsonSerializerOptions serializerOptions,
+        out object? value)
+    {
+        value = null;
+        JsonTypeInfo dictionaryTypeInfo;
+        try
+        {
+            dictionaryTypeInfo = serializerOptions.GetTypeInfo(dictionary.GetType());
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+
+        if (dictionaryTypeInfo.Kind != JsonTypeInfoKind.Dictionary ||
+            dictionaryTypeInfo.KeyType is null ||
+            dictionaryTypeInfo.ElementType is not { } valueType ||
+            dictionaryTypeInfo.CreateObject?.Invoke() is not IDictionary singleEntry)
+        {
+            return false;
+        }
+
+        object? placeholderValue = valueType.IsValueType
+            ? CreateDefaultValue(valueType)
+            : null;
+
+        foreach (DictionaryEntry entry in dictionary)
+        {
+            if (entry.Key is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                singleEntry.Clear();
+                singleEntry.Add(entry.Key, placeholderValue);
+                JsonElement serialized = JsonSerializer.SerializeToElement(singleEntry, dictionaryTypeInfo);
+                if (serialized.ValueKind == JsonValueKind.Object && serialized.TryGetProperty(propertyName, out _))
+                {
+                    value = entry.Value;
+                    return true;
+                }
+            }
+            catch (Exception exception) when (exception is ArgumentException or NotSupportedException or InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryGetSourceMember(
+        object source,
+        string propertyName,
+        JsonSerializerOptions serializerOptions,
+        out object? value,
+        out Type? declaredType,
+        out JsonPropertyInfo? propertyInfo)
+    {
+        value = null;
+        declaredType = null;
+        propertyInfo = null;
+
+        if (source is JsonNode jsonNode)
+        {
+            if (jsonNode is JsonObject jsonObject && jsonObject.TryGetPropertyValue(propertyName, out JsonNode? childNode))
+            {
+                value = childNode;
+                declaredType = typeof(JsonNode);
+                return true;
+            }
+
+            return false;
+        }
+
+        if (source is JsonElement jsonElement && jsonElement.ValueKind == JsonValueKind.Object && jsonElement.TryGetProperty(propertyName, out JsonElement childElement))
+        {
+            value = childElement;
+            declaredType = typeof(JsonElement);
+            return true;
+        }
+
+        if (source is IDictionary dictionary && dictionary.Contains(propertyName))
+        {
+            value = dictionary[propertyName];
+            declaredType = value?.GetType();
+            return true;
+        }
+
+        try
+        {
+            JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(source.GetType());
+            foreach (JsonPropertyInfo property in typeInfo.Properties)
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.Ordinal) && property.Get is not null)
+                {
+                    value = property.Get(source);
+                    declaredType = property.PropertyType;
+                    propertyInfo = property;
+                    return true;
+                }
+            }
+        }
+        catch (NotSupportedException)
+        {
+            // Without serializer metadata, keep the serialized snapshot as the source of truth.
+        }
+
+        return false;
+    }
+
+    private static JsonNode? SerializeSourceValue(
+        object? value,
+        Type? declaredType,
+        JsonSerializerOptions serializerOptions,
+        JsonPropertyInfo? propertyInfo)
+    {
+        if (value is JsonNode jsonNode)
+        {
+            return jsonNode.DeepClone();
+        }
+
+        if (value is JsonElement jsonElement)
+        {
+            return JsonSerializer.SerializeToNode(jsonElement, McpJsonUtilities.JsonContext.Default.JsonElement);
+        }
+
+        Type valueType = declaredType ?? value?.GetType() ?? typeof(object);
+        try
+        {
+            JsonSerializerOptions effectiveOptions = serializerOptions;
+            JsonConverter? propertyConverter = GetPropertyConverter(propertyInfo, valueType);
+            if (propertyConverter is not null || propertyInfo?.NumberHandling is not null)
+            {
+                effectiveOptions = new JsonSerializerOptions(serializerOptions);
+                if (propertyConverter is not null)
+                {
+                    effectiveOptions.Converters.Insert(0, propertyConverter);
+                }
+
+                if (propertyInfo?.NumberHandling is { } numberHandling)
+                {
+                    effectiveOptions.NumberHandling = numberHandling;
+                }
+            }
+
+            JsonTypeInfo typeInfo = effectiveOptions.GetTypeInfo(valueType);
+            JsonElement element = JsonSerializer.SerializeToElement(value, typeInfo);
+            return JsonSerializer.SerializeToNode(element, McpJsonUtilities.JsonContext.Default.JsonElement);
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    private static JsonConverter? GetPropertyConverter(JsonPropertyInfo? propertyInfo, Type propertyType)
+    {
+        if (propertyInfo is null)
+        {
+            return null;
+        }
+
+        PropertyInfo? customConverterProperty = typeof(JsonPropertyInfo).GetProperty("CustomConverter", BindingFlags.Instance | BindingFlags.Public);
+        if (customConverterProperty?.GetValue(propertyInfo) is JsonConverter customConverter)
+        {
+            return customConverter;
+        }
+
+        if (propertyInfo.AttributeProvider is ICustomAttributeProvider attributeProvider &&
+            attributeProvider.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: true)
+                .OfType<JsonConverterAttribute>()
+                .FirstOrDefault() is { } converterAttribute)
+        {
+            return converterAttribute.CreateConverter(propertyType);
+        }
+
+        return null;
+    }
+
+    private static bool TryResolveLocalReference(JsonNode schemaRoot, string reference, out JsonNode? resolvedSchema)
+    {
+        resolvedSchema = null;
+        if (!reference.StartsWith("#", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string pointer = Uri.UnescapeDataString(reference[1..]);
+        if (pointer.Length == 0)
+        {
+            resolvedSchema = schemaRoot;
+            return true;
+        }
+
+        if (!pointer.StartsWith("/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        JsonNode? current = schemaRoot;
+        foreach (string rawSegment in pointer[1..].Split('/'))
+        {
+            string segment = rawSegment.Replace("~1", "/").Replace("~0", "~");
+            if (current is JsonObject currentObject && currentObject.TryGetPropertyValue(segment, out JsonNode? child))
+            {
+                current = child;
+            }
+            else if (current is JsonArray currentArray && int.TryParse(segment, out int index) && index >= 0 && index < currentArray.Count)
+            {
+                current = currentArray[index];
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        resolvedSchema = current;
+        return true;
     }
 
     private static CallToolResult ConvertAIContentEnumerableToCallToolResult(IEnumerable<AIContent> contentItems, JsonElement? structuredContent)
