@@ -1373,6 +1373,56 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task CanAuthenticate_WhenAuthorizationServerDoesNotSupportResourceIndicators()
+    {
+        // Simulate a server whose authorization server (e.g. Microsoft Entra ID) does not support
+        // RFC 8707 and rejects requests that include the "resource" parameter. Such servers bind
+        // the token audience via scopes rather than the RFC 8707 "aud" claim, so the issued token's
+        // audience is the client ID rather than the MCP server URL.
+        TestOAuthServer.ExpectResource = false;
+
+        Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
+        {
+            options.ResourceMetadata!.ResourceIndicatorsSupported = false;
+        });
+
+        await using var app = await StartMcpServerAsync(tokenAudience: "demo-client");
+
+        // The protected resource metadata document advertises the lack of resource indicator support.
+        var metadataDocument = await HttpClient.GetStringAsync(
+            $"{McpServerUrl}/.well-known/oauth-protected-resource", TestContext.Current.CancellationToken);
+        Assert.Contains("\"resource_indicators_supported\":false", metadataDocument);
+
+        string? authorizationQuery = null;
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new Uri("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    authorizationQuery = context.AuthorizationUri.Query;
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+            },
+        }, HttpClient, LoggerFactory);
+
+        // The connection completes the full authorization flow, which succeeded even though
+        // TestOAuthServer rejects "resource" in both requests while ExpectResource is false.
+        await using var client = await TestMcpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        // The authorization request carries no "resource" parameter and the token was exchanged.
+        Assert.NotNull(authorizationQuery);
+        Assert.DoesNotContain("resource=", authorizationQuery);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+    }
+
+    [Fact]
     public async Task CanAuthenticate_WithAuthorizationServerPathInsertionMetadata()
     {
         Builder.Services.Configure<McpAuthenticationOptions>(McpAuthenticationDefaults.AuthenticationScheme, options =>
@@ -1830,7 +1880,8 @@ public class AuthTests : OAuthTestBase
             TlsClientCertificateBoundAccessTokens = true,
             AuthorizationDetailsTypesSupported = ["payment_initiation", "account_information"],
             DpopSigningAlgValuesSupported = ["RS256", "PS256"],
-            DpopBoundAccessTokensRequired = true
+            DpopBoundAccessTokensRequired = true,
+            ResourceIndicatorsSupported = false
         };
 
         var clonedMetadata = metadata.Clone();
@@ -1899,6 +1950,10 @@ public class AuthTests : OAuthTestBase
         // Verify DpopBoundAccessTokensRequired property
         Assert.Equal(metadata.DpopBoundAccessTokensRequired, clonedMetadata.DpopBoundAccessTokensRequired);
         Assert.True(propertyNames.Remove(nameof(metadata.DpopBoundAccessTokensRequired)));
+
+        // Verify ResourceIndicatorsSupported property
+        Assert.Equal(metadata.ResourceIndicatorsSupported, clonedMetadata.ResourceIndicatorsSupported);
+        Assert.True(propertyNames.Remove(nameof(metadata.ResourceIndicatorsSupported)));
 
         // Ensure we've checked every property. When new properties get added, we'll have to update this test along with the Clone implementation.
         Assert.Empty(propertyNames);

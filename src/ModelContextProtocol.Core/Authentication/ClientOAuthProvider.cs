@@ -73,6 +73,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private readonly HashSet<string> _accumulatedScopes = new(StringComparer.Ordinal);
     private bool _hasAttemptedStepUp;
 
+    // Set under _tokenAcquisitionLock when the protected resource metadata indicates that the
+    // authorization server does not support RFC 8707 resource indicators (via the
+    // "resource_indicators_supported" extension). In that case the "resource" parameter is omitted
+    // from authorization and token requests, and the token audience is bound via scopes instead.
+    private bool _resourceIndicatorUnsupported;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientOAuthProvider"/> class using the specified options.
     /// </summary>
@@ -255,7 +261,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             current?.RefreshToken is { Length: > 0 } refreshToken &&
             CachedTokensMatchClientCredentials(current, _clientCredentialsAuthorizationServer))
         {
-            var accessToken = await RefreshTokensAsync(refreshToken, resourceUri.ToString(), _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var accessToken = await RefreshTokensAsync(refreshToken, GetResourceIndicator(resourceUri.ToString()), _authServerMetadata, cancellationToken).ConfigureAwait(false);
             return (accessToken, true);
         }
 
@@ -366,6 +372,17 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     {
         // Get available authorization servers from the 401 or 403 response
         var protectedResourceMetadata = await ExtractProtectedResourceMetadata(response, cancellationToken).ConfigureAwait(false);
+
+        // MCP clients MUST send the RFC 8707 "resource" indicator, but some authorization servers
+        // (such as Microsoft Entra ID) do not support RFC 8707 and reject requests that contain it.
+        // A server that uses such an authorization server can advertise that through the
+        // "resource_indicators_supported" extension in the protected resource metadata document.
+        _resourceIndicatorUnsupported = protectedResourceMetadata.ResourceIndicatorsSupported is false;
+        if (_resourceIndicatorUnsupported)
+        {
+            LogAuthorizationServerDoesNotSupportResourceIndicators();
+        }
+
         var availableAuthorizationServers = protectedResourceMetadata.AuthorizationServers;
 
         if (availableAuthorizationServers.Count == 0)
@@ -434,7 +451,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         var authServerMetadata = await GetAuthServerMetadataAsync(selectedAuthServer, protectedResourceMetadata.Resource, cancellationToken).ConfigureAwait(false);
 
         // The existing access token must be invalid to have resulted in a 401 response, but refresh might still work.
-        var resourceUri = GetResourceUri(protectedResourceMetadata);
+        var resourceUri = GetResourceIndicator(GetResourceUri(protectedResourceMetadata));
 
         // Restore any client registration persisted alongside the tokens. On a cold start a durable
         // token cache may hold a refresh token together with the client ID it was issued to, while this
@@ -765,7 +782,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         string codeChallenge,
         string state)
     {
-        var resourceUri = GetResourceUri(protectedResourceMetadata);
+        var resourceUri = GetResourceIndicator(GetResourceUri(protectedResourceMetadata));
 
         var queryParamsDictionary = new Dictionary<string, string>
         {
@@ -815,7 +832,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         string codeVerifier,
         CancellationToken cancellationToken)
     {
-        var resourceUri = GetResourceUri(protectedResourceMetadata);
+        var resourceUri = GetResourceIndicator(GetResourceUri(protectedResourceMetadata));
 
         Dictionary<string, string> formFields = new()
         {
@@ -1024,6 +1041,16 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private static string? GetResourceUri(ProtectedResourceMetadata protectedResourceMetadata)
         => protectedResourceMetadata.Resource;
+
+    /// <summary>
+    /// Gets the value of the RFC 8707 <c>resource</c> parameter to include in the request,
+    /// or <see langword="null"/> when the protected resource's authorization server does not
+    /// support resource indicators.
+    /// </summary>
+    /// <param name="resource">The canonical resource identifier from the protected resource metadata.</param>
+    /// <returns>The <c>resource</c> parameter value, or <see langword="null"/> to omit it.</returns>
+    private string? GetResourceIndicator(string? resource) =>
+        _resourceIndicatorUnsupported ? null : resource;
 
     private string? ComputeEffectiveScope(
         ProtectedResourceMetadata protectedResourceMetadata,
@@ -1603,6 +1630,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "WWW-Authenticate header missing.")]
     partial void LogMissingWwwAuthenticateHeader();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The protected resource's authorization server does not support RFC 8707 resource indicators. The 'resource' parameter will be omitted from authorization and token requests; token audience is bound by scopes only.")]
+    partial void LogAuthorizationServerDoesNotSupportResourceIndicators();
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Missing resource_metadata parameter from WWW-Authenticate header. Falling back to {MetadataUri}")]
     partial void LogMissingResourceMetadataParameter(Uri metadataUri);

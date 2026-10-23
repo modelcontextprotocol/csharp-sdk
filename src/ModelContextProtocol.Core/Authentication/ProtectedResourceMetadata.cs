@@ -184,6 +184,35 @@ public sealed class ProtectedResourceMetadata
     public bool? DpopBoundAccessTokensRequired { get; set; }
 
     /// <summary>
+    /// Gets or sets a value indicating whether the authorization server used by this protected resource supports RFC 8707 resource indicators.
+    /// </summary>
+    /// <value>
+    /// <see langword="true"/> if the authorization server supports the RFC 8707 <c>resource</c> parameter,
+    /// <see langword="false"/> if it does not. The default (<see langword="null"/>) is to assume support.
+    /// </value>
+    /// <remarks>
+    /// <para>
+    /// This is a proposed MCP extension to <see href="https://datatracker.ietf.org/doc/rfc9728/">RFC 9728</see>.
+    /// It is not defined by any published standard; the field name follows prior art from the
+    /// OIDF OID4Pay draft protocol, which defines a similarly named field in authorization server metadata.
+    /// </para>
+    /// <para>
+    /// MCP clients MUST include the RFC 8707 <c>resource</c> parameter in authorization and token requests,
+    /// but some authorization servers (such as Microsoft Entra ID) do not support RFC 8707 and reject
+    /// requests that contain the <c>resource</c> parameter. A server that uses such an authorization server
+    /// SHOULD set this property to <see langword="false"/> so that conformant MCP clients can omit the
+    /// <c>resource</c> parameter and bind the token audience using scopes instead.
+    /// </para>
+    /// <para>
+    /// When resource indicators are disabled, the server MUST validate that access tokens carry the scopes
+    /// required for the requested resource, and SHOULD prefer an authorization server that supports RFC 8707
+    /// whenever one is available.
+    /// </para>
+    /// </remarks>
+    [JsonPropertyName("resource_indicators_supported")]
+    public bool? ResourceIndicatorsSupported { get; set; }
+
+    /// <summary>
     /// Used internally by the client to get or set the scope specified as a WWW-Authenticate header parameter.
     /// This should be preferred over using the ScopesSupported property.
     ///
@@ -220,7 +249,8 @@ public sealed class ProtectedResourceMetadata
             TlsClientCertificateBoundAccessTokens = TlsClientCertificateBoundAccessTokens,
             AuthorizationDetailsTypesSupported = AuthorizationDetailsTypesSupported is not null ? [.. AuthorizationDetailsTypesSupported] : null,
             DpopSigningAlgValuesSupported = DpopSigningAlgValuesSupported is not null ? [.. DpopSigningAlgValuesSupported] : null,
-            DpopBoundAccessTokensRequired = DpopBoundAccessTokensRequired
+            DpopBoundAccessTokensRequired = DpopBoundAccessTokensRequired,
+            ResourceIndicatorsSupported = ResourceIndicatorsSupported
         };
     }
 }
