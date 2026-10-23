@@ -1,6 +1,7 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Tests.Utils;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
@@ -24,7 +25,7 @@ public class ProtocolPropertyCasingTests
         string resultJson = alternateFirst ? $"{{{Alternate},{Canonical}}}" : $"{{{Canonical},{Alternate}}}";
         var transport = new ControlledResponseTransport(resultJson, path == "polled-task");
         var ct = TestContext.Current.CancellationToken;
-        await using var client = await McpClient.CreateAsync(transport, cancellationToken: ct);
+        await using var client = await TestMcpClient.CreateAsync(transport, cancellationToken: ct);
         var request = new CallToolRequestParams { Name = "test" };
 
         CallToolResult result;
