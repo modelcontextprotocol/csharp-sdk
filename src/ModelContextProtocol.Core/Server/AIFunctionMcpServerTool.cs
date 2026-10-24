@@ -167,25 +167,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             newOptions.Name ??= toolAttr.Name;
             newOptions.Title ??= toolAttr.Title;
 
-            if (toolAttr._destructive is bool destructive)
-            {
-                newOptions.Destructive ??= destructive;
-            }
-
-            if (toolAttr._idempotent is bool idempotent)
-            {
-                newOptions.Idempotent ??= idempotent;
-            }
-
-            if (toolAttr._openWorld is bool openWorld)
-            {
-                newOptions.OpenWorld ??= openWorld;
-            }
-
-            if (toolAttr._readOnly is bool readOnly)
-            {
-                newOptions.ReadOnly ??= readOnly;
-            }
+            newOptions.Destructive ??= toolAttr.Destructive;
+            newOptions.Idempotent ??= toolAttr.Idempotent;
+            newOptions.OpenWorld ??= toolAttr.OpenWorld;
+            newOptions.ReadOnly ??= toolAttr.ReadOnly;
 
             if (newOptions.Icons is null && toolAttr.IconSource is { Length: > 0 } iconSource)
             {
