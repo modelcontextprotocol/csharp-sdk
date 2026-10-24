@@ -160,7 +160,10 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         {
 #if NET
             using var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout);
-            await _process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            // Keep shutdown bounded even if waiting for redirected output does not observe cancellation.
+            await _process.WaitForExitAsync(timeoutCts.Token)
+                .WaitAsync(_options.ShutdownTimeout)
+                .ConfigureAwait(false);
 #else
             if (_process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds))
             {
