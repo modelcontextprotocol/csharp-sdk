@@ -28,6 +28,8 @@ public sealed class Program
     private readonly ConcurrentDictionary<string, ClientInfo> _clients = new();
 
     private readonly ConcurrentQueue<string> _metadataRequests = new();
+    private int _authorizationRequestCount;
+    private int _tokenRequestCount;
 
     private readonly RSA _rsa;
     private readonly string _keyId;
@@ -90,8 +92,38 @@ public sealed class Program
     /// </remarks>
     public bool ExpectResource { get; set; } = true;
 
+    /// <summary>
+    /// Gets or sets a value indicating whether authorization server metadata includes an issuer.
+    /// </summary>
+    public bool IncludeIssuerInMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets an issuer value that overrides the authorization server's metadata issuer.
+    /// </summary>
+    public string? MetadataIssuerOverride { get; set; }
+
+    /// <summary>
+    /// Gets or sets the code challenge methods advertised by metadata endpoints.
+    /// </summary>
+    /// <remarks>
+    /// The default value is <c>["S256"]</c>.
+    /// </remarks>
+    public List<string>? CodeChallengeMethodsSupported { get; set; } = ["S256"];
+
+    /// <summary>
+    /// Gets the set of metadata paths that should omit <c>code_challenge_methods_supported</c> from their
+    /// response, simulating a server whose discovery endpoints advertise differing PKCE support.
+    /// </summary>
+    public HashSet<string> MetadataPathsWithoutPkceSupport { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
+
+    /// <summary>Gets the number of requests received by the authorization endpoint.</summary>
+    public int AuthorizationRequestCount => Volatile.Read(ref _authorizationRequestCount);
+
+    /// <summary>Gets the number of requests received by the token endpoint.</summary>
+    public int TokenRequestCount => Volatile.Read(ref _tokenRequestCount);
 
     /// <summary>
     /// Entry point for the application.
@@ -212,7 +244,7 @@ public sealed class Program
 
             var metadata = new OAuthServerMetadata
             {
-                Issuer = $"{_url}{issuerPath}",
+                Issuer = IncludeIssuerInMetadata ? MetadataIssuerOverride ?? $"{_url}{issuerPath}" : null,
                 AuthorizationEndpoint = $"{_url}/authorize",
                 TokenEndpoint = $"{_url}/token",
                 JwksUri = $"{_url}/.well-known/jwks.json",
@@ -222,7 +254,9 @@ public sealed class Program
                 ScopesSupported = ["openid", "profile", "email", "mcp:tools"],
                 TokenEndpointAuthMethodsSupported = ["client_secret_post"],
                 ClaimsSupported = ["sub", "iss", "name", "email", "aud"],
-                CodeChallengeMethodsSupported = ["S256"],
+                CodeChallengeMethodsSupported = MetadataPathsWithoutPkceSupport.Contains(context.Request.Path)
+                    ? null
+                    : CodeChallengeMethodsSupported,
                 GrantTypesSupported = ["authorization_code", "refresh_token"],
                 IntrospectionEndpoint = $"{_url}/introspect",
                 RegistrationEndpoint = $"{_url}/register",
@@ -284,6 +318,8 @@ public sealed class Program
             [FromQuery] string? state,
             [FromQuery] string? resource) =>
         {
+            Interlocked.Increment(ref _authorizationRequestCount);
+
             // Validate client
             if (!_clients.TryGetValue(client_id, out var client))
             {
@@ -365,6 +401,8 @@ public sealed class Program
         // Token endpoint
         app.MapPost("/token", async (HttpContext context) =>
         {
+            Interlocked.Increment(ref _tokenRequestCount);
+
             var form = await context.Request.ReadFormAsync();
 
             // Authenticate client

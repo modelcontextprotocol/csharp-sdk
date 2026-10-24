@@ -145,6 +145,39 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 });
 ```
 
+#### OAuth PKCE metadata validation (1.x)
+
+When using <xref:ModelContextProtocol.Authentication.ClientOAuthOptions> with an HTTP transport, authorization server metadata must advertise `S256` in `code_challenge_methods_supported`. A document that omits that field or advertises only other methods is skipped while the client tries alternative well-known endpoints. If none supplies valid metadata with `S256`, authentication fails before requesting an authorization code or exchanging tokens. This is a compatibility tightening: servers that implement PKCE but do not advertise it must update their metadata.
+
+When protected resource metadata is available, authorization server metadata must also include an `issuer` that exactly matches the selected authorization server identifier, as required by [RFC 8414, Section 3.3](https://www.rfc-editor.org/rfc/rfc8414.html#section-3.3). Comparison is ordinal and uses the original URI strings: differences in case, trailing slashes, or percent-encoding are rejected even when URI normalization would make them equivalent. A missing or mismatched issuer immediately stops discovery before authorization or token exchange; the client does not try another metadata endpoint or use synthetic defaults. For the MCP 2025-03-26 legacy path without protected resource metadata, these issuer checks remain exempt because discovery uses the MCP server's origin, which need not equal the canonical issuer. PKCE requirements still apply on that path.
+
+These are **metadata issuer** checks, not RFC 9207 authorization-response `iss` validation. The 1.x code-only callback cannot provide a response issuer for SDK validation; that separate response check is not included. PKCE is not a substitute for issuer validation.
+
+The 1.x SDK's authorization callback returns only a code, so the SDK cannot validate response `state`. [RFC 9700, Section 4.7.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.7.1) permits relying on PKCE for CSRF protection only when authorization server support has been ensured. Metadata verification checks **advertised support**, not the server's actual implementation. The authorization server must correctly enforce PKCE, including the [downgrade defenses in Section 4.8.2](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.8.2).
+
+**Legacy compatibility escape hatch.** By default, the 1.x client also rejects authentication when authorization server metadata cannot be discovered; it no longer assumes `S256` support. For a trusted legacy deployment whose PKCE support you have independently established, you can explicitly restore the MCP 2025-03-26 default endpoint fallback at application startup:
+
+```csharp
+AppContext.SetSwitch(
+    "ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback",
+    true);
+```
+
+Alternatively, configure the same switch in the application's project file:
+
+```xml
+<ItemGroup>
+  <RuntimeHostConfigurationOption
+      Include="ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback"
+      Value="true" />
+</ItemGroup>
+```
+
+The switch is **disabled when absent or `false`**. When enabled, it restores default `/authorize`, `/token`, and `/register` paths on the MCP server's origin only when protected resource metadata is unavailable and no usable authorization server metadata document was discovered. It never bypasses PKCE validation of a discovered document. The client still sends an `S256` challenge and a code verifier, and logs a warning whenever it uses the unverified fallback.
+
+> [!WARNING]
+> Enabling this switch does not verify PKCE support or add state validation. Use it only after independently establishing that your trusted authorization server correctly enforces PKCE, including downgrade defenses. The setting is **process-wide**, not a per-server allowlist: it affects every OAuth client in the process. Do not enable it in a process that also connects to untrusted authorization servers, or toggle it around individual requests. Prefer fixing metadata discovery and advertising `S256` so the switch can remain disabled.
+
 #### Resuming sessions
 
 Streamable HTTP supports session resumption. Save the session ID, server capabilities, and server info from the original session, then use <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*> to reconnect:

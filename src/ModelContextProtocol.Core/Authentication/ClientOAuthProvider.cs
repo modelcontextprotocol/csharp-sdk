@@ -334,8 +334,15 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, string? resourceUri, CancellationToken cancellationToken)
     {
+        // Tracks whether at least one well-known endpoint returned a structurally valid metadata document.
+        // This distinguishes "no metadata document was found" (eligible for the opt-in 2025-03-26 legacy fallback)
+        // from "a metadata document exists but failed PKCE validation" (must not fall back to synthesized defaults).
+        var metadataDocumentFound = false;
+        McpException? pkceValidationFailure = null;
+
         foreach (var wellKnownEndpoint in GetWellKnownAuthorizationServerMetadataUris(authServerUri))
         {
+            AuthorizationServerMetadata? metadata;
             try
             {
                 var response = await _httpClient.GetAsync(wellKnownEndpoint, cancellationToken).ConfigureAwait(false);
@@ -345,7 +352,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 }
 
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                var metadata = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken).ConfigureAwait(false);
+                metadata = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.AuthorizationServerMetadata, cancellationToken).ConfigureAwait(false);
 
                 if (metadata is null)
                 {
@@ -363,23 +370,100 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                     ThrowFailedToHandleUnauthorizedResponse($"AuthorizationEndpoint must use HTTP or HTTPS. '{metadata.AuthorizationEndpoint}' does not meet this requirement.");
                 }
 
-                metadata.ResponseTypesSupported ??= ["code"];
-                metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
-                metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_post"];
-                metadata.CodeChallengeMethodsSupported ??= ["S256"];
+                // Validate the issuer in the metadata document per RFC 8414 Section 3.3:
+                // the issuer value MUST be identical to the issuer identifier used to construct
+                // the well-known URL.
+                // Skip validation in legacy backcompat mode (resourceUri is null) because the
+                // authServerUri was derived from the server origin rather than from Protected
+                // Resource Metadata, so it may not match the server's canonical issuer.
+                // Note: resourceUri is null exclusively in the 2025-03-26 legacy path. For newer
+                // protocol versions, ExtractProtectedResourceMetadata throws if the PRM document
+                // omits the resource field (VerifyResourceMatch returns false for null Resource),
+                // so we never reach this point with resourceUri == null in non-legacy flows.
+                if (resourceUri is not null && metadata.Issuer is null)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' did not provide the required issuer (RFC 8414 Section 2).");
+                }
 
-                return metadata;
+                // RFC 8414 requires an identical issuer value, so do not normalize URI case,
+                // trailing slashes, or percent-encoding before comparison.
+                if (resourceUri is not null &&
+                    !string.Equals(metadata.Issuer!.OriginalString, authServerUri.OriginalString, StringComparison.Ordinal))
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata issuer '{metadata.Issuer}' does not match the expected issuer '{authServerUri}' (RFC 8414 Section 3.3).");
+                }
+
+                // A structurally valid metadata document was discovered. Even if it fails PKCE validation
+                // below, its existence disqualifies the legacy fallback that would otherwise synthesize S256.
+                metadataDocumentFound = true;
+            }
+            catch (McpException)
+            {
+                // Metadata validation failures are security signals and must not fall back to
+                // another well-known endpoint.
+                throw;
             }
             catch (Exception ex)
             {
                 LogErrorFetchingAuthServerMetadata(ex, wellKnownEndpoint);
+                continue;
             }
+
+            try
+            {
+                // Per the MCP spec, clients MUST verify PKCE support via authorization server metadata and refuse
+                // to proceed without it. Rather than failing on the first document that lacks it, skip to the next
+                // discovery endpoint: different well-known endpoints (OAuth 2.0 vs OpenID Connect) can return
+                // different documents for the same server, and OpenID Connect metadata commonly includes the field.
+                var codeChallengeMethods = metadata.CodeChallengeMethodsSupported;
+                if (codeChallengeMethods is null)
+                {
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' does not include 'code_challenge_methods_supported'. MCP clients require PKCE support and must refuse to proceed.");
+                }
+
+                if (!codeChallengeMethods.Contains("S256"))
+                {
+                    var advertisedMethods = codeChallengeMethods.Count > 0
+                        ? string.Join(", ", codeChallengeMethods)
+                        : "<none>";
+                    ThrowFailedToHandleUnauthorizedResponse(
+                        $"Authorization server metadata from '{wellKnownEndpoint}' does not advertise required PKCE method 'S256' in 'code_challenge_methods_supported'. Advertised methods: {advertisedMethods}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogAuthServerMetadataMissingPkceSupport(ex, wellKnownEndpoint);
+                pkceValidationFailure = ex as McpException ?? new McpException(ex.Message, ex);
+                continue;
+            }
+
+            metadata.ResponseTypesSupported ??= ["code"];
+            metadata.GrantTypesSupported ??= ["authorization_code", "refresh_token"];
+            metadata.TokenEndpointAuthMethodsSupported ??= ["client_secret_post"];
+
+            return metadata;
+        }
+
+        // A discovered metadata document that failed PKCE validation must not be replaced with synthesized
+        // defaults. Surface the specific PKCE failure regardless of whether PRM was available.
+        if (metadataDocumentFound && pkceValidationFailure is not null)
+        {
+            throw pkceValidationFailure;
         }
 
         if (resourceUri is null)
         {
-            // 2025-03-26 backcompat: when PRM is unavailable and auth server metadata discovery
-            // also fails, fall back to default endpoint paths per the 2025-03-26 spec.
+            if (!AppContext.TryGetSwitch("ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback", out var enabled) || !enabled)
+            {
+                ThrowFailedToHandleUnauthorizedResponse("Authorization server metadata could not be discovered, so PKCE support could not be verified.");
+            }
+
+            // 2025-03-26 backcompat: when PRM is unavailable and no auth server metadata document was
+            // discovered, allow explicitly opted-in hosts to use the default endpoint paths.
+            LogUsingLegacyOAuthMetadataFallback(authServerUri);
             return BuildDefaultAuthServerMetadata(authServerUri);
         }
 
@@ -988,6 +1072,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error fetching auth server metadata from {Endpoint}")]
     partial void LogErrorFetchingAuthServerMetadata(Exception ex, Uri endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Authorization server metadata from {Endpoint} does not satisfy PKCE requirements; skipping it and trying the next discovery endpoint.")]
+    partial void LogAuthServerMetadataMissingPkceSupport(Exception ex, Uri endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Using legacy OAuth metadata fallback for {AuthorizationServer} because ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback is enabled. PKCE support could not be verified. Use this switch only for trusted deployments whose PKCE support has been independently established.")]
+    partial void LogUsingLegacyOAuthMetadataFallback(Uri authorizationServer);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Performing dynamic client registration with {RegistrationEndpoint}")]
     partial void LogPerformingDynamicClientRegistration(Uri registrationEndpoint);
