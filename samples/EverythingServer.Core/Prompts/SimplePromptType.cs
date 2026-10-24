@@ -1,7 +1,7 @@
 ﻿using ModelContextProtocol.Server;
 using System.ComponentModel;
 
-namespace EverythingServer.Prompts;
+namespace EverythingServer.Core.Prompts;
 
 [McpServerPromptType]
 public class SimplePromptType

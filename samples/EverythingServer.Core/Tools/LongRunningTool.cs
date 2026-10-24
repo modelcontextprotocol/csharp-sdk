@@ -3,7 +3,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.ComponentModel;
 
-namespace EverythingServer.Tools;
+namespace EverythingServer.Core.Tools;
 
 [McpServerToolType]
 public class LongRunningTool

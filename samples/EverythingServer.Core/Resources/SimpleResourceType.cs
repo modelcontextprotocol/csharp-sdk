@@ -3,7 +3,7 @@ using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text;
 
-namespace EverythingServer.Resources;
+namespace EverythingServer.Core.Resources;
 
 [McpServerResourceType]
 public class SimpleResourceType

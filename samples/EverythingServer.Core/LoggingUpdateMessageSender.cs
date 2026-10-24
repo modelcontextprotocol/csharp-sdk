@@ -3,7 +3,7 @@ using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-namespace EverythingServer;
+namespace EverythingServer.Core;
 
 public class LoggingUpdateMessageSender(McpServer server) : BackgroundService
 {
