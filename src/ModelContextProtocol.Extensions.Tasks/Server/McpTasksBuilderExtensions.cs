@@ -82,7 +82,7 @@ public static class McpTasksBuilderExtensions
         private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
         private readonly ILogger _logger = (loggerFactory ?? NullLoggerFactory.Instance).CreateLogger<McpTasksConfigureOptions>();
         private readonly McpTasksOptions _taskOptions = taskOptions;
-        private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationSources = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, TaskCancellationState> _cancellationStates = new(StringComparer.Ordinal);
 
         public void Configure(McpServerOptions options)
         {
@@ -183,15 +183,27 @@ public static class McpTasksBuilderExtensions
 
             var taskId = taskInfo.TaskId;
             executionRequest.Server = request.Server.WithMcpTaskOutgoingRequestInterceptor(taskId, _store);
-            var cts = new CancellationTokenSource();
-            _cancellationSources[taskId] = cts;
+            var serverLifetime = request.Server as IMcpServerLifetimeFeature;
+            var cancellationState = new TaskCancellationState(
+                serverLifetime?.ServerCancellationToken ?? CancellationToken.None);
+            _cancellationStates[taskId] = cancellationState;
 
-            // Capture the token before dispatching. Cancellation can remove and dispose the source
-            // before the background delegate starts.
-            var taskCancellationToken = cts.Token;
-            _ = Task.Run(
+            var taskCancellationToken = cancellationState.Token;
+            var backgroundTask = Task.Run(
                 () => ExecuteTaskAsync(next, executionRequest, taskId, taskCancellationToken, executionScope),
                 CancellationToken.None);
+            cancellationState.SetBackgroundTask(backgroundTask);
+            try
+            {
+                cancellationState.SetServerLifetimeRegistration(
+                    serverLifetime?.RegisterForDisposeAsync(cancellationState));
+            }
+            catch
+            {
+                cancellationState.Cancel();
+                await backgroundTask.ConfigureAwait(false);
+                throw;
+            }
 
             return ResultOrAlternate<CallToolResult>.FromAlternate(
                 ToCreateTaskResult(taskInfo),
@@ -235,9 +247,9 @@ public static class McpTasksBuilderExtensions
             }
             finally
             {
-                if (_cancellationSources.TryRemove(taskId, out var registeredCts))
+                if (_cancellationStates.TryRemove(taskId, out var registeredState))
                 {
-                    registeredCts.Dispose();
+                    registeredState.UnregisterServerLifetime();
                 }
             }
         }
@@ -354,13 +366,72 @@ public static class McpTasksBuilderExtensions
 
             await _store.SetCancelledAsync(requestParams.TaskId, cancellationToken).ConfigureAwait(false);
 
-            if (_cancellationSources.TryRemove(requestParams.TaskId, out var cts))
+            if (_cancellationStates.TryGetValue(requestParams.TaskId, out var cancellationState))
             {
-                cts.Cancel();
-                cts.Dispose();
+                cancellationState.Cancel();
             }
 
             return JsonSerializer.SerializeToNode(new CancelTaskResult(), McpTasksJsonContext.Default.CancelTaskResult);
+        }
+
+        private sealed class TaskCancellationState : IAsyncDisposable
+        {
+            private readonly CancellationTokenSource _source = new();
+            private readonly CancellationTokenRegistration _serverLifetimeRegistration;
+            private Task? _backgroundTask;
+            private IDisposable? _serverLifetimeUnregistration;
+            private int _completed;
+
+            public TaskCancellationState(CancellationToken serverLifetimeToken)
+            {
+                _serverLifetimeRegistration = serverLifetimeToken.Register(
+                    static state => ((TaskCancellationState)state!).Cancel(),
+                    this);
+            }
+
+            public CancellationToken Token => _source.Token;
+
+            public void Cancel() => _source.Cancel();
+
+            public void SetBackgroundTask(Task backgroundTask) => _backgroundTask = backgroundTask;
+
+            public void SetServerLifetimeRegistration(IDisposable? registration)
+            {
+                if (registration is null)
+                {
+                    return;
+                }
+
+                if (Volatile.Read(ref _completed) != 0)
+                {
+                    registration.Dispose();
+                    return;
+                }
+
+                Interlocked.CompareExchange(ref _serverLifetimeUnregistration, registration, null);
+                if (Volatile.Read(ref _completed) != 0)
+                {
+                    Interlocked.Exchange(ref _serverLifetimeUnregistration, null)?.Dispose();
+                }
+            }
+
+            public void UnregisterServerLifetime()
+            {
+                // Cancellation can arrive concurrently from tasks/cancel and server disposal.
+                // Once the dictionary entry and server registration are gone, the CTS is collectible.
+                Interlocked.Exchange(ref _completed, 1);
+                _serverLifetimeRegistration.Dispose();
+                Interlocked.Exchange(ref _serverLifetimeUnregistration, null)?.Dispose();
+            }
+
+            public async ValueTask DisposeAsync()
+            {
+                Cancel();
+                if (_backgroundTask is { } backgroundTask)
+                {
+                    await backgroundTask.ConfigureAwait(false);
+                }
+            }
         }
 
         private static void GateToJuly2026OrLaterProtocol(JsonRpcRequest request, string method)
