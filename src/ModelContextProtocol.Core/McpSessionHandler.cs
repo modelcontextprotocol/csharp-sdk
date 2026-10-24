@@ -578,13 +578,12 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         // extensions/io.modelcontextprotocol/tasks. Blindly overwriting the node would drop those
         // additions, so merge instead: set the standard capability fields from the session
         // capabilities while preserving any extra keys (extensions) the request envelope already had.
+        // The merge is recursive so that a session that declares its own extensions does not replace
+        // the request's "extensions" object wholesale.
         var serializedCapabilities = (JsonObject)JsonSerializer.SerializeToNode(clientCapabilities, McpJsonUtilities.JsonContext.Default.ClientCapabilities)!;
         if (metaObj[MetaKeys.ClientCapabilities] is JsonObject existingCapabilities)
         {
-            foreach (var property in serializedCapabilities.ToArray())
-            {
-                existingCapabilities[property.Key] = property.Value?.DeepClone();
-            }
+            MergeJsonObject(existingCapabilities, serializedCapabilities);
         }
         else
         {
@@ -598,6 +597,25 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         else
         {
             metaObj.Remove(MetaKeys.LogLevel);
+        }
+    }
+
+    /// <summary>
+    /// Copies every property of <paramref name="source"/> onto <paramref name="target"/>, recursing into
+    /// properties that are JSON objects on both sides so that keys present only in <paramref name="target"/> survive.
+    /// </summary>
+    private static void MergeJsonObject(JsonObject target, JsonObject source)
+    {
+        foreach (var property in source.ToArray())
+        {
+            if (target[property.Key] is JsonObject targetChild && property.Value is JsonObject sourceChild)
+            {
+                MergeJsonObject(targetChild, sourceChild);
+            }
+            else
+            {
+                target[property.Key] = property.Value?.DeepClone();
+            }
         }
     }
 
