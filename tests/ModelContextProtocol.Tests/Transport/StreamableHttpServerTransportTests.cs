@@ -7,6 +7,18 @@ namespace ModelContextProtocol.Tests.Transport;
 public class StreamableHttpServerTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     [Fact]
+    public async Task HandleGetRequestAsync_CanStartAgainAfterPreviousRequestEnds()
+    {
+        await using var transport = new StreamableHttpServerTransport()
+        {
+            SessionId = "test-session",
+        };
+
+        await RunGetRequestAndCancelAsync(transport);
+        await RunGetRequestAndCancelAsync(transport);
+    }
+
+    [Fact]
     public async Task SendMessageAsync_AfterGetRequestEnds_DoesNotWriteToResponseStream()
     {
         // Regression test for the SSE response stream being retained after the GET request
@@ -41,6 +53,18 @@ public class StreamableHttpServerTransportTests(ITestOutputHelper testOutputHelp
             TestContext.Current.CancellationToken);
 
         Assert.Equal(writeCountBeforeCancel, responseStream.WriteCount);
+    }
+
+    private static async Task RunGetRequestAndCancelAsync(StreamableHttpServerTransport transport)
+    {
+        var responseStream = new RecordingStream();
+        using var cts = new CancellationTokenSource();
+        var getTask = transport.HandleGetRequestAsync(responseStream, cts.Token);
+
+        await responseStream.FirstActivity.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => getTask);
     }
 
     private sealed class RecordingStream : Stream
