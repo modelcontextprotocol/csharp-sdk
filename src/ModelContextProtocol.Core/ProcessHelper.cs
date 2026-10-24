@@ -59,8 +59,8 @@ internal static class ProcessHelper
             }
             catch
             {
-                // Process has already exited
-                return;
+                // The process has already exited, or part of the tree couldn't be killed. Either way,
+                // still wait below for whatever is exiting, bounded by the timeout.
             }
 #endif
 
@@ -280,7 +280,8 @@ internal static class ProcessHelper
         public uint th32ParentProcessID;
         public int pcPriClassBase;
         public uint dwFlags;
-        public fixed char szExeFile[260];
+        // WCHAR[MAX_PATH]. Declared as ushort rather than char so the struct stays blittable and needs no marshalling.
+        public fixed ushort szExeFile[260];
     }
 
     [DllImport("kernel32.dll")]

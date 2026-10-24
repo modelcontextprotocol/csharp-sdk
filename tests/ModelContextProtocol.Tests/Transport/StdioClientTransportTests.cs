@@ -349,6 +349,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         // The server spawns a long-running descendant and reports its PID. On Windows the descendant sits
         // below the cmd.exe /c wrapper, and on Unix below the shell, so it's never the process the transport started.
         string pidFile = Path.Combine(Path.GetTempPath(), $"mcp-test-{Guid.NewGuid():N}.pid");
+        int descendantId = 0;
         try
         {
             StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
@@ -367,7 +368,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
 
             var sessionTransport = await transport.ConnectAsync(TestContext.Current.CancellationToken);
 
-            int descendantId = await ReadPidFileAsync(pidFile);
+            descendantId = await ReadPidFileAsync(pidFile);
             Assert.True(IsProcessRunning(descendantId), "The descendant process should be running before dispose.");
 
             await sessionTransport.DisposeAsync();
@@ -376,6 +377,12 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         }
         finally
         {
+            // Don't leave the long-running descendant behind if the test failed.
+            if (descendantId != 0)
+            {
+                try { using var descendant = Process.GetProcessById(descendantId); descendant.Kill(); } catch { }
+            }
+
             try { File.Delete(pidFile); } catch { }
         }
 
