@@ -231,7 +231,11 @@ public class ContentBlockTests
             Content =
             [
                 new TextContentBlock { Text = "Result data" },
-                new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes("base64data"), MimeType = "image/png" }
+                new ImageContentBlock
+                {
+                    Data = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("base64data"))),
+                    MimeType = "image/png",
+                }
             ],
             StructuredContent = JsonElement.Parse("""{"temperature":18,"condition":"cloudy"}"""),
             IsError = false
@@ -246,7 +250,7 @@ public class ContentBlockTests
         var textBlock = Assert.IsType<TextContentBlock>(result.Content[0]);
         Assert.Equal("Result data", textBlock.Text);
         var imageBlock = Assert.IsType<ImageContentBlock>(result.Content[1]);
-        Assert.Equal("base64data", System.Text.Encoding.UTF8.GetString(imageBlock.Data.ToArray()));
+        Assert.Equal("base64data", System.Text.Encoding.UTF8.GetString(imageBlock.DecodedData.ToArray()));
         Assert.Equal("image/png", imageBlock.MimeType);
         Assert.NotNull(result.StructuredContent);
         Assert.Equal(18, result.StructuredContent.Value.GetProperty("temperature").GetInt32());
@@ -290,6 +294,42 @@ public class ContentBlockTests
     public void AudioContentBlock_FromBytes_ThrowsForNullOrWhiteSpaceMimeType(string? mimeType)
     {
         Assert.ThrowsAny<ArgumentException>(() => AudioContentBlock.FromBytes((byte[])[1, 2, 3], mimeType!));
+    }
+
+    [Fact]
+    public void ImageContentBlock_DataSetter_ThrowsForRawUnencodedBytes()
+    {
+        // Assigning raw binary directly to Data (instead of going through FromBytes) must fail
+        // immediately and clearly, rather than silently producing a corrupt JSON payload that only
+        // fails to parse on the receiving end. Regression test for
+        // https://github.com/modelcontextprotocol/csharp-sdk/issues/1835.
+        byte[] rawBytes = new byte[900_000];
+        new Random(42).NextBytes(rawBytes);
+
+        var ex = Assert.Throws<ArgumentException>(() => new ImageContentBlock { Data = rawBytes, MimeType = "image/png" });
+        Assert.Equal("Data", ex.ParamName);
+        Assert.Contains("ImageContentBlock.FromBytes", ex.Message);
+    }
+
+    [Fact]
+    public void AudioContentBlock_DataSetter_ThrowsForRawUnencodedBytes()
+    {
+        byte[] rawBytes = new byte[900_000];
+        new Random(42).NextBytes(rawBytes);
+
+        var ex = Assert.Throws<ArgumentException>(() => new AudioContentBlock { Data = rawBytes, MimeType = "audio/wav" });
+        Assert.Equal("Data", ex.ParamName);
+        Assert.Contains("AudioContentBlock.FromBytes", ex.Message);
+    }
+
+    [Fact]
+    public void ImageContentBlock_DataSetter_ThrowsForOddLengthBase64()
+    {
+        // Well-formed base64 alphabet characters are not enough on their own; the length must also
+        // be consistent with padding rules.
+        var ex = Assert.Throws<ArgumentException>(() =>
+            new ImageContentBlock { Data = System.Text.Encoding.UTF8.GetBytes("YWJ"), MimeType = "image/png" });
+        Assert.Equal("Data", ex.ParamName);
     }
 
     [Fact]
