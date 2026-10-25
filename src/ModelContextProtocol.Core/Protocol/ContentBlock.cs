@@ -26,6 +26,13 @@ namespace ModelContextProtocol.Protocol;
 /// and other communication between clients and servers.
 /// </para>
 /// <para>
+/// When customizing nested <see cref="Icon"/> or <see cref="Protocol.Annotations"/> contracts through a
+/// caller-supplied source-generated resolver, configure the context for any enclosing type, such as
+/// <see cref="CallToolResult"/>, with <see cref="JsonSourceGenerationMode.Metadata"/>.
+/// Optimized serialization handlers can use their context's own options instead of the caller's modified
+/// nested contracts. Metadata-mode source generation preserves those customizations without requiring reflection.
+/// </para>
+/// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
 /// </para>
 /// </remarks>
