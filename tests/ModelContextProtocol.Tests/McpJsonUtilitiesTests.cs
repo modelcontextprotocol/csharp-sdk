@@ -18,6 +18,70 @@ public static class McpJsonUtilitiesTests
     }
 
     [Fact]
+    public static void DefaultOptions_MatchesPropertyNamesCaseInsensitively()
+    {
+        var options = McpJsonUtilities.DefaultOptions;
+
+        Assert.True(options.PropertyNameCaseInsensitive);
+
+        if (JsonSerializer.IsReflectionEnabledByDefault)
+        {
+            var query = JsonSerializer.Deserialize<WeatherQuery>("""{"CITY":"Hefei"}""", options);
+            Assert.Equal("Hefei", query?.City);
+        }
+    }
+
+    private sealed class WeatherQuery
+    {
+        public string? City { get; set; }
+    }
+
+    [Fact]
+    public static void ProtocolOptions_IsSingletonAndMatchesPropertyNamesCaseSensitively()
+    {
+        var options = McpJsonUtilities.ProtocolOptions;
+
+        Assert.NotNull(options);
+        Assert.True(options.IsReadOnly);
+        Assert.Same(options, McpJsonUtilities.ProtocolOptions);
+        Assert.NotSame(McpJsonUtilities.DefaultOptions, options);
+        Assert.False(options.PropertyNameCaseInsensitive);
+    }
+
+    [Fact]
+    public static void ProtocolOptions_DoesNotBindAlternatelyCasedErrorDetail()
+    {
+        const string Json = """{"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"boom","Code":1,"Message":"other"}}""";
+
+        var message = JsonSerializer.Deserialize(Json, McpJsonUtilities.ProtocolOptions.GetTypeInfo<JsonRpcMessage>());
+        var error = Assert.IsType<JsonRpcError>(message);
+        Assert.Equal(-32603, error.Error.Code);
+        Assert.Equal("boom", error.Error.Message);
+
+        // DefaultOptions keeps case-insensitive matching, so the later spelling wins there.
+        message = JsonSerializer.Deserialize(Json, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>());
+        error = Assert.IsType<JsonRpcError>(message);
+        Assert.Equal(1, error.Error.Code);
+        Assert.Equal("other", error.Error.Message);
+    }
+
+    [Fact]
+    public static void ProtocolOptions_DoesNotBindAlternatelyCasedCallToolResultFields()
+    {
+        const string Json = """{"content":[{"type":"text","text":"ok"}],"Content":[],"IsError":true}""";
+
+        var result = JsonSerializer.Deserialize(Json, McpJsonUtilities.ProtocolOptions.GetTypeInfo<CallToolResult>());
+        Assert.NotNull(result);
+        Assert.Equal("ok", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        Assert.Null(result.IsError);
+
+        result = JsonSerializer.Deserialize(Json, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+        Assert.NotNull(result);
+        Assert.Empty(result.Content);
+        Assert.True(result.IsError);
+    }
+
+    [Fact]
     public static void DefaultOptions_UseReflectionWhenEnabled()
     {
         var options = McpJsonUtilities.DefaultOptions;
