@@ -32,6 +32,12 @@ The key concepts are:
 - **UI resources** — HTML content served with the MIME type `text/html;profile=mcp-app`
 - **Tool UI metadata** — Tools declare their associated UI resource in `_meta.ui`
 
+### JSON property matching
+
+`McpApps.SerializerOptions` matches extension-defined property names case-sensitively, using `McpJsonUtilities.ProtocolOptions` together with the Apps source-generated metadata. For example, `resourceUri` and `mimeTypes` bind their respective properties, while `ResourceUri` and `MimeTypes` are ignored. When both spellings occur, the canonical spelling is used regardless of their order. This agrees with `McpApps.GetUiCapability`.
+
+This changes the behavior of applications that previously deserialized alternate-cased JSON through the Apps preset. Correctly cased JSON, serialization output, and strongly typed C# usage are unchanged. `McpJsonUtilities.DefaultOptions` continues to match user-defined data case-insensitively, and callers can still supply their own serializer options.
+
 ## Associating tools with UI resources
 
 ### Using the builder extension (recommended)

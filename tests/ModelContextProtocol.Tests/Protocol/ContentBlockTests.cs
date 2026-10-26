@@ -1,11 +1,251 @@
 using ModelContextProtocol.Protocol;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Tests.Protocol;
 
 public class ContentBlockTests
 {
+    [Fact]
+    public void NestedContracts_DirectConverterReadsRespectMutableOptionsChanges()
+    {
+        var options = new JsonSerializerOptions(McpJsonUtilities.ProtocolOptions);
+
+        Assert.Null(Read().Annotations!.Priority);
+        options.PropertyNameCaseInsensitive = true;
+        Assert.Equal((float?)0.5, Read().Annotations!.Priority);
+        Assert.False(options.IsReadOnly);
+
+        ContentBlock Read()
+        {
+            Utf8JsonReader reader = new("""{"type":"text","text":"ok","annotations":{"Priority":0.5}}"""u8);
+            Assert.True(reader.Read());
+            return Assert.IsType<TextContentBlock>(new ContentBlock.Converter().Read(ref reader, typeof(ContentBlock), options));
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public void StandaloneContext_NestedAnnotations_UsesCallerSettings(bool wrapped, bool caseInsensitive, bool alternateCasing)
+    {
+        var options = GetStandaloneOptions(wrapped, caseInsensitive);
+        string priority = alternateCasing ? "Priority" : "priority";
+        string audience = alternateCasing ? "Audience" : "audience";
+        string json = """{"type":"text","text":"ok","annotations":{"PRIORITY":0.5,"AUDIENCE":["user","assistant"]}}"""
+            .Replace("PRIORITY", priority).Replace("AUDIENCE", audience);
+
+        var block = ReadStandaloneBlock(json, wrapped, options);
+
+        Assert.NotNull(block.Annotations);
+        if (alternateCasing && !caseInsensitive)
+        {
+            Assert.Null(block.Annotations.Priority);
+            Assert.Null(block.Annotations.Audience);
+        }
+        else
+        {
+            Assert.Equal((float?)0.5, block.Annotations.Priority);
+            Assert.Equal([Role.User, Role.Assistant], block.Annotations.Audience);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public void StandaloneContext_NestedIcons_UsesCallerSettings(bool wrapped, bool caseInsensitive, bool alternateCasing)
+    {
+        var options = GetStandaloneOptions(wrapped, caseInsensitive);
+        string source = alternateCasing ? "Src" : "src";
+        string sizes = alternateCasing ? "Sizes" : "sizes";
+        string json = """{"type":"resource_link","uri":"file:///test","name":"test","icons":[{"SOURCE":"https://example.com/icon.png","SIZES":["48x48"]}]}"""
+            .Replace("SOURCE", source).Replace("SIZES", sizes);
+
+        if (alternateCasing && !caseInsensitive)
+        {
+            Assert.Throws<JsonException>(() => ReadStandaloneBlock(json, wrapped, options));
+            return;
+        }
+
+        var block = Assert.IsType<ResourceLinkBlock>(ReadStandaloneBlock(json, wrapped, options));
+        var icon = Assert.Single(Assert.IsAssignableFrom<IList<Icon>>(block.Icons));
+        Assert.Equal("https://example.com/icon.png", icon.Source);
+        Assert.Equal(["48x48"], icon.Sizes);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StandaloneContext_PrefersCallerNestedContracts(bool wrapped)
+    {
+        var options = GetCallerNestedOptions(wrapped);
+        const string Json = """{"type":"resource_link","uri":"file:///test","name":"test","icons":[{"callerSource":"https://example.com/icon.png","sizes":["48x48"]}],"annotations":{"callerPriority":0.5,"audience":["user"]}}""";
+
+        var block = Assert.IsType<ResourceLinkBlock>(ReadStandaloneBlock(Json, wrapped, options));
+
+        Assert.Equal("https://example.com/icon.png", Assert.Single(block.Icons!).Source);
+        Assert.Equal((float?)0.5, block.Annotations!.Priority);
+        Assert.Equal([Role.User], block.Annotations.Audience);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, true, true)]
+    public void StandaloneContext_RoundTripPreservesNestedContracts(bool wrapped, bool includeIcons, bool customizeContracts)
+    {
+        var options = customizeContracts
+            ? GetCallerNestedOptions(wrapped)
+            : GetStandaloneOptions(wrapped, caseInsensitive: false);
+        ContentBlock original = includeIcons
+            ? new ResourceLinkBlock
+            {
+                Uri = "file:///test",
+                Name = "test",
+                Icons = [new Icon { Source = "https://example.com/icon.png", Sizes = ["48x48"] }],
+            }
+            : new TextContentBlock { Text = "ok" };
+        original.Annotations = new Annotations { Priority = 0.5f, Audience = [Role.User] };
+
+        string json = wrapped
+            ? JsonSerializer.Serialize(new CallToolResult { Content = [original] }, options)
+            : JsonSerializer.Serialize(original, options);
+        using var document = JsonDocument.Parse(json);
+        var serializedBlock = wrapped ? document.RootElement.GetProperty("content")[0] : document.RootElement;
+        var annotations = serializedBlock.GetProperty("annotations");
+        Assert.Equal(0.5, annotations.GetProperty(customizeContracts ? "callerPriority" : "priority").GetDouble());
+        Assert.False(annotations.TryGetProperty(customizeContracts ? "priority" : "callerPriority", out _));
+        if (includeIcons)
+        {
+            var icon = serializedBlock.GetProperty("icons")[0];
+            Assert.Equal("https://example.com/icon.png", icon.GetProperty(customizeContracts ? "callerSource" : "src").GetString());
+            Assert.False(icon.TryGetProperty(customizeContracts ? "src" : "callerSource", out _));
+        }
+
+        var block = wrapped
+            ? Assert.Single(JsonSerializer.Deserialize<CallToolResult>(json, options)!.Content)
+            : Assert.IsAssignableFrom<ContentBlock>(JsonSerializer.Deserialize<ContentBlock>(json, options));
+
+        Assert.NotNull(block.Annotations);
+        Assert.Equal((float?)0.5, block.Annotations.Priority);
+        Assert.Equal([Role.User], block.Annotations.Audience);
+        if (includeIcons)
+        {
+            var icon = Assert.Single(Assert.IsType<ResourceLinkBlock>(block).Icons!);
+            Assert.Equal("https://example.com/icon.png", icon.Source);
+            Assert.Equal(["48x48"], icon.Sizes);
+        }
+        else
+        {
+            Assert.Equal("ok", Assert.IsType<TextContentBlock>(block).Text);
+        }
+    }
+
+    private static JsonSerializerOptions GetCallerNestedOptions(bool wrapped)
+    {
+        var options = wrapped
+            ? new JsonSerializerOptions(MetadataCallToolContentJsonContext.Default.Options)
+            : GetStandaloneOptions(wrapped: false, caseInsensitive: false);
+        options.TypeInfoResolver = JsonTypeInfoResolver.Combine(
+            options.TypeInfoResolver!,
+            CallerNestedContentJsonContext.Default.WithAddedModifier(typeInfo =>
+            {
+                foreach (var property in typeInfo.Properties)
+                {
+                    if (typeInfo.Type == typeof(Icon) && property.Name == "src")
+                    {
+                        property.Name = "callerSource";
+                    }
+                    else if (typeInfo.Type == typeof(Annotations) && property.Name == "priority")
+                    {
+                        property.Name = "callerPriority";
+                    }
+                }
+            }));
+        return options;
+    }
+
+    private static JsonSerializerOptions GetStandaloneOptions(bool wrapped, bool caseInsensitive) =>
+        new(wrapped ? StandaloneCallToolContentJsonContext.Default.Options : StandaloneContentJsonContext.Default.Options)
+        {
+            PropertyNameCaseInsensitive = caseInsensitive,
+        };
+
+    private static ContentBlock ReadStandaloneBlock(string json, bool wrapped, JsonSerializerOptions options) =>
+        wrapped
+            ? Assert.Single(JsonSerializer.Deserialize<CallToolResult>("{\"content\":[" + json + "]}", options)!.Content)
+            : Assert.IsAssignableFrom<ContentBlock>(JsonSerializer.Deserialize<ContentBlock>(json, options));
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    public void NestedAnnotations_UsesCallerOptions(int preset, bool alternateCasing)
+    {
+        var options = GetNestedReadOptions(preset);
+        string priority = alternateCasing ? "Priority" : "priority";
+        string json = """{"content":[{"type":"text","text":"ok","annotations":{"PRIORITY":0.5}}]}""".Replace("PRIORITY", priority);
+
+        var result = JsonSerializer.Deserialize<CallToolResult>(json, options);
+
+        var block = Assert.IsType<TextContentBlock>(Assert.Single(Assert.IsType<CallToolResult>(result).Content));
+        Assert.NotNull(block.Annotations);
+        Assert.Equal(alternateCasing && !options.PropertyNameCaseInsensitive ? null : (double?)0.5, block.Annotations.Priority);
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(2, false)]
+    [InlineData(2, true)]
+    public void NestedIcons_UsesCallerOptions(int preset, bool alternateCasing)
+    {
+        var options = GetNestedReadOptions(preset);
+        string source = alternateCasing ? "Src" : "src";
+        string json = """{"content":[{"type":"resource_link","uri":"file:///test","name":"test","icons":[{"SOURCE":"https://example.com/icon.png"}]}]}""".Replace("SOURCE", source);
+
+        if (alternateCasing && !options.PropertyNameCaseInsensitive)
+        {
+            Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<CallToolResult>(json, options));
+            return;
+        }
+
+        var result = JsonSerializer.Deserialize<CallToolResult>(json, options);
+        var block = Assert.IsType<ResourceLinkBlock>(Assert.Single(Assert.IsType<CallToolResult>(result).Content));
+        Assert.Equal("https://example.com/icon.png", Assert.Single(Assert.IsAssignableFrom<IList<Icon>>(block.Icons)).Source);
+    }
+
+    private static JsonSerializerOptions GetNestedReadOptions(int preset) => preset switch
+    {
+        0 => McpJsonUtilities.DefaultOptions,
+        1 => McpJsonUtilities.ProtocolOptions,
+        _ => new(McpJsonUtilities.ProtocolOptions) { PropertyNameCaseInsensitive = true },
+    };
+
     [Fact]
     public void ResourceLinkBlock_SerializationRoundTrip_PreservesAllProperties()
     {
@@ -563,3 +803,18 @@ public class ContentBlockTests
         Assert.Equal(expectedBase64, Encoding.UTF8.GetString(audio.Data.ToArray()));
     }
 }
+
+[JsonSerializable(typeof(ContentBlock))]
+internal partial class StandaloneContentJsonContext : JsonSerializerContext;
+
+[JsonSerializable(typeof(CallToolResult))]
+internal partial class StandaloneCallToolContentJsonContext : JsonSerializerContext;
+
+// The enclosing context must use metadata mode when nested contracts are customized.
+[JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+[JsonSerializable(typeof(CallToolResult))]
+internal partial class MetadataCallToolContentJsonContext : JsonSerializerContext;
+
+[JsonSerializable(typeof(Icon))]
+[JsonSerializable(typeof(Annotations))]
+internal partial class CallerNestedContentJsonContext : JsonSerializerContext;

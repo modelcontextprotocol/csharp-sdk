@@ -5,8 +5,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore.Authentication;
+using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -46,7 +48,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -74,7 +76,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(callbackContext);
@@ -116,7 +118,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(receivedAuthorizationUri);
@@ -143,7 +145,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("does not match the expected issuer", ex.Message);
@@ -188,7 +190,7 @@ public class AuthTests : OAuthTestBase
             return HandleAuthorizationUrlAsync(context, cancellationToken);
         });
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(requestedState);
@@ -203,7 +205,7 @@ public class AuthTests : OAuthTestBase
         await using var transport = CreateOAuthTransport(
             (_, _) => Task.FromResult<ModelContextProtocol.Authentication.AuthorizationResult?>(new() { Code = "unused-code" }));
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("did not include the required state parameter", ex.Message);
@@ -218,7 +220,7 @@ public class AuthTests : OAuthTestBase
             (_, _) => Task.FromResult<ModelContextProtocol.Authentication.AuthorizationResult?>(
                 new() { Code = "unused-code", State = "unexpected-state" }));
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("state did not match", ex.Message);
@@ -239,7 +241,7 @@ public class AuthTests : OAuthTestBase
                 return HandleAuthorizationUrlAsync(context, cancellationToken);
             });
 
-            await using var client = await McpClient.CreateAsync(
+            await using var client = await TestMcpClient.CreateAsync(
                 transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         }
 
@@ -257,7 +259,7 @@ public class AuthTests : OAuthTestBase
             Endpoint = new(McpServerUrl),
         }, HttpClient, LoggerFactory);
 
-        var httpEx = await Assert.ThrowsAsync<HttpRequestException>(async () => await McpClient.CreateAsync(
+        var httpEx = await Assert.ThrowsAsync<HttpRequestException>(async () => await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Equal(HttpStatusCode.Unauthorized, httpEx.StatusCode);
@@ -281,7 +283,7 @@ public class AuthTests : OAuthTestBase
         }, HttpClient, LoggerFactory);
 
         // The EqualException is thrown by HandleAuthorizationUrlAsync when the /authorize request gets a 400
-        var equalEx = await Assert.ThrowsAsync<EqualException>(async () => await McpClient.CreateAsync(
+        var equalEx = await Assert.ThrowsAsync<EqualException>(async () => await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
@@ -305,7 +307,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("native", TestOAuthServer.LastApplicationType);
@@ -330,7 +332,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("web", TestOAuthServer.LastApplicationType);
@@ -356,7 +358,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -378,7 +380,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         // No discovery endpoint advertises PKCE, so metadata discovery is exhausted. The precise PKCE reason
@@ -406,7 +408,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains(
@@ -435,7 +437,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -466,7 +468,7 @@ public class AuthTests : OAuthTestBase
         }, HttpClient, LoggerFactory);
 
         // Should succeed via dynamic client registration.
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -493,7 +495,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -515,7 +517,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.StartsWith("Failed to handle unauthorized response", ex.Message);
@@ -579,7 +581,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
@@ -614,7 +616,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(lastAuthorizationUri?.Query);
@@ -644,7 +646,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => McpClient.CreateAsync(
+        await Assert.ThrowsAsync<ArgumentException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
@@ -665,7 +667,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -687,7 +689,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -720,7 +722,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         var requestedScopeSet = new HashSet<string>(requestedScope!.Split(' '));
@@ -773,7 +775,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(challengeScopes, requestedScope);
@@ -868,7 +870,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("mcp:tools", requestedScope);
@@ -973,7 +975,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         // Initial auth gets "mcp:tools" from protected resource metadata
@@ -1092,7 +1094,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         // Initial connect requests "mcp:tools" from protected resource metadata.
@@ -1187,7 +1189,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         // Initial auth gets "mcp:tools" from protected resource metadata.
@@ -1282,7 +1284,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         // Initial auth already requests "mcp:tools" from protected resource metadata.
@@ -1325,7 +1327,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
@@ -1364,7 +1366,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("Resource URI in metadata", ex.Message);
@@ -1392,7 +1394,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         var requests = TestOAuthServer.MetadataRequests.ToArray();
@@ -1425,7 +1427,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(
@@ -1446,7 +1448,7 @@ public class AuthTests : OAuthTestBase
         await using var app = await StartMcpServerAsync();
         await using var transport = CreateOAuthTransport();
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("does not match the expected issuer", ex.Message);
@@ -1461,7 +1463,7 @@ public class AuthTests : OAuthTestBase
         await using var app = await StartMcpServerAsync();
         await using var transport = CreateOAuthTransport();
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("did not provide the required issuer", ex.Message);
@@ -1476,7 +1478,7 @@ public class AuthTests : OAuthTestBase
 
         await using var app = await StartMcpServerAsync();
         await using var transport = CreateOAuthTransport();
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -1495,7 +1497,7 @@ public class AuthTests : OAuthTestBase
         await using var app = await StartMcpServerAsync();
         await using var transport = CreateOAuthTransport();
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains(expectedMessage, ex.Message);
@@ -1506,8 +1508,12 @@ public class AuthTests : OAuthTestBase
     {
         const string resourcePath = "/mcp";
         List<string> wellKnownRequests = [];
+        var metadataGate = new AsyncGate();
+        var timeProvider = new FakeTimeProvider();
+        var probeBudget = TimeSpan.FromSeconds(5);
 
         Builder.Services.Configure<AuthenticationOptions>(options => options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme);
+        Builder.Services.Configure<HttpServerTransportOptions>(options => options.Stateless = true);
         await using var app = Builder.Build();
 
         var metadata = new ProtectedResourceMetadata
@@ -1523,6 +1529,7 @@ public class AuthTests : OAuthTestBase
                 wellKnownRequests.Add(context.Request.Path);
                 if (remaining.HasValue)
                 {
+                    await metadataGate.WaitAsync(context.RequestAborted);
                     context.Response.StatusCode = StatusCodes.Status404NotFound;
                     return;
                 }
@@ -1552,9 +1559,16 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
-            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var connecting = McpClient.CreateAsync(
+            transport, new() { TimeProvider = timeProvider, DiscoverProbeTimeout = probeBudget }, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        await metadataGate.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(probeBudget * 2);
+        Assert.False(metadataGate.Token.IsCancellationRequested);
+        metadataGate.Release.SetResult();
+        await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
         Assert.Equal(
             [
                 $"/.well-known/oauth-protected-resource{resourcePath}",
@@ -1609,7 +1623,7 @@ public class AuthTests : OAuthTestBase
 
         var ex = await Assert.ThrowsAsync<McpException>(async () =>
         {
-            await McpClient.CreateAsync(
+            await TestMcpClient.CreateAsync(
                 transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
         });
 
@@ -1654,7 +1668,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -1697,7 +1711,7 @@ public class AuthTests : OAuthTestBase
         }, HttpClient, LoggerFactory);
 
         // This should fail because the resource URI doesn't match
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("does not match", ex.Message);
@@ -1744,7 +1758,7 @@ public class AuthTests : OAuthTestBase
 
         // This should fail because the resource URI is a different path on the same host,
         // which is neither an exact match nor the authority-only base URL.
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("does not match", ex.Message);
@@ -1791,7 +1805,7 @@ public class AuthTests : OAuthTestBase
 
         // This should succeed - the client should not add a trailing slash
         // If the client incorrectly added a trailing slash, ValidResources would reject it
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -1943,7 +1957,7 @@ public class AuthTests : OAuthTestBase
 
         // This should succeed with the explicitly configured trailing slash
         // If the client incorrectly trimmed the slash, ValidResources would reject it
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -2058,7 +2072,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -2160,7 +2174,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
     }
 
@@ -2231,7 +2245,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
         // The specific PKCE failure reason is surfaced rather than a generic discovery failure or a
@@ -2264,7 +2278,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(requestedScope);
@@ -2296,7 +2310,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(requestedScope);
@@ -2335,7 +2349,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(requestedScope);
@@ -2373,7 +2387,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("mcp:tools", requestedScope);
@@ -2404,7 +2418,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotNull(requestedScope);
@@ -2441,7 +2455,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Null(capturedInput);
@@ -2471,7 +2485,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(scopePresent);
@@ -2501,7 +2515,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(scopePresent);
@@ -2544,7 +2558,7 @@ public class AuthTests : OAuthTestBase
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("mcp:tools", TestOAuthServer.LastRegistrationScope);

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -156,7 +157,7 @@ public partial class McpServerBuilderExtensionsToolsTests : ClientServerTestBase
             await using var server = McpServer.Create(transport, options, loggerFactory, ServiceProvider);
             var serverRunTask = server.RunAsync(TestContext.Current.CancellationToken);
 
-            await using (var client = await McpClient.CreateAsync(
+            await using (var client = await TestMcpClient.CreateAsync(
                  new StreamClientTransport(
                     serverInput: stdinPipe.Writer.AsStream(),
                     serverOutput: stdoutPipe.Reader.AsStream(),
