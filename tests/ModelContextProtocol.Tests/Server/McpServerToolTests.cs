@@ -1353,6 +1353,54 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RepairsMatchingOneOfBranchWithoutOtherCandidates()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""
+            {
+              "type": "object",
+              "oneOf": [
+                {
+                  "properties": {
+                    "tag": { "const": "0" },
+                    "child": {
+                      "type": "object",
+                      "properties": { "note": { "type": ["string", "null"] } },
+                      "required": ["note"]
+                    }
+                  },
+                  "required": ["tag", "child"],
+                  "additionalProperties": false
+                },
+                {
+                  "properties": {
+                    "tag": { "const": "1" },
+                    "other": { "type": ["string", "null"] }
+                  },
+                  "required": ["tag", "other"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+            """).RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new BranchSpecificOneOfRecoveryOutput { Tag = "0", Child = default, Other = null },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal("0", result.StructuredContent.Value.GetProperty("tag").GetString());
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("child").GetProperty("note").ValueKind);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("other", out _));
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_ExplicitSchema_RecoversIntegerDictionaryKey()
     {
         JsonElement outputSchema = JsonDocument.Parse("""
@@ -2179,6 +2227,21 @@ public partial class McpServerToolTests
         public NestedOneOfRecoveryChild First { get; init; }
 
         public NestedOneOfRecoveryChild Second { get; init; }
+    }
+
+    private sealed class BranchSpecificOneOfRecoveryOutput
+    {
+        public required string Tag { get; init; }
+
+        public BranchSpecificOneOfRecoveryChild Child { get; init; }
+
+        public string? Other { get; init; }
+    }
+
+    private struct BranchSpecificOneOfRecoveryChild
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Note { get; init; }
     }
 
     private sealed class NestedDefaultedStructuredOutput
