@@ -1,6 +1,7 @@
 using ModelContextProtocol.Protocol;
 using System.Buffers;
 using System.Net.ServerSentEvents;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -45,14 +46,14 @@ internal static class McpSseEventWriterExtensions
 
         if (_jsonWriter is null)
         {
-            _jsonWriter = new Utf8JsonWriter(writer);
+            _jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
         }
         else
         {
             _jsonWriter.Reset(writer);
         }
 
-        JsonSerializer.Serialize(_jsonWriter, item.Data, McpJsonUtilities.JsonContext.Default.JsonRpcMessage!);
+        JsonSerializer.Serialize(_jsonWriter, item.Data, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>());
     }
 
     /// <summary>

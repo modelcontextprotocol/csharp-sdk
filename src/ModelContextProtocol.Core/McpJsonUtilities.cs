@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Protocol;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -78,6 +79,13 @@ public static partial class McpJsonUtilities
         {
             options.Converters.Add(new JsonStringEnumConverter());
         }
+
+        // MCP payloads are read by LLMs, not embedded into HTML: keep non-ASCII as raw UTF-8.
+        // The conservative default encoder turns every non-ASCII char into a six-character
+        // escape sequence, costing x2-3 tokens on Cyrillic/CJK tool results. Escaping is
+        // semantically neutral in JSON; this matches the MEAI (AIJsonUtilities) and ASP.NET
+        // Core defaults.
+        options.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 
         options.MakeReadOnly();
         return options;
