@@ -68,6 +68,41 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task BindsNestedArgumentPropertiesCaseInsensitively()
+    {
+        Mock<McpServer> mockServer = new();
+
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions);
+        options.TypeInfoResolverChain.Add(JsonContext2.Default);
+        McpServerTool tool = McpServerTool.Create(
+            (WeatherRequest request) => $"{request.Location?.City}/{request.Days}",
+            new() { SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(mockServer.Object, CreateTestJsonRpcRequest(), new()
+            {
+                Name = "",
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["request"] = JsonDocument.Parse("""{"LOCATION":{"CITY":"Hefei"},"Days":3}""").RootElement,
+                },
+            }),
+            TestContext.Current.CancellationToken);
+        Assert.Equal("Hefei/3", (result.Content[0] as TextContentBlock)?.Text);
+    }
+
+    public sealed class WeatherRequest
+    {
+        public WeatherLocation? Location { get; set; }
+        public int Days { get; set; }
+    }
+
+    public sealed class WeatherLocation
+    {
+        public string? City { get; set; }
+    }
+
+    [Fact]
     public async Task SupportsCtorInjection()
     {
         MyService expectedMyService = new();
@@ -2501,6 +2536,7 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(int?))]
     [JsonSerializable(typeof(DateTimeOffset?))]
     [JsonSerializable(typeof(Person))]
+    [JsonSerializable(typeof(WeatherRequest))]
     partial class JsonContext2 : JsonSerializerContext;
 
     // ===== x-mcp-header tests =====
