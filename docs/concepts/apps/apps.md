@@ -285,3 +285,5 @@ MCP Apps types use source-generated JSON serialization for Native AOT compatibil
 var json = JsonSerializer.Serialize(toolMeta, McpApps.SerializerOptions);
 var deserialized = JsonSerializer.Deserialize<McpUiToolMeta>(json, McpApps.SerializerOptions);
 ```
+
+App-rendered elicitation is defined by the [MCP Apps extension draft](https://github.com/modelcontextprotocol/ext-apps/pull/733). It uses existing core elicitation and capability extension points and requires no core protocol change.
