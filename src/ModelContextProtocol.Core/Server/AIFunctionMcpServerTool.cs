@@ -755,10 +755,19 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         if (originalResult is not null and not JsonElement and not JsonNode &&
             AIFunction.JsonSerializerOptions.DefaultIgnoreCondition is not JsonIgnoreCondition.Never)
         {
-            JsonElement completeResult = JsonSerializer.SerializeToElement(
-                originalResult, _serializerTypeInfoIncludingDefaults.Value);
-            resultNodeIncludingDefaults = JsonSerializer.SerializeToNode(
-                completeResult, McpJsonUtilities.JsonContext.Default.JsonElement);
+            try
+            {
+                JsonElement completeResult = JsonSerializer.SerializeToElement(
+                    originalResult, _serializerTypeInfoIncludingDefaults.Value);
+                resultNodeIncludingDefaults = JsonSerializer.SerializeToNode(
+                    completeResult, McpJsonUtilities.JsonContext.Default.JsonElement);
+            }
+            catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException)
+            {
+                // A value omitted from the actual result may fail when the ignore policy is
+                // relaxed. Required members can still be recovered individually from metadata.
+                resultNodeIncludingDefaults = null;
+            }
         }
 
         JsonNode? repairedResult = RepairStructuredResult(
@@ -795,39 +804,145 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        JsonNode workingResult = resultNode.DeepClone();
-        for (int pass = 0; pass < 32; pass++)
-        {
-            Dictionary<string, SchemaObjectContext> contexts = new(StringComparer.Ordinal);
-            CollectSchemaContexts(
-                workingResult,
-                schemaNode,
-                schemaNode,
-                string.Empty,
-                contexts,
-                new HashSet<string>(StringComparer.Ordinal));
+        return TryRepairStructuredResult(
+            resultNode,
+            resultNodeIncludingDefaults,
+            schemaNode,
+            schema,
+            originalResult,
+            serializerOptions,
+            depth: 0,
+            new RepairSearchState());
+    }
 
-            List<RepairCandidate> candidates = CreateRepairCandidates(
-                workingResult,
+    private static JsonNode? TryRepairStructuredResult(
+        JsonNode resultNode,
+        JsonNode? resultNodeIncludingDefaults,
+        JsonNode schemaNode,
+        JsonSchema schema,
+        object? originalResult,
+        JsonSerializerOptions serializerOptions,
+        int depth,
+        RepairSearchState searchState)
+    {
+        if (IsSchemaValid(schema, resultNode))
+        {
+            return resultNode.DeepClone();
+        }
+
+        const int maxRepairDepth = 32;
+        const int maxCandidateSetEvaluations = 256;
+        if (depth >= maxRepairDepth || searchState.CandidateSetEvaluations >= maxCandidateSetEvaluations ||
+            !searchState.VisitedStates.Add(resultNode.ToJsonString()))
+        {
+            return null;
+        }
+
+        Dictionary<string, SchemaObjectContext> contexts = new(StringComparer.Ordinal);
+        CollectSchemaContexts(
+            resultNode,
+            schemaNode,
+            schemaNode,
+            string.Empty,
+            contexts,
+            new HashSet<string>(StringComparer.Ordinal));
+
+        List<RepairCandidate> candidates = CreateRepairCandidates(
+            resultNode,
+            resultNodeIncludingDefaults,
+            originalResult,
+            serializerOptions,
+            contexts);
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        bool[] included = Enumerable.Repeat(true, candidates.Count).ToArray();
+        string originalJson = resultNode.ToJsonString();
+        JsonNode? repairedResult = null;
+
+        bool TryCurrentSet()
+        {
+            if (searchState.CandidateSetEvaluations >= maxCandidateSetEvaluations)
+            {
+                return false;
+            }
+
+            searchState.CandidateSetEvaluations++;
+            JsonNode candidateResult = resultNode.DeepClone();
+            bool hasIncludedCandidate = false;
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (included[i])
+                {
+                    ApplyRepairCandidate(candidateResult, candidates[i]);
+                    hasIncludedCandidate = true;
+                }
+            }
+
+            if (!hasIncludedCandidate || string.Equals(candidateResult.ToJsonString(), originalJson, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            repairedResult = TryRepairStructuredResult(
+                candidateResult,
                 resultNodeIncludingDefaults,
+                schemaNode,
+                schema,
                 originalResult,
                 serializerOptions,
-                contexts);
+                depth + 1,
+                searchState);
+            return repairedResult is not null;
+        }
 
-            if (candidates.Count == 0 || !TryFindCandidateSet(schema, workingResult, candidates, out JsonNode? repaired))
+        bool SearchInclusions(int nextIndex, int remaining)
+        {
+            if (remaining == 0)
             {
-                return null;
+                return TryCurrentSet();
             }
 
-            if (repaired is null)
+            for (int i = nextIndex; i <= candidates.Count - remaining; i++)
             {
-                return null;
+                included[i] = true;
+                if (SearchInclusions(i + 1, remaining - 1))
+                {
+                    return true;
+                }
+
+                included[i] = false;
+                if (searchState.CandidateSetEvaluations >= maxCandidateSetEvaluations)
+                {
+                    return false;
+                }
             }
 
-            workingResult = repaired;
-            if (IsSchemaValid(schema, workingResult))
+            return false;
+        }
+
+        if (TryCurrentSet())
+        {
+            return repairedResult;
+        }
+
+        for (int i = 0; i < included.Length; i++)
+        {
+            included[i] = false;
+        }
+
+        for (int includedCount = 1; includedCount < candidates.Count; includedCount++)
+        {
+            if (SearchInclusions(0, includedCount))
             {
-                return workingResult;
+                return repairedResult;
+            }
+
+            if (searchState.CandidateSetEvaluations >= maxCandidateSetEvaluations)
+            {
+                break;
             }
         }
 
@@ -929,115 +1044,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return candidates;
     }
 
-    private static bool TryFindCandidateSet(
-        JsonSchema schema,
-        JsonNode originalResult,
-        IReadOnlyList<RepairCandidate> candidates,
-        out JsonNode? repairedResult)
-    {
-        repairedResult = null;
-        if (candidates.Count == 0)
-        {
-            return false;
-        }
-
-        // Prefer the full repair first, then small subsets so discriminated unions do not
-        // spend the evaluation budget excluding unrelated branch properties.
-        const int maxCandidateSetEvaluations = 256;
-        bool[] included = Enumerable.Repeat(true, candidates.Count).ToArray();
-        int evaluations = 0;
-        JsonNode? matchingResult = null;
-
-        bool TryCurrentSet()
-        {
-            if (evaluations >= maxCandidateSetEvaluations)
-            {
-                return false;
-            }
-
-            evaluations++;
-            JsonNode candidateResult = originalResult.DeepClone();
-            bool hasIncludedCandidate = false;
-            for (int i = 0; i < candidates.Count; i++)
-            {
-                if (included[i])
-                {
-                    ApplyRepairCandidate(candidateResult, candidates[i]);
-                    hasIncludedCandidate = true;
-                }
-            }
-
-            if (!hasIncludedCandidate || !IsSchemaValid(schema, candidateResult))
-            {
-                return false;
-            }
-
-            matchingResult = candidateResult;
-            return true;
-        }
-
-        bool SearchInclusions(int nextIndex, int remaining)
-        {
-            if (remaining == 0)
-            {
-                return TryCurrentSet();
-            }
-
-            for (int i = nextIndex; i <= candidates.Count - remaining; i++)
-            {
-                included[i] = true;
-                if (SearchInclusions(i + 1, remaining - 1))
-                {
-                    return true;
-                }
-
-                included[i] = false;
-                if (evaluations >= maxCandidateSetEvaluations)
-                {
-                    return false;
-                }
-            }
-
-            return false;
-        }
-
-        if (TryCurrentSet())
-        {
-            repairedResult = matchingResult;
-            return true;
-        }
-
-        for (int i = 0; i < included.Length; i++)
-        {
-            included[i] = false;
-        }
-
-        for (int includedCount = 1; includedCount < candidates.Count; includedCount++)
-        {
-            if (SearchInclusions(0, includedCount))
-            {
-                repairedResult = matchingResult;
-                return true;
-            }
-
-            if (evaluations >= maxCandidateSetEvaluations)
-            {
-                break;
-            }
-        }
-
-        // A restored parent may expose required descendants on the next pass. Only
-        // source-backed candidates are created, and the caller publishes a result only
-        // after the complete schema validates.
-        repairedResult = originalResult.DeepClone();
-        foreach (RepairCandidate candidate in candidates)
-        {
-            ApplyRepairCandidate(repairedResult, candidate);
-        }
-
-        return true;
-    }
-
     private static void ApplyRepairCandidate(JsonNode resultNode, RepairCandidate candidate)
     {
         if (TryGetNodeAtPath(resultNode, candidate.ParentPath, out JsonNode? parentNode) && parentNode is JsonObject parentObject)
@@ -1052,6 +1058,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     private sealed record RepairCandidate(string ParentPath, string PropertyName, JsonNode? Value);
+
+    private sealed class RepairSearchState
+    {
+        internal int CandidateSetEvaluations { get; set; }
+
+        internal HashSet<string> VisitedStates { get; } = new(StringComparer.Ordinal);
+    }
 
     private static void CollectSchemaContexts(
         JsonNode? instanceNode,
@@ -1184,11 +1197,29 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         if (instanceNode is JsonObject dependencyInstance &&
+            schemaObject["dependentRequired"] is JsonObject dependentRequired)
+        {
+            foreach (KeyValuePair<string, JsonNode?> dependency in dependentRequired)
+            {
+                if (dependencyInstance.ContainsKey(dependency.Key) && dependency.Value is JsonArray requiredProperties)
+                {
+                    foreach (JsonNode? requiredProperty in requiredProperties)
+                    {
+                        if (requiredProperty?.GetValue<string>() is string propertyName)
+                        {
+                            context.Required.Add(propertyName);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (instanceNode is JsonObject dependencyInstanceForSchemas &&
             schemaObject["dependentSchemas"] is JsonObject dependentSchemas)
         {
             foreach (KeyValuePair<string, JsonNode?> dependentSchema in dependentSchemas)
             {
-                if (dependentSchema.Value is not null && dependencyInstance.ContainsKey(dependentSchema.Key))
+                if (dependentSchema.Value is not null && dependencyInstanceForSchemas.ContainsKey(dependentSchema.Key))
                 {
                     CollectSchemaContexts(
                         instanceNode,
@@ -1314,7 +1345,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         if (!WasOmittedBySupportedIgnoreCondition(
-                sourceValue, propertyInfo, serializerOptions))
+                sourceParent, sourceValue, propertyInfo, serializerOptions))
         {
             return false;
         }
@@ -1324,6 +1355,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     private static bool WasOmittedBySupportedIgnoreCondition(
+        object sourceParent,
         object? value,
         JsonPropertyInfo? propertyInfo,
         JsonSerializerOptions serializerOptions)
@@ -1334,18 +1366,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 .FirstOrDefault()
             : null;
 
-        bool omittedByMemberIgnore = ignoreAttribute?.Condition switch
+        if (propertyInfo?.ShouldSerialize is { } shouldSerialize &&
+            !IsJsonIgnoreConditionPredicate(shouldSerialize) &&
+            !shouldSerialize(sourceParent, value))
         {
-            JsonIgnoreCondition.WhenWritingNull => value is null,
-            JsonIgnoreCondition.WhenWritingDefault =>
-                propertyInfo is not null && IsDefaultValue(value, propertyInfo.PropertyType),
-            _ => false,
-        };
-
-        if (propertyInfo?.ShouldSerialize is not null && !omittedByMemberIgnore)
-        {
-            // A caller-provided predicate may enforce redaction. Its result must not be
-            // overridden by recovering a value that the member ignore rule would serialize.
             return false;
         }
 
@@ -1353,14 +1377,22 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return ignoreCondition switch
         {
             JsonIgnoreCondition.WhenWritingNull => value is null,
-            // Global default-ignore omissions are present in the full serialization with
-            // DefaultIgnoreCondition.Never. Only member-level ignores need source recovery.
             JsonIgnoreCondition.WhenWritingDefault =>
-                ignoreAttribute is not null &&
                 propertyInfo is not null &&
                 IsDefaultValue(value, propertyInfo.PropertyType),
             _ => false,
         };
+    }
+
+    // System.Text.Json uses this generated delegate for JsonIgnore conditions; evaluate those from metadata instead.
+    private static bool IsJsonIgnoreConditionPredicate(Delegate predicate)
+    {
+        Type? generatedClosureType = predicate.Method.DeclaringType;
+        Type? propertyInfoType = generatedClosureType?.DeclaringType;
+
+        return predicate.Method.Name.StartsWith("<SetShouldSerialize>b__", StringComparison.Ordinal) &&
+            propertyInfoType?.Assembly == typeof(JsonPropertyInfo).Assembly &&
+            string.Equals(propertyInfoType.Name, "JsonPropertyInfo`1", StringComparison.Ordinal);
     }
 
     private static bool IsDefaultValue(object? value, Type valueType)
@@ -1370,8 +1402,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return true;
         }
 
-        Type effectiveType = Nullable.GetUnderlyingType(valueType) ?? valueType;
-        return effectiveType.IsValueType && value.Equals(CreateDefaultValue(effectiveType));
+        return Nullable.GetUnderlyingType(valueType) is null &&
+            valueType.IsValueType &&
+            value.Equals(CreateDefaultValue(valueType));
     }
 
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
