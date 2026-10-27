@@ -79,6 +79,8 @@ public class DelegatingToolOutputSchemaTests
         {
             var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
             Assert.Equal("integer", listed.ProtocolTool.OutputSchema!.Value.GetProperty("type").GetString());
+            var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(72, result.StructuredContent!.Value.GetInt32());
         });
     }
 
@@ -91,8 +93,8 @@ public class DelegatingToolOutputSchemaTests
     [InlineData("2026-07-28", true)]
     public async Task ListTools_DelegatingTool_HandlesOptionalOutputSchema(string protocolVersion, bool useStructuredContent)
     {
-        JsonElement nullableSchema = JsonSerializer.SerializeToElement(new { type = new[] { "object", "null" } });
-        McpServerTool inner = McpServerTool.Create(() => JsonSerializer.SerializeToElement(new { name = "test" }), new()
+        JsonElement nullableSchema = ParseJson("""{"type":["object","null"]}""");
+        McpServerTool inner = McpServerTool.Create(() => ParseJson("""{"name":"test"}"""), new()
         {
             Name = "optional",
             UseStructuredContent = useStructuredContent,
@@ -123,6 +125,12 @@ public class DelegatingToolOutputSchemaTests
                 Assert.Equal(JsonValueKind.Array, inner.ProtocolTool.OutputSchema!.Value.GetProperty("type").ValueKind);
             }
         });
+    }
+
+    private static JsonElement ParseJson(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
     }
 
     private static async Task WithClientAsync(McpServerTool tool, string protocolVersion, Func<McpClient, Task> action)
@@ -158,7 +166,7 @@ public class DelegatingToolOutputSchemaTests
             Name = inner.ProtocolTool.Name,
             Description = "Wrapped count",
             InputSchema = inner.ProtocolTool.InputSchema,
-            OutputSchema = JsonSerializer.SerializeToElement(new { type = "integer", minimum = 0 }),
+            OutputSchema = ParseJson("""{"type":"integer","minimum":0}"""),
         };
     }
 
@@ -169,11 +177,11 @@ public class DelegatingToolOutputSchemaTests
         public override Tool ProtocolTool { get; } = new()
         {
             Name = "custom",
-            InputSchema = JsonSerializer.SerializeToElement(new { type = "object" }),
-            OutputSchema = JsonSerializer.SerializeToElement(new { type = "integer" }),
+            InputSchema = ParseJson("""{"type":"object"}"""),
+            OutputSchema = ParseJson("""{"type":"integer"}"""),
         };
 
         public override ValueTask<CallToolResult> InvokeAsync(RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default) =>
-            new(new CallToolResult { StructuredContent = JsonSerializer.SerializeToElement(72) });
+            new(new CallToolResult { StructuredContent = ParseJson("72") });
     }
 }
