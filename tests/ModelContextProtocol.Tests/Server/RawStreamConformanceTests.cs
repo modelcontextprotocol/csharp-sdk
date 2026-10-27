@@ -1,6 +1,7 @@
 #if !NET472
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
@@ -165,15 +166,23 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
         Assert.Null(result["_meta"]?[MetaKeys.ServerInfo]);
     }
 
-    [Fact]
-    public async Task MixedSequence_FailedDiscoverProbe_Then_Initialize_Then_ToolsCall_AllSucceed()
+    [Theory]
+    [InlineData("9999-99-99")]
+    [InlineData(McpProtocolVersions.July2026ProtocolVersion)]
+    public async Task DiscoverProbe_Then_Initialize_Then_ToolsCall_AllSucceed(string probeVersion)
     {
-        // Dual-path servers must accept an initialize-handshake fallback after a 2026-07-28 probe fails.
-        // This is the sequence a permissive client emits against an unknown server: the failed probe never
-        // establishes a version, so initialize is still available.
-        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment("9999-99-99") + "}}");
+        // A client can time out before receiving even a successful discovery response. Process the probe
+        // first to deterministically exercise the ordering that used to reject its initialize fallback.
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment(probeVersion) + "}}");
         var discover = await ReadAsync();
-        Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, discover["error"]!["code"]!.GetValue<int>());
+        if (probeVersion == McpProtocolVersions.July2026ProtocolVersion)
+        {
+            Assert.NotNull(discover["result"]);
+        }
+        else
+        {
+            Assert.Equal((int)McpErrorCode.UnsupportedProtocolVersion, discover["error"]!["code"]!.GetValue<int>());
+        }
 
         await SendAsync(@"{""jsonrpc"":""2.0"",""id"":2,""method"":""initialize"",""params"":{""protocolVersion"":""2025-11-25"",""capabilities"":{},""clientInfo"":{""name"":""initialize-handshake"",""version"":""1.0""}}}");
         var init = await ReadAsync();
@@ -188,14 +197,20 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
     }
 
     [Theory]
-    [InlineData("tools/list")]
-    [InlineData("server/discover")]
-    public async Task Initialize_AfterEstablishedModernRequest_IsRejected(string establishingMethod)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Initialize_AfterEstablishedModernRequest_IsRejected(bool discoverFirst)
     {
+        if (discoverFirst)
+        {
+            await SendAsync(@"{""jsonrpc"":""2.0"",""id"":0,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}");
+            Assert.NotNull((await ReadAsync())["result"]);
+        }
+
         // A modern request locks the session's protocol version. initialize declares nothing on stdio, so
         // without this gate it would force the session back to a handshake version and make the modern
         // _meta on in-flight requests opaque.
-        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""" + establishingMethod + @""",""params"":{" + July2026ProtocolMetaFragment() + "}}");
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""tools/list"",""params"":{" + July2026ProtocolMetaFragment() + "}}");
         var established = await ReadAsync();
         Assert.NotNull(established["result"]);
 
@@ -209,6 +224,27 @@ public sealed class RawStreamConformanceTests : LoggedTest, IAsyncDisposable
             July2026ProtocolMetaFragment() + "}}");
         var call = await ReadAsync();
         Assert.Equal("echo:still-modern", call["result"]!["content"]![0]!["text"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task DiscoverProbe_Then_ToolListChanged_IsNotBroadcast_BeforeProtocolCommits()
+    {
+        // An uncommitted discovery probe is not an initialized legacy client: the session-wide
+        // notifications/tools/list_changed broadcast those clients get must not fire for a session that
+        // has not yet negotiated any protocol version, even though the probe itself succeeded.
+        await SendAsync(@"{""jsonrpc"":""2.0"",""id"":1,""method"":""server/discover"",""params"":{" + July2026ProtocolMetaFragment() + "}}");
+        Assert.NotNull((await ReadAsync())["result"]);
+
+        var toolCollection = _services.GetRequiredService<IOptions<McpServerOptions>>().Value.ToolCollection!;
+        toolCollection.Add(McpServerTool.Create((string text) => $"added:{text}", new() { Name = "added" }));
+
+        // The stream carries messages in order, so if the broadcast had fired it would be the next line
+        // read, ahead of this request's own response.
+        await SendAsync(
+            @"{""jsonrpc"":""2.0"",""id"":2,""method"":""tools/call"",""params"":{""name"":""echo"",""arguments"":{""text"":""x""}," +
+            July2026ProtocolMetaFragment() + "}}");
+        var next = await ReadAsync();
+        Assert.Equal(2, next["id"]!.GetValue<int>());
     }
 }
 #endif
