@@ -282,7 +282,10 @@ internal sealed partial class McpServerImpl : McpServer
 
             ProjectModernMetadata(request, meta!, metadataProtocolVersion);
 
-            if (!protocolVersionAlreadyEstablished)
+            // Discovery is a probe, not a commitment to use the modern protocol. A client may have
+            // timed out waiting for this response and already sent an initialize fallback on the same
+            // stream. Only an ordinary modern request should prevent that fallback.
+            if (!protocolVersionAlreadyEstablished && request.Method != RequestMethods.ServerDiscover)
             {
                 SetNegotiatedProtocolVersion(metadataProtocolVersion);
             }
@@ -389,7 +392,7 @@ internal sealed partial class McpServerImpl : McpServer
     private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
         // Modern revisions removed initialize. An established modern session is authoritative even when
-        // the new request has no version header; a failed discovery probe does not establish a version.
+        // the new request has no version header; a discovery probe does not establish a version.
         string? modernProtocolVersion =
             McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion) ? request.Context!.ProtocolVersion :
             McpProtocolVersions.RequiresPerRequestMetadata(_negotiatedProtocolVersion) ? _negotiatedProtocolVersion :
@@ -946,7 +949,8 @@ internal sealed partial class McpServerImpl : McpServer
         // Initialize-handshake clients never open a subscriptions/listen stream, so they keep the session-wide broadcast.
         // subscriptions/listen is a SEP-2575 feature, so clients on the 2026-07-28 or later revision instead get
         // a fan-out limited to the notification types they explicitly subscribed to.
-        if (!IsJuly2026OrLaterProtocol())
+        // An uncommitted discovery probe is not an initialized legacy client.
+        if (McpProtocolVersions.SupportsInitializeHandshake(_negotiatedProtocolVersion))
         {
             await this.SendNotificationAsync(notificationMethod).ConfigureAwait(false);
             return;

@@ -148,8 +148,15 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
         try
         {
             LogAttemptingSSE(_name);
+            // Discovery has been abandoned. Stop its timer rather than restarting it after
+            // the legacy GET; caller/initialization cancellation and ConnectionTimeout still apply.
+            message.Context?.RequestTimeout?.Stop();
             await sseTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            await sseTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+
+            if (message is not JsonRpcRequest { Method: RequestMethods.ServerDiscover })
+            {
+                await sseTransport.SendMessageAsync(message, cancellationToken).ConfigureAwait(false);
+            }
 
             LogUsingSSE(_name);
             ActiveTransport = sseTransport;
@@ -172,6 +179,12 @@ internal sealed partial class AutoDetectingClientSessionTransport : ITransport
         {
             await sseTransport.DisposeAsync().ConfigureAwait(false);
             throw;
+        }
+
+        if (message is JsonRpcRequest { Method: RequestMethods.ServerDiscover })
+        {
+            // Let the client apply its initialization and minimum-version policy; never send discover over SSE.
+            throw new ServerDiscoverSkippedForSseException();
         }
     }
 

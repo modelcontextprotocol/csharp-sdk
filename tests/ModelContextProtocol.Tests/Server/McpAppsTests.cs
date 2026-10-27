@@ -37,6 +37,72 @@ public class McpAppsTests
 
     #region F2: Typed Metadata Models
 
+    [Theory]
+    [InlineData("""{"resourceUri":"ui://app"}""", "ui://app")]
+    [InlineData("""{"ResourceUri":"ui://other"}""", null)]
+    [InlineData("""{"resourceUri":"ui://app","ResourceUri":"ui://other"}""", "ui://app")]
+    [InlineData("""{"ResourceUri":"ui://other","resourceUri":"ui://app"}""", "ui://app")]
+    public void SerializerOptions_MatchesToolMetadataCaseSensitively(string json, string? expectedUri)
+    {
+        var meta = JsonSerializer.Deserialize<McpUiToolMeta>(json, McpApps.SerializerOptions);
+
+        Assert.NotNull(meta);
+        Assert.Equal(expectedUri, meta.ResourceUri);
+    }
+
+    [Theory]
+    [InlineData("""{"mimeTypes":["text/html"]}""", "text/html")]
+    [InlineData("""{"MimeTypes":["text/plain"]}""", null)]
+    [InlineData("""{"mimeTypes":["text/html"],"MimeTypes":["text/plain"]}""", "text/html")]
+    [InlineData("""{"MimeTypes":["text/plain"],"mimeTypes":["text/html"]}""", "text/html")]
+    public void SerializerOptions_AgreesWithGetUiCapability(string json, string? expectedMimeType)
+    {
+        var deserialized = JsonSerializer.Deserialize<McpUiClientCapabilities>(json, McpApps.SerializerOptions);
+        using var document = JsonDocument.Parse(json);
+#pragma warning disable MCPEXP001
+        var capabilities = new ClientCapabilities
+        {
+            Extensions = new Dictionary<string, object>
+            {
+                [McpApps.ExtensionId] = document.RootElement,
+            },
+        };
+#pragma warning restore MCPEXP001
+
+        var capability = McpApps.GetUiCapability(capabilities);
+
+        Assert.NotNull(deserialized);
+        Assert.NotNull(capability);
+        if (expectedMimeType is null)
+        {
+            Assert.Null(deserialized.MimeTypes);
+            Assert.Null(capability.MimeTypes);
+        }
+        else
+        {
+            Assert.Equal(expectedMimeType, Assert.Single(deserialized.MimeTypes!));
+            Assert.Equal(expectedMimeType, Assert.Single(capability.MimeTypes!));
+        }
+    }
+
+    [Fact]
+    public void SerializerOptions_DoesNotChangeDefaultOrCallerOptions()
+    {
+        var options = new JsonSerializerOptions(McpApps.SerializerOptions)
+        {
+            PropertyNameCaseInsensitive = true,
+        };
+
+        var meta = JsonSerializer.Deserialize<McpUiToolMeta>("""{"ResourceUri":"ui://app"}""", options);
+
+        Assert.NotNull(meta);
+        Assert.Equal("ui://app", meta.ResourceUri);
+        Assert.True(options.PropertyNameCaseInsensitive);
+        Assert.True(McpJsonUtilities.DefaultOptions.PropertyNameCaseInsensitive);
+        Assert.False(McpApps.SerializerOptions.PropertyNameCaseInsensitive);
+        Assert.True(McpApps.SerializerOptions.IsReadOnly);
+    }
+
     [Fact]
     public void McpUiToolMeta_DefaultsToNull()
     {
