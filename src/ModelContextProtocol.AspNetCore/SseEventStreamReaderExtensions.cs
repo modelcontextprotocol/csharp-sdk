@@ -2,6 +2,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Buffers;
 using System.Net.ServerSentEvents;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
@@ -42,7 +43,9 @@ internal static class SseEventStreamReaderExtensions
 
             if (jsonWriter is null)
             {
-                jsonWriter = new Utf8JsonWriter(writer);
+                // The writer's encoder overrides JsonSerializerOptions.Encoder when serializing into a Utf8JsonWriter,
+                // so the relaxed encoder must be propagated here as well to match McpSseEventWriterExtensions.
+                jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
             }
             else
             {
