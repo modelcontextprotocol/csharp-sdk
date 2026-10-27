@@ -795,33 +795,38 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         JsonNode schemaNode,
         JsonSchema schema,
         object? originalResult,
-        JsonSerializerOptions serializerOptions)
+        JsonSerializerOptions serializerOptions,
+        int remainingDepth = 32,
+        JsonNode? schemaDocument = null,
+        SchemaReferenceResolver? references = null)
     {
         // An explicit schema may deliberately omit optional nulls.  Preserve that valid output
         // before looking for missing required members.
-        if (IsSchemaValid(schema, resultNode))
+        if (remainingDepth <= 0 || IsSchemaValid(schema, resultNode))
         {
             return null;
         }
 
-        const int maxRepairDepth = 32;
         const int maxCandidateSetEvaluations = 256;
         Queue<RepairAttempt> pending = new();
         Queue<RepairAttempt> fallback = new();
         HashSet<string> visited = new(StringComparer.Ordinal) { resultNode.ToJsonString() };
+        schemaDocument ??= schemaNode;
+        references ??= new(schemaDocument);
+        Dictionary<JsonNode, JsonSchema?> branchSchemas = new();
 
         void EnqueueRepairs(JsonNode instance, int depth)
         {
-            if (depth >= maxRepairDepth)
+            if (depth >= remainingDepth)
             {
                 return;
             }
 
             Dictionary<string, SchemaObjectContext> contexts = new(StringComparer.Ordinal);
-            List<HashSet<string>> groups = [];
+            List<RepairCandidateGroup> groups = [];
             CollectSchemaContexts(
-                instance, schemaNode, schemaNode, string.Empty, contexts,
-                new HashSet<string>(StringComparer.Ordinal), groups);
+                instance, schemaNode, references.GetResourceRoot(schemaNode), string.Empty, contexts,
+                new HashSet<string>(StringComparer.Ordinal), groups, references);
             List<RepairCandidate> candidates = CreateRepairCandidates(
                 instance, resultNodeIncludingDefaults, originalResult, serializerOptions, contexts);
             if (candidates.Count == 0)
@@ -829,12 +834,106 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 return;
             }
 
+            HashSet<string> grouped = new(groups.SelectMany(static group => group.Keys), StringComparer.Ordinal);
+            JsonNode combinedResult = instance.DeepClone();
+            bool hasCombinedRepairs = false;
+            foreach (RepairCandidate candidate in candidates.Where(candidate => !grouped.Contains(candidate.Key)))
+            {
+                ApplyRepairCandidate(combinedResult, candidate);
+                hasCombinedRepairs = true;
+            }
+
+            foreach (RepairCandidateGroup group in groups)
+            {
+                if (!TryGetNodeAtPath(combinedResult, group.InstancePath, out JsonNode? currentBranch) || currentBranch is null)
+                {
+                    continue;
+                }
+
+                if (!branchSchemas.TryGetValue(group.Schema, out JsonSchema? branchSchema))
+                {
+                    JsonNode document = schemaDocument.DeepClone();
+                    if (document is JsonObject documentObject)
+                    {
+                        documentObject["$id"] = references.GetSchemaUri(schemaDocument).AbsoluteUri;
+                    }
+
+                    JsonObject branchDocument = new()
+                    {
+                        ["$ref"] = references.GetSchemaUri(group.Schema).AbsoluteUri,
+                        ["$defs"] = new JsonObject { ["document"] = document },
+                    };
+                    TryBuildJsonSchema(branchDocument, out branchSchema);
+                    branchSchemas.Add(group.Schema, branchSchema);
+                }
+
+                if (branchSchema is null)
+                {
+                    continue;
+                }
+
+                // Compose independently valid subtree repairs before searching whole-document subsets.
+                foreach (bool includeDescendants in new[] { false, true })
+                {
+                    List<RepairCandidate> branchCandidates = candidates.Where(candidate =>
+                        group.Keys.Contains(candidate.Key) &&
+                        (includeDescendants || candidate.ParentPath == group.InstancePath)).ToList();
+                    JsonNode branchResult = currentBranch.DeepClone();
+                    foreach (RepairCandidate candidate in branchCandidates)
+                    {
+                        ApplyRepairCandidate(branchResult, candidate with { ParentPath = candidate.ParentPath.Substring(group.InstancePath.Length) });
+                    }
+
+                    bool branchIsValid = IsSchemaValid(branchSchema, branchResult);
+                    if (!branchIsValid && includeDescendants && branchCandidates.Count > 0 && depth + 1 < remainingDepth)
+                    {
+                        TryGetNodeAtPath(resultNodeIncludingDefaults, group.InstancePath, out JsonNode? completeBranch);
+                        object? branchSource = null;
+                        if (originalResult is not null)
+                        {
+                            TryGetSourceObjectAtPath(originalResult, instance, group.InstancePath, serializerOptions, out branchSource);
+                        }
+
+                        if (RepairStructuredResult(
+                            branchResult, completeBranch, group.Schema, branchSchema, branchSource,
+                            serializerOptions, remainingDepth - depth - 1, schemaDocument, references) is JsonNode repairedBranch)
+                        {
+                            branchResult = repairedBranch;
+                            branchIsValid = true;
+                        }
+                    }
+
+                    if (branchIsValid)
+                    {
+                        if (group.InstancePath.Length == 0)
+                        {
+                            combinedResult = branchResult;
+                        }
+                        else if (currentBranch.Parent is JsonArray parentArray)
+                        {
+                            parentArray[parentArray.IndexOf(currentBranch)] = branchResult;
+                        }
+                        else if (currentBranch.Parent is JsonObject parentObject)
+                        {
+                            parentObject[parentObject.First(property => ReferenceEquals(property.Value, currentBranch)).Key] = branchResult;
+                        }
+
+                        hasCombinedRepairs = true;
+                        break;
+                    }
+                }
+            }
+
+            if (hasCombinedRepairs)
+            {
+                pending.Enqueue(new(combinedResult, [], depth + 1));
+            }
+
             pending.Enqueue(new(instance, candidates, depth + 1));
-            HashSet<string> grouped = new(groups.SelectMany(static group => group), StringComparer.Ordinal);
-            foreach (HashSet<string> group in groups)
+            foreach (RepairCandidateGroup group in groups)
             {
                 List<RepairCandidate> branchCandidates = candidates.Where(candidate =>
-                    group.Contains(candidate.Key) || !grouped.Contains(candidate.Key)).ToList();
+                    group.Keys.Contains(candidate.Key) || !grouped.Contains(candidate.Key)).ToList();
                 if (branchCandidates.Count > 0 && branchCandidates.Count < candidates.Count &&
                     pending.Count < maxCandidateSetEvaluations)
                 {
@@ -891,7 +990,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             schema = JsonSchema.Build(schemaElement, new BuildOptions { SchemaRegistry = new SchemaRegistry() });
             return true;
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
+        catch (Exception ex) when (ex is JsonException or JsonSchemaException or RefResolutionException or InvalidOperationException or ArgumentException)
         {
             schema = null;
             return false;
@@ -927,7 +1026,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonElement instanceElement = JsonSerializer.SerializeToElement(instance, McpJsonUtilities.JsonContext.Default.JsonNode);
             return schema.Evaluate(instanceElement).IsValid;
         }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException or ArgumentException)
+        catch (Exception ex) when (ex is JsonException or JsonSchemaException or RefResolutionException or InvalidOperationException or ArgumentException)
         {
             return false;
         }
@@ -1008,6 +1107,22 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private sealed record RepairAttempt(JsonNode Result, List<RepairCandidate> Candidates, int Depth);
 
+    private sealed record RepairCandidateGroup(HashSet<string> Keys, string InstancePath, JsonNode Schema);
+
+    private static string GetSchemaPointer(JsonNode schema, JsonNode resource)
+    {
+        string pointer = string.Empty;
+        for (JsonNode node = schema; !ReferenceEquals(node, resource) && node.Parent is JsonNode parent; node = parent)
+        {
+            string segment = parent is JsonArray array
+                ? array.IndexOf(node).ToString(CultureInfo.InvariantCulture)
+                : ((JsonObject)parent).First(property => ReferenceEquals(property.Value, node)).Key;
+            pointer = AppendJsonPointer(string.Empty, segment) + pointer;
+        }
+
+        return pointer;
+    }
+
     private static void CollectSchemaContexts(
         JsonNode? instanceNode,
         JsonNode? schemaNode,
@@ -1015,7 +1130,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         string instancePath,
         Dictionary<string, SchemaObjectContext> contexts,
         HashSet<string> activeReferences,
-        List<HashSet<string>> groups,
+        List<RepairCandidateGroup> groups,
+        SchemaReferenceResolver references,
         List<JsonNode>? dynamicScope = null)
     {
         if (schemaNode is JsonValue schemaValue && schemaValue.TryGetValue<bool>(out _))
@@ -1042,23 +1158,26 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 refText is not null &&
                 activeReferences.Add(schemaRoot.GetPath() + "|" + refText + "|" + instancePath))
             {
-                if (TryResolveLocalReference(schemaRoot, refText, out JsonNode? referencedSchema))
+                if (references.TryResolve(schemaRoot, refText, out JsonNode? referencedSchema, out JsonNode referencedResource))
                 {
                     if (referenceKeyword == "$dynamicRef" && referencedSchema is JsonObject referencedObject &&
                         referencedObject["$dynamicAnchor"]?.GetValue<string>() is string anchor &&
-                        string.Equals(refText, "#" + anchor, StringComparison.Ordinal))
+                        refText.IndexOf('#') is int fragmentStart && fragmentStart >= 0 &&
+                        string.Equals(Uri.UnescapeDataString(refText[(fragmentStart + 1)..]), anchor, StringComparison.Ordinal))
                     {
                         foreach (JsonNode resource in dynamicScope)
                         {
                             if (TryFindSchemaAnchor(resource, anchor, out JsonNode? dynamicSchema, dynamicOnly: true))
                             {
                                 referencedSchema = dynamicSchema;
+                                referencedResource = resource;
                                 break;
                             }
                         }
                     }
 
-                    CollectSchemaContexts(instanceNode, referencedSchema, schemaRoot, instancePath, contexts, activeReferences, groups, dynamicScope);
+                    CollectSchemaContexts(instanceNode, referencedSchema, referencedResource, instancePath, contexts, activeReferences, groups, references,
+                        ReferenceEquals(schemaRoot, referencedResource) ? dynamicScope : [.. dynamicScope, referencedResource]);
                 }
 
                 activeReferences.Remove(schemaRoot.GetPath() + "|" + refText + "|" + instancePath);
@@ -1100,7 +1219,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     AppendJsonPointer(instancePath, property.Key),
                     contexts,
                     new HashSet<string>(activeReferences, StringComparer.Ordinal),
-                    groups, dynamicScope);
+                    groups, references, dynamicScope);
             }
         }
 
@@ -1128,7 +1247,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                                 AppendJsonPointer(instancePath, property.Key),
                                 contexts,
                                 new HashSet<string>(activeReferences, StringComparer.Ordinal),
-                                groups, dynamicScope);
+                                groups, references, dynamicScope);
                         }
                     }
                 }
@@ -1142,14 +1261,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         AppendJsonPointer(instancePath, property.Key),
                         contexts,
                         new HashSet<string>(activeReferences, StringComparer.Ordinal),
-                        groups, dynamicScope);
+                        groups, references, dynamicScope);
                 }
 
                 if (schemaObject["unevaluatedProperties"] is JsonNode unevaluatedPropertySchema)
                 {
                     CollectSchemaBranch(
                         property.Value, unevaluatedPropertySchema, schemaRoot,
-                        AppendJsonPointer(instancePath, property.Key), contexts, activeReferences, groups, dynamicScope);
+                        AppendJsonPointer(instancePath, property.Key), contexts, activeReferences, groups, references, dynamicScope);
                 }
             }
         }
@@ -1170,7 +1289,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         AppendJsonPointer(instancePath, i.ToString(CultureInfo.InvariantCulture)),
                         contexts,
                         new HashSet<string>(activeReferences, StringComparer.Ordinal),
-                        groups, dynamicScope);
+                        groups, references, dynamicScope);
                 }
 
                 foreach (string keyword in new[] { "contains", "unevaluatedItems" })
@@ -1180,7 +1299,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         CollectSchemaBranch(
                             arrayInstance[i], subschema, schemaRoot,
                             AppendJsonPointer(instancePath, i.ToString(CultureInfo.InvariantCulture)),
-                            contexts, activeReferences, groups, dynamicScope);
+                            contexts, activeReferences, groups, references, dynamicScope);
                     }
                 }
             }
@@ -1218,7 +1337,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         instancePath,
                         contexts,
                         new HashSet<string>(activeReferences, StringComparer.Ordinal),
-                        groups, dynamicScope);
+                        groups, references, dynamicScope);
                 }
             }
         }
@@ -1238,11 +1357,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     {
                         CollectSchemaContexts(
                             instanceNode, branch, schemaRoot, instancePath, contexts,
-                            new HashSet<string>(activeReferences, StringComparer.Ordinal), groups, dynamicScope);
+                            new HashSet<string>(activeReferences, StringComparer.Ordinal), groups, references, dynamicScope);
                     }
                     else
                     {
-                        CollectSchemaBranch(instanceNode, branch, schemaRoot, instancePath, contexts, activeReferences, groups, dynamicScope);
+                        CollectSchemaBranch(instanceNode, branch, schemaRoot, instancePath, contexts, activeReferences, groups, references, dynamicScope);
                     }
                 }
             }
@@ -1252,12 +1371,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             if (schemaObject["then"] is JsonNode thenSchema)
             {
-                CollectSchemaBranch(instanceNode, thenSchema, schemaRoot, instancePath, contexts, activeReferences, groups, dynamicScope);
+                CollectSchemaBranch(instanceNode, thenSchema, schemaRoot, instancePath, contexts, activeReferences, groups, references, dynamicScope);
             }
 
             if (schemaObject["else"] is JsonNode elseSchema)
             {
-                CollectSchemaBranch(instanceNode, elseSchema, schemaRoot, instancePath, contexts, activeReferences, groups, dynamicScope);
+                CollectSchemaBranch(instanceNode, elseSchema, schemaRoot, instancePath, contexts, activeReferences, groups, references, dynamicScope);
             }
         }
     }
@@ -1269,13 +1388,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         string instancePath,
         Dictionary<string, SchemaObjectContext> contexts,
         HashSet<string> activeReferences,
-        List<HashSet<string>> groups,
+        List<RepairCandidateGroup> groups,
+        SchemaReferenceResolver references,
         List<JsonNode> dynamicScope)
     {
         Dictionary<string, SchemaObjectContext> branchContexts = new(StringComparer.Ordinal);
         CollectSchemaContexts(
             instanceNode, branch, schemaRoot, instancePath, branchContexts,
-            new HashSet<string>(activeReferences, StringComparer.Ordinal), groups, dynamicScope);
+            new HashSet<string>(activeReferences, StringComparer.Ordinal), groups, references, dynamicScope);
         HashSet<string> group = new(StringComparer.Ordinal);
         foreach (KeyValuePair<string, SchemaObjectContext> entry in branchContexts)
         {
@@ -1288,7 +1408,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         if (group.Count > 0)
         {
-            groups.Add(group);
+            groups.Add(new(group, instancePath, branch));
         }
     }
 
@@ -1384,17 +1504,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         JsonPropertyInfo? propertyInfo,
         JsonSerializerOptions serializerOptions)
     {
-        JsonIgnoreAttribute? ignoreAttribute = propertyInfo?.AttributeProvider is ICustomAttributeProvider attributeProvider
-            ? attributeProvider.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true)
-                .OfType<JsonIgnoreAttribute>()
-                .FirstOrDefault()
-            : null;
+        JsonIgnoreAttribute? ignoreAttribute = GetIgnoreAttribute(propertyInfo);
 
-        if (ignoreAttribute is null && propertyInfo is { Set: null } &&
-            (propertyInfo.AttributeProvider is FieldInfo
-                ? serializerOptions.IgnoreReadOnlyFields
-                : serializerOptions.IgnoreReadOnlyProperties &&
-                    serializerOptions.GetTypeInfo(propertyInfo.PropertyType).Kind is not (JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary)))
+        if (propertyInfo is not null && IsExcludedReadOnlyMember(propertyInfo, serializerOptions))
         {
             return false;
         }
@@ -1416,6 +1528,20 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             _ => false,
         };
     }
+
+    private static JsonIgnoreAttribute? GetIgnoreAttribute(JsonPropertyInfo? propertyInfo) =>
+        propertyInfo?.AttributeProvider is ICustomAttributeProvider attributeProvider
+            ? attributeProvider.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true)
+                .OfType<JsonIgnoreAttribute>()
+                .FirstOrDefault()
+            : null;
+
+    private static bool IsExcludedReadOnlyMember(JsonPropertyInfo propertyInfo, JsonSerializerOptions serializerOptions) =>
+        GetIgnoreAttribute(propertyInfo) is null && propertyInfo.Set is null &&
+            (propertyInfo.AttributeProvider is FieldInfo
+                ? serializerOptions.IgnoreReadOnlyFields
+                : serializerOptions.IgnoreReadOnlyProperties &&
+                    serializerOptions.GetTypeInfo(propertyInfo.PropertyType).Kind is not (JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary));
 
     // System.Text.Json uses this generated delegate for JsonIgnore conditions; evaluate those from metadata instead.
     private static bool IsJsonIgnoreConditionPredicate(Delegate predicate)
@@ -1525,8 +1651,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 return false;
             }
 
-            if (value is IDictionary dictionary && serializedParent is JsonObject serializedDictionary &&
-                TryGetDictionaryValue(dictionary, serializedDictionary, segment, serializerOptions, out object? dictionaryValue))
+            if (serializedParent is JsonObject serializedDictionary &&
+                TryGetDictionaryValue(value, serializedDictionary, segment, serializerOptions, out object? dictionaryValue))
             {
                 value = dictionaryValue;
                 continue;
@@ -1565,7 +1691,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     private static bool TryGetDictionaryValue(
-        IDictionary dictionary,
+        object dictionary,
         JsonObject serializedDictionary,
         string propertyName,
         JsonSerializerOptions serializerOptions,
@@ -1582,13 +1708,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return false;
         }
 
-        if (dictionaryTypeInfo.Kind != JsonTypeInfoKind.Dictionary)
+        if (dictionaryTypeInfo.Kind != JsonTypeInfoKind.Dictionary || dictionary is not IEnumerable entries)
         {
             return false;
         }
 
         using IEnumerator<KeyValuePair<string, JsonNode?>> properties = serializedDictionary.GetEnumerator();
-        foreach (DictionaryEntry entry in dictionary)
+        foreach (object entry in entries)
         {
             if (!properties.MoveNext())
             {
@@ -1597,11 +1723,36 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             if (string.Equals(properties.Current.Key, propertyName, StringComparison.Ordinal))
             {
-                value = entry.Value;
-                return true;
+                return TryGetDictionaryEntryValue(entry, out value);
             }
         }
 
+        return false;
+    }
+
+#if !NETSTANDARD2_0
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(
+        System.Diagnostics.CodeAnalysis.DynamicallyAccessedMemberTypes.PublicProperties, typeof(KeyValuePair<,>))]
+#endif
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+        "Trimming", "IL2075",
+        Justification = "The reflected property belongs to KeyValuePair<,>, whose public properties are explicitly preserved.")]
+    private static bool TryGetDictionaryEntryValue(object entry, out object? value)
+    {
+        if (entry is DictionaryEntry dictionaryEntry)
+        {
+            value = dictionaryEntry.Value;
+            return true;
+        }
+
+        Type type = entry.GetType();
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
+        {
+            value = type.GetProperty(nameof(KeyValuePair<object, object>.Value))!.GetValue(entry);
+            return true;
+        }
+
+        value = null;
         return false;
     }
 
@@ -1648,7 +1799,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(source.GetType());
             foreach (JsonPropertyInfo property in typeInfo.Properties)
             {
-                if (string.Equals(property.Name, propertyName, StringComparison.Ordinal) && property.Get is not null)
+                if (string.Equals(property.Name, propertyName, StringComparison.Ordinal) && property.Get is not null &&
+                    !IsExcludedReadOnlyMember(property, serializerOptions))
                 {
                     value = property.Get(source);
                     declaredType = property.PropertyType;
@@ -1725,6 +1877,109 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return null;
+    }
+
+    private sealed class SchemaReferenceResolver
+    {
+        private readonly Dictionary<Uri, JsonNode> _resources = new();
+        private readonly Dictionary<JsonNode, Uri> _resourceIds = new();
+
+        internal SchemaReferenceResolver(JsonNode schema)
+        {
+            Register(schema, new Uri("https://mcp.invalid/schema"), isRoot: true);
+        }
+
+        internal Uri GetSchemaUri(JsonNode schema)
+        {
+            JsonNode resource = GetResourceRoot(schema);
+            string pointer = GetSchemaPointer(schema, resource);
+            return pointer.Length == 0 ? _resourceIds[resource] : new Uri(_resourceIds[resource], "#" + Uri.EscapeDataString(pointer));
+        }
+
+        internal JsonNode GetResourceRoot(JsonNode schema)
+        {
+            JsonNode resource = schema;
+            while (!_resourceIds.ContainsKey(resource) && resource.Parent is JsonNode parent)
+            {
+                resource = parent;
+            }
+
+            return resource;
+        }
+
+        private void Register(JsonNode? schema, Uri baseUri, bool isRoot = false)
+        {
+            if (schema is not JsonObject schemaObject)
+            {
+                return;
+            }
+
+            bool isResource = isRoot;
+            if (schemaObject["$id"] is JsonValue idValue && idValue.TryGetValue<string>(out string? id) &&
+                Uri.TryCreate(baseUri, id, out Uri? resourceUri))
+            {
+                baseUri = resourceUri;
+                isResource = true;
+            }
+
+            if (isResource)
+            {
+                _resourceIds[schema] = baseUri;
+                _resources[new UriBuilder(baseUri) { Fragment = string.Empty }.Uri] = schema;
+            }
+
+            foreach (string keyword in new[] { "$defs", "definitions", "properties", "patternProperties", "dependentSchemas" })
+            {
+                if (schemaObject[keyword] is JsonObject schemas)
+                {
+                    foreach (KeyValuePair<string, JsonNode?> child in schemas)
+                    {
+                        Register(child.Value, baseUri);
+                    }
+                }
+            }
+
+            foreach (string keyword in new[] { "allOf", "anyOf", "oneOf", "prefixItems" })
+            {
+                if (schemaObject[keyword] is JsonArray schemas)
+                {
+                    foreach (JsonNode? child in schemas)
+                    {
+                        Register(child, baseUri);
+                    }
+                }
+            }
+
+            foreach (string keyword in new[] { "items", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains", "if", "then", "else", "not" })
+            {
+                Register(schemaObject[keyword], baseUri);
+            }
+        }
+
+        internal bool TryResolve(JsonNode currentResource, string reference, out JsonNode? schema, out JsonNode resource)
+        {
+            schema = null;
+            resource = currentResource;
+            if (!_resourceIds.TryGetValue(currentResource, out Uri? baseUri) ||
+                !Uri.TryCreate(baseUri, reference, out Uri? targetUri) ||
+                !_resources.TryGetValue(new UriBuilder(targetUri) { Fragment = string.Empty }.Uri, out JsonNode? targetResource) ||
+                !TryResolveLocalReference(targetResource, targetUri.Fragment.Length == 0 ? "#" : targetUri.Fragment, out schema))
+            {
+                return false;
+            }
+
+            resource = targetResource;
+            for (JsonNode? node = schema; node is not null; node = node.Parent)
+            {
+                if (_resourceIds.ContainsKey(node))
+                {
+                    resource = node;
+                    break;
+                }
+            }
+
+            return true;
+        }
     }
 
     private static bool TryResolveLocalReference(JsonNode schemaRoot, string reference, out JsonNode? resolvedSchema)
