@@ -145,9 +145,11 @@ public class DelegatingToolOutputSchemaTests
         Task serverTask = server.RunAsync(cts.Token);
         try
         {
-            await using var client = await McpClient.CreateAsync(
+            var clientOptions = TestMcpClient.CreateOptions();
+            clientOptions.ProtocolVersion = protocolVersion;
+            await using var client = await TestMcpClient.CreateAsync(
                 new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream()),
-                new McpClientOptions { ProtocolVersion = protocolVersion }, cancellationToken: cts.Token);
+                clientOptions, cancellationToken: cts.Token);
             await action(client);
         }
         finally
