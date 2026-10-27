@@ -53,11 +53,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _clientCredentialsAuthorizationServer;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+    private string? _resourceUri;
 
     // Coalesces concurrent token acquisition so that when multiple in-flight requests observe an
     // expired token (or a 401) at the same time, only the first runs the refresh/authorization flow
     // while the others await its result. This also serializes all reads and writes to the mutable auth
-    // state below (_authServerMetadata, _clientId, _clientSecret, _tokenEndpointAuthMethod) as well as
+    // state (_authServerMetadata, _resourceUri, _clientId, _clientSecret, _tokenEndpointAuthMethod) as well as
     // the accumulated scope set and step-up tracking (_accumulatedScopes, _hasAttemptedStepUp), so those
     // fields need no separate lock.
     //
@@ -201,7 +202,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             using (message?.Context?.RequestTimeout?.Suspend())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(request.RequestUri, cancellationToken).ConfigureAwait(false);
+                (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(cancellationToken).ConfigureAwait(false);
             }
 
             if (!string.IsNullOrEmpty(accessToken))
@@ -223,7 +224,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return response;
     }
 
-    private async Task<(string? AccessToken, bool AttemptedRefresh)> GetAccessTokenSilentAsync(Uri resourceUri, CancellationToken cancellationToken)
+    private async Task<(string? AccessToken, bool AttemptedRefresh)> GetAccessTokenSilentAsync(CancellationToken cancellationToken)
     {
         var tokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
 
@@ -255,7 +256,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             current?.RefreshToken is { Length: > 0 } refreshToken &&
             CachedTokensMatchClientCredentials(current, _clientCredentialsAuthorizationServer))
         {
-            var accessToken = await RefreshTokensAsync(refreshToken, resourceUri.ToString(), _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var accessToken = await RefreshTokensAsync(refreshToken, _resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
             return (accessToken, true);
         }
 
@@ -446,6 +447,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         var cachedTokensMatchClientCredentials =
             CachedTokensMatchClientCredentials(cachedTokens, selectedAuthServer.OriginalString);
 
+        // Retain the validated resource verbatim with the auth server metadata, including when a
+        // cold-start challenge is satisfied by refreshing cached tokens instead of reauthorizing.
+        _authServerMetadata = authServerMetadata;
+        _resourceUri = resourceUri;
+
         // Only attempt a token refresh if we haven't attempted to already for this request.
         // Also only attempt a token refresh for a 401 Unauthorized responses. Other response status codes
         // should not be used for expired access tokens. This is important because 403 forbidden responses can
@@ -485,9 +491,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         // Determine the token endpoint auth method from server metadata if not already set by DCR.
         _tokenEndpointAuthMethod ??= authServerMetadata.TokenEndpointAuthMethodsSupported?.FirstOrDefault();
-
-        // Store auth server metadata for future refresh operations
-        _authServerMetadata = authServerMetadata;
 
         // Perform the OAuth flow
         return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
@@ -1576,6 +1579,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _clientSecret = null;
         _tokenEndpointAuthMethod = null;
         _authServerMetadata = null;
+        _resourceUri = null;
         _clientCredentialsAuthorizationServer = null;
     }
 
