@@ -5,6 +5,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.Security.Claims;
@@ -166,19 +167,19 @@ public class SkillsDependencyInjectionTests(ITestOutputHelper output) : KestrelI
         public TaskCompletionSource Disposed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int DisposeCount { get; private set; }
 
-        public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
+        public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
         {
             Record(context);
             return new(new McpSkillPage { Skills = [CreateEntry()] });
         }
 
-        public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+        public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
         {
             Record(context);
-            return new(uri == SkillUri ? CreateEntry() : null);
+            return new(context.Params.Uri == SkillUri ? CreateEntry() : null);
         }
 
-        private void Record(McpSkillRequestContext context)
+        private void Record(MessageContext context)
         {
             var services = Assert.IsAssignableFrom<IServiceProvider>(context.Services);
             Assert.Same(dependency, services.GetRequiredService<RequestDependency>());

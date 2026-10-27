@@ -275,12 +275,36 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
         builder.WithSkills<EmptyCatalog>();
     }
 
-    private sealed class EmptyCatalog : IMcpSkillCatalog
+    [Fact]
+    public async Task SuppliedInstance_IsRegisteredInDi_AndRemainsCallerOwned()
     {
-        public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken) =>
+        await using var catalog = new EmptyCatalog();
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithSkills(catalog);
+
+        await using (var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
+        {
+            _ = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+            Assert.Same(catalog, provider.GetRequiredService<IMcpSkillCatalog>());
+        }
+
+        Assert.Equal(0, catalog.DisposeCount);
+    }
+
+    private sealed class EmptyCatalog : IMcpSkillCatalog, IAsyncDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken) =>
             new(new McpSkillPage { Skills = [] });
 
-        public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken) =>
+        public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken) =>
             new((Skill?)null);
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return default;
+        }
     }
 }

@@ -165,6 +165,7 @@ For example, a database-backed catalog can take a scoped repository in its const
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Extensions.Skills;
+using ModelContextProtocol.Server;
 
 builder.Services.AddScoped<SkillRepository>();
 builder.Services
@@ -174,15 +175,15 @@ builder.Services
 
 public sealed class DatabaseSkillCatalog(SkillRepository repository) : IMcpSkillCatalog
 {
-    public async ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
+    public async ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
     {
         string tenant = GetTenant(context.User);
-        var (skills, nextCursor) = await repository.GetPageAsync(tenant, cursor, pageSize: 50, cancellationToken);
+        var (skills, nextCursor) = await repository.GetPageAsync(tenant, context.Params.Cursor, pageSize: 50, cancellationToken);
         return new McpSkillPage { Skills = skills, NextCursor = nextCursor };
     }
 
-    public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken) =>
-        repository.FindAsync(GetTenant(context.User), uri, cancellationToken);
+    public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken) =>
+        repository.FindAsync(GetTenant(context.User), context.Params.Uri, cancellationToken);
 }
 ```
 
@@ -190,14 +191,16 @@ public sealed class DatabaseSkillCatalog(SkillRepository repository) : IMcpSkill
 dependencies with their usual lifetimes. The repository's methods should apply the caller's tenant or access
 policy before querying and paginating. Register the skill file resources separately, using the same policy.
 
-Both methods receive an <xref:ModelContextProtocol.Extensions.Skills.McpSkillRequestContext> with the JSON-RPC request,
-the caller's <xref:System.Security.Claims.ClaimsPrincipal> when the transport supplies one (the ASP.NET Core
-transport does), any items that incoming-message filters attached to the request, the request-bound `Server`,
-and the request's `Services`.
+Catalog methods receive the standard `RequestContext<ListSkillsRequestParams>` or
+`RequestContext<GetSkillRequestParams>`. `context.Params` carries the cursor or URI and request metadata.
+The context also exposes the JSON-RPC request, the caller's <xref:System.Security.Claims.ClaimsPrincipal>
+when the transport supplies one (the ASP.NET Core transport does), any items that incoming-message filters
+attached to the request, the request-bound `Server`, and the request's `Services`.
 
-The generic and factory overloads default to <xref:Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped>.
-They register `IMcpSkillCatalog` in the container and resolve it when a Skills request runs, not while configuring
-the server's options. Use the factory overload instead when construction needs application-specific configuration:
+All catalog overloads register `IMcpSkillCatalog` in the container and resolve it when a Skills request runs,
+not while configuring the server's options. The generic and factory overloads default to
+<xref:Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped>.
+Use the factory overload instead when construction needs application-specific configuration:
 
 ```csharp
 builder.Services
@@ -221,16 +224,17 @@ Choose a lifetime for the catalog, independently of the lifetimes of its depende
 A singleton or externally supplied catalog can use request-scoped services without retaining them:
 
 ```csharp
-public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
 {
     var repository = context.Services!.GetRequiredService<SkillRepository>();
-    return repository.FindAsync(GetTenant(context.User), uri, cancellationToken);
+    return repository.FindAsync(GetTenant(context.User), context.Params.Uri, cancellationToken);
 }
 ```
 
 Use `context.Services`, not `context.Server.Services`, for request-scoped dependencies. The latter may be the
 server's longer-lived provider. The SDK supplies a provider when the server is created through dependency
-injection; a low-level server created without services may have a null `context.Services`.
+injection. If creating a low-level server directly from configured options, also pass the corresponding service
+provider to `McpServer.Create`; the options do not capture a catalog instance.
 
 The scope follows the same lifecycle as built-in MCP request handlers:
 
@@ -269,11 +273,11 @@ public sealed class RoleSkillCatalog(IReadOnlyList<Skill> skills, SkillAccessPol
 {
     private readonly ConcurrentDictionary<string, InMemoryMcpSkillCatalog> _viewsByRole = new();
 
-    public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken) =>
-        GetView(context.User).ListAsync(cursor, context, cancellationToken);
+    public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken) =>
+        GetView(context.User).ListAsync(context, cancellationToken);
 
-    public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken) =>
-        GetView(context.User).GetAsync(uri, context, cancellationToken);
+    public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken) =>
+        GetView(context.User).GetAsync(context, cancellationToken);
 
     // Authorize before paginating: the view holds only the skills this role may read.
     private InMemoryMcpSkillCatalog GetView(ClaimsPrincipal? user) =>

@@ -326,13 +326,17 @@ public static class McpSkillsBuilderExtensions
     /// <para>
     /// The supplied instance is shared across requests and remains owned by the caller; the server does not
     /// dispose it. It must not capture scoped services. Resolve them from
-    /// <see cref="MessageContext.Services"/> on the supplied <see cref="McpSkillRequestContext"/>, or use a
+    /// <see cref="MessageContext.Services"/> on the supplied <see cref="RequestContext{TParams}"/>, or use a
     /// dependency-injection registration overload.
+    /// </para>
+    /// <para>
+    /// The instance is registered as <see cref="IMcpSkillCatalog"/> and resolved from the request's services.
+    /// When creating a server with <see cref="McpServer.Create"/> directly, supply the service provider as well as the options.
     /// </para>
     /// <para>
     /// <c>skills/list</c> and <c>skills/get</c> are registered as raw request handlers and do not pass through the
     /// request filters that guard the built-in resource methods, such as the ASP.NET Core authorization filters.
-    /// When some callers must not see some skills, the catalog decides from the <see cref="McpSkillRequestContext"/>
+    /// When some callers must not see some skills, the catalog decides from the <see cref="RequestContext{TParams}"/>
     /// it receives, and the corresponding file resources must be guarded separately.
     /// </para>
     /// </remarks>
@@ -349,7 +353,7 @@ public static class McpSkillsBuilderExtensions
         if (catalog is null) throw new ArgumentNullException(nameof(catalog));
 #endif
 
-        return WithSkillsCore(builder, catalog, registration: null, configure);
+        return WithSkillsCore(builder, new ServiceDescriptor(typeof(IMcpSkillCatalog), catalog), configure);
     }
 
     /// <summary>
@@ -368,7 +372,7 @@ public static class McpSkillsBuilderExtensions
     /// The catalog is registered as <see cref="IMcpSkillCatalog"/> and resolved from the request's services when
     /// a Skills method is invoked, not when the server's options are configured. Scoped and transient catalogs
     /// can capture scoped dependencies. Singleton catalogs must not capture them; they can instead resolve
-    /// them from <see cref="MessageContext.Services"/> on the supplied <see cref="McpSkillRequestContext"/>.
+    /// them from <see cref="MessageContext.Services"/> on the supplied <see cref="RequestContext{TParams}"/>.
     /// </para>
     /// <para>
     /// The request uses the same service scope lifecycle as built-in MCP handlers. Stateless HTTP uses the
@@ -397,7 +401,7 @@ public static class McpSkillsBuilderExtensions
 #endif
 
         ValidateLifetime(lifetime);
-        return WithSkillsCore(builder, catalog: null, new ServiceDescriptor(typeof(IMcpSkillCatalog), typeof(TCatalog), lifetime), configure);
+        return WithSkillsCore(builder, new ServiceDescriptor(typeof(IMcpSkillCatalog), typeof(TCatalog), lifetime), configure);
     }
 
     /// <summary>
@@ -431,7 +435,7 @@ public static class McpSkillsBuilderExtensions
 #endif
 
         ValidateLifetime(lifetime);
-        return WithSkillsCore(builder, catalog: null, new ServiceDescriptor(typeof(IMcpSkillCatalog), catalogFactory, lifetime), configure);
+        return WithSkillsCore(builder, new ServiceDescriptor(typeof(IMcpSkillCatalog), catalogFactory, lifetime), configure);
     }
 
     private static void ValidateLifetime(ServiceLifetime lifetime)
@@ -444,8 +448,7 @@ public static class McpSkillsBuilderExtensions
 
     private static IMcpServerBuilder WithSkillsCore(
         IMcpServerBuilder builder,
-        IMcpSkillCatalog? catalog,
-        ServiceDescriptor? registration,
+        ServiceDescriptor registration,
         Action<McpSkillsOptions>? configure)
     {
         ThrowIfSkillsRegistered(builder);
@@ -453,14 +456,9 @@ public static class McpSkillsBuilderExtensions
         var options = new McpSkillsOptions();
         configure?.Invoke(options);
 
-        if (registration is not null)
-        {
-            builder.Services.Add(registration);
-        }
-
+        builder.Services.Add(registration);
         builder.Services.AddSingleton(new SkillsRegistrationMarker());
-        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>>(
-            _ => new McpSkillsConfigureOptions(catalog, options));
+        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>>(new McpSkillsConfigureOptions(options));
 
         return builder;
     }
@@ -514,7 +512,7 @@ public static class McpSkillsBuilderExtensions
         }
     }
 
-    private sealed class McpSkillsConfigureOptions(IMcpSkillCatalog? catalog, McpSkillsOptions skillsOptions)
+    private sealed class McpSkillsConfigureOptions(McpSkillsOptions skillsOptions)
         : IConfigureOptions<McpServerOptions>
     {
         public void Configure(McpServerOptions options)
@@ -554,10 +552,10 @@ public static class McpSkillsBuilderExtensions
         private async ValueTask<JsonNode?> HandleListSkillsAsync(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
             var request = context.JsonRpcRequest;
-            var requestParams = DeserializeParams(request, McpSkillsJsonContext.Default.ListSkillsRequestParams);
+            var requestParams = DeserializeParams(request, McpSkillsJsonContext.Default.ListSkillsRequestParams) ?? new();
             var requestCatalog = ResolveCatalog(context);
-            var skillContext = new McpSkillRequestContext(context.Server, request) { Services = context.Services };
-            var page = await requestCatalog.ListAsync(requestParams?.Cursor, skillContext, cancellationToken).ConfigureAwait(false);
+            var skillContext = new RequestContext<ListSkillsRequestParams>(context.Server, request, requestParams) { Services = context.Services };
+            var page = await requestCatalog.ListAsync(skillContext, cancellationToken).ConfigureAwait(false);
             // The sealed built-in catalog validates its owned snapshots at construction.
             if (requestCatalog is not InMemoryMcpSkillCatalog)
             {
@@ -591,23 +589,24 @@ public static class McpSkillsBuilderExtensions
         {
             var request = context.JsonRpcRequest;
             var requestParams = DeserializeParams(request, McpSkillsJsonContext.Default.GetSkillRequestParams);
-            if (string.IsNullOrEmpty(requestParams?.Uri))
+            if (requestParams is null || string.IsNullOrEmpty(requestParams.Uri))
             {
                 throw new McpProtocolException("The 'uri' parameter is required.", McpErrorCode.InvalidParams);
             }
 
+            string uri = requestParams.Uri;
             var requestCatalog = ResolveCatalog(context);
-            var skillContext = new McpSkillRequestContext(context.Server, request) { Services = context.Services };
-            var skill = await requestCatalog.GetAsync(requestParams!.Uri, skillContext, cancellationToken).ConfigureAwait(false) ??
-                throw new McpProtocolException($"No skill is served at '{requestParams.Uri}'.", McpErrorCode.InvalidParams);
+            var skillContext = new RequestContext<GetSkillRequestParams>(context.Server, request, requestParams) { Services = context.Services };
+            var skill = await requestCatalog.GetAsync(skillContext, cancellationToken).ConfigureAwait(false) ??
+                throw new McpProtocolException($"No skill is served at '{uri}'.", McpErrorCode.InvalidParams);
             if (requestCatalog is not InMemoryMcpSkillCatalog)
             {
                 ValidateCatalogEntry(skill);
             }
-            if (!string.Equals(skill.Uri, requestParams.Uri, StringComparison.Ordinal))
+            if (!string.Equals(skill.Uri, uri, StringComparison.Ordinal))
             {
                 throw new McpProtocolException(
-                    $"The skill catalog answered a request for '{requestParams.Uri}' with the entry for '{skill.Uri}'.",
+                    $"The skill catalog answered a request for '{uri}' with the entry for '{skill.Uri}'.",
                     McpErrorCode.InternalError);
             }
 
@@ -622,9 +621,9 @@ public static class McpSkillsBuilderExtensions
             return JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.GetSkillResult);
         }
 
-        private IMcpSkillCatalog ResolveCatalog(RequestContext<JsonNode?> context) =>
-            catalog ?? (context.Services ??
-                throw new InvalidOperationException("Dependency-injected Skills catalogs require a service provider for the request."))
+        private static IMcpSkillCatalog ResolveCatalog(MessageContext context) =>
+            (context.Services ??
+                throw new InvalidOperationException("Skills catalogs require a service provider for the request."))
                 .GetRequiredService<IMcpSkillCatalog>();
 
         /// <summary>

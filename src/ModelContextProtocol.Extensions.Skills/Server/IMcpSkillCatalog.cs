@@ -1,3 +1,5 @@
+using ModelContextProtocol.Server;
+
 namespace ModelContextProtocol.Extensions.Skills;
 
 /// <summary>
@@ -25,11 +27,11 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <para>
 /// The skills methods do not pass through the request filters that guard the built-in resource methods, so a
 /// catalog whose skills are not visible to every caller must decide what to return from the
-/// <see cref="McpSkillRequestContext"/> it receives, and the corresponding resources must be guarded the same way.
+/// <see cref="RequestContext{TParams}"/> it receives, and the corresponding resources must be guarded the same way.
 /// </para>
 /// <para>
 /// Register a catalog with a dependency injection lifetime appropriate for its dependencies, or resolve
-/// request-scoped dependencies from <see cref="ModelContextProtocol.Server.MessageContext.Services"/> on the
+/// request-scoped dependencies from <see cref="MessageContext.Services"/> on the
 /// supplied context. An externally supplied catalog instance or a singleton catalog is shared across requests
 /// and must not capture scoped services. The request infrastructure owns any request scope and disposes it
 /// asynchronously; a catalog must not dispose or retain services resolved from that scope.
@@ -40,10 +42,10 @@ public interface IMcpSkillCatalog
     /// <summary>
     /// Lists a page of the skills this catalog publishes.
     /// </summary>
-    /// <param name="cursor">
-    /// An opaque cursor returned by a previous call, or <see langword="null"/> to start at the first page.
+    /// <param name="context">
+    /// The request being answered, including the pagination cursor in <c>context.Params.Cursor</c> and the
+    /// caller's identity when the transport supplies one. A null cursor starts at the first page.
     /// </param>
-    /// <param name="context">The request being answered, including the caller's identity when the transport supplies one.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>
     /// A page of entries, and the cursor for the following page when more entries remain. A skill's manifest is
@@ -55,20 +57,21 @@ public interface IMcpSkillCatalog
     /// catalog cannot interpret. A cursor is an opaque position, not a capability: a catalog may resume from a
     /// well-formed cursor it does not recognize, as <see cref="InMemoryMcpSkillCatalog"/> does.
     /// </remarks>
-    ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken);
+    ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken);
 
     /// <summary>
     /// Gets the entry for a single skill by the URI of its <c>SKILL.md</c>.
     /// </summary>
-    /// <param name="uri">The URI of the skill's <c>SKILL.md</c>.</param>
-    /// <param name="context">The request being answered, including the caller's identity when the transport supplies one.</param>
+    /// <param name="context">
+    /// The request being answered, including the skill URI in <c>context.Params.Uri</c> and the caller's identity
+    /// when the transport supplies one.
+    /// </param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>
-    /// The skill's entry, or <see langword="null"/> if this catalog does not serve a skill at <paramref name="uri"/>
-    /// to this caller.
+    /// The skill's entry, or <see langword="null"/> if this catalog does not serve a skill at the requested URI to this caller.
     /// </returns>
     /// <remarks>
     /// This must answer for every skill the server serves to the caller, including skills omitted from <see cref="ListAsync"/>.
     /// </remarks>
-    ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken);
+    ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken);
 }

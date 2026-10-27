@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
@@ -161,6 +162,11 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
     {
         await using var catalog = new TestCatalog(_tracker);
         McpServerBuilder.WithSkills(catalog);
+        _tracker.OnRequest = (invocation, _) =>
+        {
+            Assert.Same(catalog, invocation.Services.GetRequiredService<IMcpSkillCatalog>());
+            return default;
+        };
         StartServer();
         await using var client = await CreateMcpClientForServer();
 
@@ -171,6 +177,38 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
         Assert.Equal(0, catalog.DisposeCount);
         Assert.Equal(2, _tracker.Dependencies.Count);
         Assert.All(_tracker.Dependencies, dependency => Assert.Equal(1, dependency.DisposeCount));
+    }
+
+    [Fact]
+    public async Task Catalog_ReceivesTypedParametersAndRequestMetadata()
+    {
+        McpServerBuilder.WithSkills<TestCatalog>();
+        StartServer();
+        await using var client = await CreateMcpClientForServer();
+
+        await client.ListSkillsAsync(new ListSkillsRequestParams
+        {
+            Cursor = "next-page",
+            Meta = new JsonObject { ["example.com/request"] = "list" },
+        }, TestContext.Current.CancellationToken);
+        await client.GetSkillAsync(new GetSkillRequestParams
+        {
+            Uri = SkillUri,
+            Meta = new JsonObject { ["example.com/request"] = "get" },
+        }, TestContext.Current.CancellationToken);
+
+        var invocations = _tracker.Invocations.ToArray();
+        Assert.Equal(2, invocations.Length);
+        var list = Assert.IsType<RequestContext<ListSkillsRequestParams>>(invocations[0].Context);
+        var get = Assert.IsType<RequestContext<GetSkillRequestParams>>(invocations[1].Context);
+        Assert.Equal("next-page", list.Params.Cursor);
+        Assert.Equal(SkillUri, get.Params.Uri);
+        Assert.Equal("list", list.Params.Meta?["example.com/request"]?.GetValue<string>());
+        Assert.Equal("get", get.Params.Meta?["example.com/request"]?.GetValue<string>());
+        Assert.Equal(SkillsProtocol.MethodSkillsList, list.JsonRpcRequest.Method);
+        Assert.Equal(SkillsProtocol.MethodSkillsGet, get.JsonRpcRequest.Method);
+        Assert.Same(invocations[0].Services, list.Services);
+        Assert.Same(invocations[1].Services, get.Services);
     }
 
     [Theory]
@@ -287,7 +325,7 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
         public TaskCompletionSource<bool> CatalogDisposed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
-    private sealed record Invocation(TestCatalog Catalog, RequestDependency Dependency, IServiceProvider Services);
+    private sealed record Invocation(TestCatalog Catalog, RequestDependency Dependency, IServiceProvider Services, MessageContext Context);
 
     private sealed class RequestDependency : IAsyncDisposable
     {
@@ -323,29 +361,29 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
             tracker.Catalogs.Enqueue(this);
         }
 
-        public async ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
+        public async ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
         {
             await RecordAsync(context, cancellationToken);
             return new McpSkillPage { Skills = [CreateEntry()] };
         }
 
-        public async ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+        public async ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
         {
             await RecordAsync(context, cancellationToken);
-            return uri == SkillUri ? CreateEntry() : null;
+            return context.Params.Uri == SkillUri ? CreateEntry() : null;
         }
 
         protected virtual void ValidateDependency(RequestDependency dependency)
         {
         }
 
-        private async ValueTask RecordAsync(McpSkillRequestContext context, CancellationToken cancellationToken)
+        private async ValueTask RecordAsync(MessageContext context, CancellationToken cancellationToken)
         {
             Assert.NotNull(context.Server);
             var services = Assert.IsAssignableFrom<IServiceProvider>(context.Services);
             var dependency = services.GetRequiredService<RequestDependency>();
             ValidateDependency(dependency);
-            var invocation = new Invocation(this, dependency, services);
+            var invocation = new Invocation(this, dependency, services, context);
             _tracker.Invocations.Enqueue(invocation);
             if (_tracker.OnRequest is { } onRequest)
             {

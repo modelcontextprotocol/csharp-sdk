@@ -279,19 +279,20 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
     /// </summary>
     private sealed class PartialCatalog(InMemoryMcpSkillCatalog listed, Skill unlisted, Skill broken) : IMcpSkillCatalog
     {
-        public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
+        public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
         {
             AssertContext(context, SkillsProtocol.MethodSkillsList);
-            if (string.Equals(cursor, "broken-entry", StringComparison.Ordinal))
+            if (string.Equals(context.Params.Cursor, "broken-entry", StringComparison.Ordinal))
             {
                 return new ValueTask<McpSkillPage>(new McpSkillPage { Skills = [broken] });
             }
-            return listed.ListAsync(cursor, context, cancellationToken);
+            return listed.ListAsync(context, cancellationToken);
         }
 
-        public async ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+        public async ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
         {
             AssertContext(context, SkillsProtocol.MethodSkillsGet);
+            string uri = context.Params.Uri;
             if (string.Equals(uri, unlisted.Uri, StringComparison.Ordinal))
             {
                 return unlisted;
@@ -304,15 +305,16 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
 
             if (string.Equals(uri, SwappedUri, StringComparison.Ordinal))
             {
-                // A catalog bug: a valid entry, for the wrong skill.
-                return await listed.GetAsync("skill://alpha/SKILL.md", context, cancellationToken);
+                // A catalog bug: a valid entry for the wrong skill, even if it changes the request parameters.
+                context.Params.Uri = "skill://alpha/SKILL.md";
+                return await listed.GetAsync(context, cancellationToken);
             }
 
-            return await listed.GetAsync(uri, context, cancellationToken);
+            return await listed.GetAsync(context, cancellationToken);
         }
 
         // The catalog receives the request it is answering, so a per-caller catalog can decide from it.
-        private void AssertContext(McpSkillRequestContext context, string method)
+        private void AssertContext<TParams>(RequestContext<TParams> context, string method)
         {
             Assert.Equal(method, context.JsonRpcRequest.Method);
             Assert.Null(context.User);

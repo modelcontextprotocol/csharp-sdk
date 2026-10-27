@@ -137,19 +137,19 @@ internal sealed class AotCatalogDependency : IAsyncDisposable
 
 internal sealed class AotSkillCatalog(InMemoryMcpSkillCatalog catalog, AotCatalogDependency dependency) : IMcpSkillCatalog
 {
-    public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
+    public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
     {
         ValidateRequestServices(context);
-        return catalog.ListAsync(cursor, context, cancellationToken);
+        return catalog.ListAsync(context, cancellationToken);
     }
 
-    public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+    public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
     {
         ValidateRequestServices(context);
-        return catalog.GetAsync(uri, context, cancellationToken);
+        return catalog.GetAsync(context, cancellationToken);
     }
 
-    private void ValidateRequestServices(McpSkillRequestContext context)
+    private void ValidateRequestServices(MessageContext context)
     {
         if (!ReferenceEquals(dependency, context.Services?.GetRequiredService<AotCatalogDependency>()) ||
             ReferenceEquals(context.Services, context.Server.Services))
