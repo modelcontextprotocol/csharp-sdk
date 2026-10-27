@@ -998,7 +998,8 @@ internal sealed class StreamableHttpHandler(
         }
 
 #pragma warning disable MCPEXP002
-        var routingNameParameter = GetRoutingNameParameter(mcpMethodInBody, serverOptions.RequestHandlers);
+        var routingNameParameter = GetRoutingNameParameter(
+            mcpMethodInBody, serverOptions.RequestHandlers, serverOptions.ContextualRequestHandlers);
 #pragma warning restore MCPEXP002
         if (routingNameParameter is null)
         {
@@ -1061,7 +1062,8 @@ internal sealed class StreamableHttpHandler(
 #pragma warning disable MCPEXP002
     private static string? GetRoutingNameParameter(
         string? method,
-        IList<McpServerRequestHandler>? requestHandlers)
+        IList<McpServerRequestHandler>? requestHandlers,
+        IList<McpServerContextualRequestHandler>? contextualRequestHandlers)
     {
         var builtInParameter = method switch
         {
@@ -1078,6 +1080,17 @@ internal sealed class StreamableHttpHandler(
         if (requestHandlers is not null)
         {
             foreach (var requestHandler in requestHandlers)
+            {
+                if (string.Equals(requestHandler.Method, method, StringComparison.Ordinal))
+                {
+                    return requestHandler.RoutingNameParameter;
+                }
+            }
+        }
+
+        if (contextualRequestHandlers is not null)
+        {
+            foreach (var requestHandler in contextualRequestHandlers)
             {
                 if (string.Equals(requestHandler.Method, method, StringComparison.Ordinal))
                 {

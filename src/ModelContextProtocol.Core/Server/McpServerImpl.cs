@@ -1180,43 +1180,60 @@ internal sealed partial class McpServerImpl : McpServer
         ServerCapabilities.Extensions = options.Capabilities?.Extensions;
     }
 
+#pragma warning disable MCPEXP002
     private void ConfigureCustomRequestHandlers(McpServerOptions options)
     {
-#pragma warning disable MCPEXP002
-        if (options.RequestHandlers is not { Count: > 0 } customHandlers)
+        if (options.RequestHandlers is { } customHandlers)
         {
-            return;
+            foreach (var entry in customHandlers)
+            {
+                ValidateCustomRequestHandler(entry.Method, entry.RoutingNameParameter, entry.Handler, nameof(McpServerOptions.RequestHandlers));
+                SetRawHandler(entry.Method, entry.Handler);
+            }
         }
 
-        foreach (var entry in customHandlers)
+        if (options.ContextualRequestHandlers is { } contextualHandlers)
         {
-            if (string.IsNullOrEmpty(entry.Method))
+            foreach (var entry in contextualHandlers)
             {
-                throw new InvalidOperationException(
-                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has a null or empty {nameof(McpServerRequestHandler.Method)}.");
+                ValidateCustomRequestHandler(entry.Method, entry.RoutingNameParameter, entry.Handler, nameof(McpServerOptions.ContextualRequestHandlers));
+                var handler = entry.Handler;
+                _requestHandlers[entry.Method] = (request, ct) =>
+                    InvokeHandlerAsync(handler, request.Params, request, ct).AsTask();
             }
-
-            if (entry.RoutingNameParameter is not null && string.IsNullOrWhiteSpace(entry.RoutingNameParameter))
-            {
-                throw new InvalidOperationException(
-                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has an empty {nameof(McpServerRequestHandler.RoutingNameParameter)}.");
-            }
-
-            // Custom handlers are registered after all built-in handlers, so a method already present
-            // belongs to a built-in method (e.g. initialize, tools/call) or an earlier custom handler.
-            // Silently overwriting it would bypass the built-in handler's filters and protocol gating,
-            // so reject the collision instead.
-            if (_requestHandlers.ContainsKey(entry.Method))
-            {
-                throw new InvalidOperationException(
-                    $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} " +
-                    $"uses the method '{entry.Method}', which is already handled by the server. Custom handlers cannot replace built-in methods or other custom handlers.");
-            }
-
-            SetRawHandler(entry.Method, entry.Handler);
         }
-#pragma warning restore MCPEXP002
     }
+
+    private void ValidateCustomRequestHandler(string method, string? routingNameParameter, Delegate handler, string propertyName)
+    {
+        if (string.IsNullOrEmpty(method))
+        {
+            throw new InvalidOperationException(
+                $"A custom request handler registered through {nameof(McpServerOptions)}.{propertyName} has a null or empty {nameof(McpServerRequestHandler.Method)}.");
+        }
+
+        if (routingNameParameter is not null && string.IsNullOrWhiteSpace(routingNameParameter))
+        {
+            throw new InvalidOperationException(
+                $"A custom request handler registered through {nameof(McpServerOptions)}.{propertyName} has an empty {nameof(McpServerRequestHandler.RoutingNameParameter)}.");
+        }
+
+        if (handler is null)
+        {
+            throw new InvalidOperationException(
+                $"The custom request handler for '{method}' registered through {nameof(McpServerOptions)}.{propertyName} has a null {nameof(McpServerRequestHandler.Handler)}.");
+        }
+
+        // Custom handlers are registered after built-in handlers. Reject collisions rather than bypassing
+        // another handler's filters and protocol gating.
+        if (_requestHandlers.ContainsKey(method))
+        {
+            throw new InvalidOperationException(
+                $"A custom request handler registered through {nameof(McpServerOptions)}.{propertyName} " +
+                $"uses the method '{method}', which is already handled by the server. Custom handlers cannot replace built-in methods or other custom handlers.");
+        }
+    }
+#pragma warning restore MCPEXP002
 
     private void SetRawHandler(string method, Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> handler)
     {

@@ -20,14 +20,18 @@ var catalog = new InMemoryMcpSkillCatalog([entry]);
 entry.Meta["example.com/aot"]!["values"]!.AsArray().Clear();
 
 var services = new ServiceCollection();
+var catalogTracker = new AotCatalogTracker();
+services.AddSingleton(catalog);
+services.AddSingleton(catalogTracker);
+services.AddScoped<AotCatalogDependency>();
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
     .WithMcpApps()
-    .WithSkills(catalog)
+    .WithSkills<AotSkillCatalog>()
     .WithResources(authoredSkill.Resources);
 
-await using var serviceProvider = services.BuildServiceProvider();
+await using var serviceProvider = services.BuildServiceProvider(validateScopes: true);
 var server = serviceProvider.GetRequiredService<McpServer>();
 _ = server.RunAsync();
 
@@ -93,6 +97,11 @@ if (skillFile.Contents is not [TextResourceContents { Text: var skillText }] || 
     throw new Exception("Unexpected skill content.");
 }
 
+if (catalogTracker.Created != 2 || catalogTracker.Disposed != 2)
+{
+    throw new Exception($"Unexpected catalog scope lifetimes: {catalogTracker.Created} created, {catalogTracker.Disposed} disposed.");
+}
+
 Console.WriteLine("Success!");
 
 [McpServerToolType]
@@ -101,4 +110,51 @@ internal sealed class AotTools
     [McpServerTool(Name = "Echo")]
     [McpAppUi(ResourceUri = "ui://aot/echo")]
     public static string Echo(string arg) => $"Echo: {arg}";
+}
+
+internal sealed class AotCatalogTracker
+{
+    public int Created;
+    public int Disposed;
+}
+
+internal sealed class AotCatalogDependency : IAsyncDisposable
+{
+    private readonly AotCatalogTracker _tracker;
+
+    public AotCatalogDependency(AotCatalogTracker tracker)
+    {
+        _tracker = tracker;
+        Interlocked.Increment(ref tracker.Created);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await Task.Yield();
+        Interlocked.Increment(ref _tracker.Disposed);
+    }
+}
+
+internal sealed class AotSkillCatalog(InMemoryMcpSkillCatalog catalog, AotCatalogDependency dependency) : IMcpSkillCatalog
+{
+    public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
+    {
+        ValidateRequestServices(context);
+        return catalog.ListAsync(cursor, context, cancellationToken);
+    }
+
+    public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+    {
+        ValidateRequestServices(context);
+        return catalog.GetAsync(uri, context, cancellationToken);
+    }
+
+    private void ValidateRequestServices(McpSkillRequestContext context)
+    {
+        if (!ReferenceEquals(dependency, context.Services?.GetRequiredService<AotCatalogDependency>()) ||
+            ReferenceEquals(context.Services, context.Server.Services))
+        {
+            throw new Exception("The catalog did not receive request-scoped services.");
+        }
+    }
 }

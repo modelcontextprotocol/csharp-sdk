@@ -210,14 +210,33 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Each <see cref="McpServerRequestHandler"/> registers a raw JSON-RPC method handler that
-    /// bypasses the typed handler infrastructure. This enables extensions to register handlers
+    /// Each <see cref="McpServerRequestHandler"/> registers a JSON-RPC method handler that
+    /// controls its own serialization and bypasses the typed request filters. This enables extensions to register handlers
     /// for methods not known to Core at compile time.
     /// </para>
     /// <para>
-    /// Handlers registered here take precedence over built-in handlers for the same method.
+    /// Use <see cref="ContextualRequestHandlers"/> for access to request-scoped services and the request's server.
+    /// </para>
+    /// <para>
+    /// Each method must be unique. Custom handlers cannot replace built-in handlers or other custom handlers.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
+
+    /// <summary>
+    /// Gets or sets custom request handlers with access to the request's server and services.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each <see cref="McpServerContextualRequestHandler"/> controls its own JSON serialization and
+    /// bypasses the typed request filters, while using the same service scope lifecycle as built-in
+    /// request handlers. The lifecycle honors <see cref="ScopeRequests"/>.
+    /// </para>
+    /// <para>
+    /// Each method must be unique across this collection, <see cref="RequestHandlers"/>, and the built-in handlers.
+    /// </para>
+    /// </remarks>
+    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
+    public IList<McpServerContextualRequestHandler>? ContextualRequestHandlers { get; set; }
 }

@@ -29,6 +29,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("directory")]
     [InlineData("directory-with-hidden-files")]
     [InlineData("catalog")]
+    [InlineData("catalog-type")]
+    [InlineData("catalog-factory")]
     public void SecondRegistrationOnTheSameBuilder_ThrowsBeforeRegisteringAnything(string method)
     {
         var services = new ServiceCollection();
@@ -47,6 +49,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("directory")]
     [InlineData("directory-with-hidden-files")]
     [InlineData("catalog")]
+    [InlineData("catalog-type")]
+    [InlineData("catalog-factory")]
     public void SecondRegistrationThroughAnotherBuilderForTheSameServices_Throws(string method)
     {
         // For example a library and the application each enabling Skills on the same service collection.
@@ -66,17 +70,19 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("directory")]
     [InlineData("directory-with-hidden-files")]
     [InlineData("catalog")]
-    public void SingleRegistration_InstallsEachSkillsMethodOnce(string method)
+    [InlineData("catalog-type")]
+    [InlineData("catalog-factory")]
+    public async Task SingleRegistration_InstallsEachSkillsMethodOnce(string method)
     {
         var services = new ServiceCollection();
         Register(services.AddMcpServer(), method);
-        using var provider = services.BuildServiceProvider();
+        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
 
         var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-#pragma warning disable MCPEXP002 // RequestHandlers is experimental.
-        Assert.Single(options.RequestHandlers!, handler => handler.Method == "skills/list");
-        Assert.Single(options.RequestHandlers!, handler => handler.Method == "skills/get");
+#pragma warning disable MCPEXP002 // ContextualRequestHandlers is experimental.
+        Assert.Single(options.ContextualRequestHandlers!, handler => handler.Method == "skills/list");
+        Assert.Single(options.ContextualRequestHandlers!, handler => handler.Method == "skills/get");
 #pragma warning restore MCPEXP002
     }
 
@@ -95,6 +101,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("conflicting-file", typeof(ArgumentException))]
     [InlineData("duplicate-skill", typeof(ArgumentException))]
     [InlineData("configure", typeof(InvalidOperationException))]
+    [InlineData("catalog-type-configure", typeof(InvalidOperationException))]
+    [InlineData("catalog-factory-configure", typeof(InvalidOperationException))]
     public void FailedRegistration_LeavesNoResources_AndARetryWithNewSkillsSucceeds(string failure, Type expectedException)
     {
         var services = new ServiceCollection();
@@ -201,6 +209,12 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
             case "catalog":
                 builder.WithSkills(new InMemoryMcpSkillCatalog([CreateGitWorkflow().ProtocolSkill]));
                 break;
+            case "catalog-type":
+                builder.WithSkills<EmptyCatalog>();
+                break;
+            case "catalog-factory":
+                builder.WithSkills(_ => new EmptyCatalog());
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(method), method, "Unknown registration method.");
         }
@@ -222,6 +236,12 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
             case "configure":
                 builder.WithSkills([CreateGitWorkflow()], _ => throw new InvalidOperationException("The configuration failed."));
                 break;
+            case "catalog-type-configure":
+                builder.WithSkills<EmptyCatalog>(configure: _ => throw new InvalidOperationException("The configuration failed."));
+                break;
+            case "catalog-factory-configure":
+                builder.WithSkills(_ => new EmptyCatalog(), configure: _ => throw new InvalidOperationException("The configuration failed."));
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(failure), failure, "Unknown failure.");
         }
@@ -229,4 +249,38 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
 
     private McpServerSkill CreateGitWorkflow() =>
         McpServerSkill.Create(GitWorkflowUri, [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)]);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InvalidLifetime_LeavesTheServiceCollectionUnchanged(bool factory)
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        int registrationCount = services.Count;
+
+        Assert.Throws<ArgumentOutOfRangeException>("lifetime", () =>
+        {
+            if (factory)
+            {
+                builder.WithSkills(_ => new EmptyCatalog(), (ServiceLifetime)(-1));
+            }
+            else
+            {
+                builder.WithSkills<EmptyCatalog>((ServiceLifetime)(-1));
+            }
+        });
+
+        Assert.Equal(registrationCount, services.Count);
+        builder.WithSkills<EmptyCatalog>();
+    }
+
+    private sealed class EmptyCatalog : IMcpSkillCatalog
+    {
+        public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken) =>
+            new(new McpSkillPage { Skills = [] });
+
+        public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken) =>
+            new((Skill?)null);
+    }
 }

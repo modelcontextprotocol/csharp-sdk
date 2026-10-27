@@ -28,8 +28,11 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <see cref="McpSkillRequestContext"/> it receives, and the corresponding resources must be guarded the same way.
 /// </para>
 /// <para>
-/// One catalog instance serves every request, so it must not capture scoped services directly. A catalog that
-/// needs them can create its own scope for each call; such a scope is independent of the request's scope.
+/// Register a catalog with a dependency injection lifetime appropriate for its dependencies, or resolve
+/// request-scoped dependencies from <see cref="ModelContextProtocol.Server.MessageContext.Services"/> on the
+/// supplied context. An externally supplied catalog instance or a singleton catalog is shared across requests
+/// and must not capture scoped services. The request infrastructure owns any request scope and disposes it
+/// asynchronously; a catalog must not dispose or retain services resolved from that scope.
 /// </para>
 /// </remarks>
 public interface IMcpSkillCatalog

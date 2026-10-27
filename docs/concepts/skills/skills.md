@@ -159,9 +159,19 @@ with a full YAML parser and supply the identical JSON; the SDK accepting it is n
 #### Custom catalogs
 
 When skills come from a database, a file share, or a large or generated catalog, implement
-<xref:ModelContextProtocol.Extensions.Skills.IMcpSkillCatalog> and pass it to `WithSkills`:
+<xref:ModelContextProtocol.Extensions.Skills.IMcpSkillCatalog> and register it with `WithSkills<TCatalog>`.
+For example, a database-backed catalog can take a scoped repository in its constructor:
 
 ```csharp
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Extensions.Skills;
+
+builder.Services.AddScoped<SkillRepository>();
+builder.Services
+    .AddMcpServer()
+    .WithHttpTransport()
+    .WithSkills<DatabaseSkillCatalog>();
+
 public sealed class DatabaseSkillCatalog(SkillRepository repository) : IMcpSkillCatalog
 {
     public async ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
@@ -176,13 +186,69 @@ public sealed class DatabaseSkillCatalog(SkillRepository repository) : IMcpSkill
 }
 ```
 
+`SkillRepository` represents the application's data-access layer; register its database context and other
+dependencies with their usual lifetimes. The repository's methods should apply the caller's tenant or access
+policy before querying and paginating. Register the skill file resources separately, using the same policy.
+
 Both methods receive an <xref:ModelContextProtocol.Extensions.Skills.McpSkillRequestContext> with the JSON-RPC request,
 the caller's <xref:System.Security.Claims.ClaimsPrincipal> when the transport supplies one (the ASP.NET Core
-transport does), and any items that incoming-message filters attached to the request.
+transport does), any items that incoming-message filters attached to the request, the request-bound `Server`,
+and the request's `Services`.
 
-The catalog passed to `WithSkills` is one instance shared by every request, so it must not capture scoped services,
-such as a database context, directly. A catalog that needs scoped services can create its own scope for each call
-with `IServiceScopeFactory`; such a scope is independent of the request's scope and does not share its instances.
+The generic and factory overloads default to <xref:Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped>.
+They register `IMcpSkillCatalog` in the container and resolve it when a Skills request runs, not while configuring
+the server's options. Use the factory overload instead when construction needs application-specific configuration:
+
+```csharp
+builder.Services
+    .AddMcpServer()
+    .WithHttpTransport()
+    .WithSkills(
+        services => new DatabaseSkillCatalog(services.GetRequiredService<SkillRepository>()),
+        lifetime: ServiceLifetime.Scoped,
+        configure: options => options.TimeToLive = TimeSpan.FromMinutes(1));
+```
+
+Choose a lifetime for the catalog, independently of the lifetimes of its dependencies:
+
+| Registration | Lifetime and ownership |
+|---|---|
+| `WithSkills<TCatalog>()` or `WithSkills(factory)` | Scoped by default. The catalog and scoped constructor dependencies come from the request's provider. DI owns them. |
+| Either overload with `lifetime: ServiceLifetime.Transient` | A new catalog is created on resolution and disposed by its owning scope. Scoped dependencies still come from the request's provider. |
+| Either overload with `lifetime: ServiceLifetime.Singleton` | One container-owned catalog is shared across requests. Its constructor or factory must not capture scoped dependencies. |
+| `WithSkills(catalog)` | The supplied instance is shared across requests and remains caller-owned; the SDK does not dispose it. It must not capture scoped dependencies. |
+
+A singleton or externally supplied catalog can use request-scoped services without retaining them:
+
+```csharp
+public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+{
+    var repository = context.Services!.GetRequiredService<SkillRepository>();
+    return repository.FindAsync(GetTenant(context.User), uri, cancellationToken);
+}
+```
+
+Use `context.Services`, not `context.Server.Services`, for request-scoped dependencies. The latter may be the
+server's longer-lived provider. The SDK supplies a provider when the server is created through dependency
+injection; a low-level server created without services may have a null `context.Services`.
+
+The scope follows the same lifecycle as built-in MCP request handlers:
+
+| Transport or configuration | Request services |
+|---|---|
+| Stateless Streamable HTTP, including modern clients on a hybrid endpoint | The existing `HttpContext.RequestServices`. Scoped state set by HTTP middleware is preserved; Skills does not create another scope. ASP.NET Core owns and disposes it. |
+| Stream/stdio, stateful Streamable HTTP, and legacy SSE | With the default `McpServerOptions.ScopeRequests = true`, Core creates an independent scope per MCP request and disposes it asynchronously after the handler finishes, including on failure or cancellation. This is not the HTTP middleware's scope. |
+| `McpServerOptions.ScopeRequests = false` | The provider supplied to the server is used as-is and remains caller-owned. Supply an appropriately scoped provider when using scoped catalogs or dependencies. |
+
+Neither the catalog nor application code should dispose the request provider or retain its scoped services
+after returning. Concurrent requests have separate request scopes, but singleton and externally supplied
+catalogs are shared and must support concurrent calls. A catalog can still create an independent scope with
+`IServiceScopeFactory` when that is intentional; such a scope does not share the existing request's instances,
+and the catalog owns its disposal.
+
+Skills methods still do not pass through the typed request filters or ASP.NET Core's built-in resource
+authorization filters. DI registration does not add authorization; enforce catalog visibility and guard the
+corresponding file resources separately.
 
 A catalog supplies entries only; the skills' files must still be served as resources, since hosts read them with
 `resources/read`. Each entry's frontmatter must match its `SKILL.md`; the SDK validates entry structure but does not

@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </para>
 /// <para>
 /// Every caller sees the same entries. For a catalog whose contents depend on the caller, implement
-/// <see cref="IMcpSkillCatalog"/> directly and consult <see cref="McpSkillRequestContext.User"/>.
+/// <see cref="IMcpSkillCatalog"/> directly and consult <see cref="ModelContextProtocol.Server.MessageContext.User"/>.
 /// </para>
 /// </remarks>
 public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog

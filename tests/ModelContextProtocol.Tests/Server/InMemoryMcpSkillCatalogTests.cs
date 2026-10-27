@@ -1,5 +1,7 @@
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using Moq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -15,7 +17,7 @@ public class InMemoryMcpSkillCatalogTests
 {
     private static readonly string s_validDigest = "sha256:" + new string('a', 64);
 
-    private McpSkillRequestContext Context => new(new JsonRpcRequest { Method = SkillsProtocol.MethodSkillsList });
+    private McpSkillRequestContext Context => new(new Mock<McpServer>().Object, new JsonRpcRequest { Method = SkillsProtocol.MethodSkillsList });
 
     // Static because the InvalidSkills member data, which xUnit requires to be static, builds its cases with it.
     private static Skill CreateSkill(string name, string? description = "A skill", SkillResources? resources = null)
