@@ -1,12 +1,17 @@
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Collections.ObjectModel;
 using System.IO.Pipelines;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 Pipe clientToServerPipe = new(), serverToClientPipe = new();
 
@@ -20,9 +25,25 @@ var catalog = new InMemoryMcpSkillCatalog([entry]);
 entry.Meta["example.com/aot"]!["values"]!.AsArray().Clear();
 
 var services = new ServiceCollection();
+JsonSerializerOptions structuredOptions = new(McpJsonUtilities.DefaultOptions)
+{
+    TypeInfoResolver = JsonTypeInfoResolver.Combine(AotJsonContext.Default, McpJsonUtilities.DefaultOptions.TypeInfoResolver),
+};
+McpServerTool structuredTool = McpServerTool.Create(
+    () => new AotStructuredOutput(),
+    new()
+    {
+        Name = "RequiredDefaults",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = JsonDocument.Parse("""
+            {"type":"object","required":["id","note","value","items"],"properties":{"id":{"type":"null"},"note":{"type":"null"},"value":{"const":"converted"},"items":{"type":"object","additionalProperties":{"type":"object","required":["count"],"properties":{"count":{"const":0}}}}}}
+            """).RootElement,
+    });
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
+    .WithTools([structuredTool])
     .WithMcpApps()
     .WithSkills(catalog)
     .WithResources(authoredSkill.Resources);
@@ -53,6 +74,16 @@ var result = await echo.InvokeAsync(new() { ["arg"] = "Hello World" });
 if (result is null || !result.ToString()!.Contains("Echo: Hello World"))
 {
     throw new Exception($"Unexpected result: {result}");
+}
+
+var structuredResult = await client.CallToolAsync("RequiredDefaults");
+if (structuredResult.StructuredContent is not { } structured ||
+    structured.GetProperty("id").ValueKind != JsonValueKind.Null ||
+    structured.GetProperty("note").ValueKind != JsonValueKind.Null ||
+    structured.GetProperty("value").GetString() != "converted" ||
+    structured.GetProperty("items").GetProperty("42").GetProperty("count").GetInt32() != 0)
+{
+    throw new Exception($"Unexpected structured output: {structuredResult.StructuredContent}");
 }
 
 // List, get, and verify a skill.
@@ -102,3 +133,37 @@ internal sealed class AotTools
     [McpAppUi(ResourceUri = "ui://aot/echo")]
     public static string Echo(string arg) => $"Echo: {arg}";
 }
+
+internal sealed class AotStructuredOutput
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public RequestId Id { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Note { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonConverter(typeof(AotElementConverter))]
+    public JsonElement Value { get; init; }
+
+    public ReadOnlyDictionary<int, AotStructuredChild> Items { get; init; } =
+        new(new Dictionary<int, AotStructuredChild> { [42] = default });
+}
+
+internal struct AotStructuredChild
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int Count { get; init; }
+}
+
+internal sealed class AotElementConverter : JsonConverter<JsonElement>
+{
+    public override JsonElement Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        throw new NotSupportedException();
+
+    public override void Write(Utf8JsonWriter writer, JsonElement value, JsonSerializerOptions options) =>
+        writer.WriteStringValue("converted");
+}
+
+[JsonSerializable(typeof(AotStructuredOutput))]
+internal partial class AotJsonContext : JsonSerializerContext;
