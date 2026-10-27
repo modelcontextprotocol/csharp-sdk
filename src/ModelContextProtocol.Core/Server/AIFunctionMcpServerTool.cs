@@ -861,6 +861,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         bool[] included = Enumerable.Repeat(true, candidates.Count).ToArray();
         string originalJson = resultNode.ToJsonString();
         JsonNode? repairedResult = null;
+        List<JsonNode> pendingResults = [];
 
         bool TryCurrentSet()
         {
@@ -886,16 +887,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 return false;
             }
 
-            repairedResult = TryRepairStructuredResult(
-                candidateResult,
-                resultNodeIncludingDefaults,
-                schemaNode,
-                schema,
-                originalResult,
-                serializerOptions,
-                depth + 1,
-                searchState);
-            return repairedResult is not null;
+            if (IsSchemaValid(schema, candidateResult))
+            {
+                repairedResult = candidateResult;
+                return true;
+            }
+
+            pendingResults.Add(candidateResult);
+            return false;
         }
 
         bool SearchInclusions(int nextIndex, int remaining)
@@ -927,13 +926,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             return repairedResult;
         }
+        JsonNode? allCandidatesResult = pendingResults.Count == 0 ? null : pendingResults[0];
+        pendingResults.Clear();
 
         for (int i = 0; i < included.Length; i++)
         {
             included[i] = false;
         }
 
-        for (int includedCount = 1; includedCount < candidates.Count; includedCount++)
+        for (int includedCount = 1; includedCount <= Math.Min(2, candidates.Count - 1); includedCount++)
         {
             if (SearchInclusions(0, includedCount))
             {
@@ -943,6 +944,31 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             if (searchState.CandidateSetEvaluations >= maxCandidateSetEvaluations)
             {
                 break;
+            }
+        }
+
+        if (allCandidatesResult is not null)
+        {
+            pendingResults.Add(allCandidatesResult);
+        }
+
+        foreach (JsonNode pendingResult in pendingResults)
+        {
+            searchState.Pending.Enqueue((pendingResult, depth + 1));
+        }
+
+        if (depth == 0)
+        {
+            while (searchState.Pending.Count > 0 && searchState.CandidateSetEvaluations < maxCandidateSetEvaluations)
+            {
+                (JsonNode nextResult, int nextDepth) = searchState.Pending.Dequeue();
+                repairedResult = TryRepairStructuredResult(
+                    nextResult, resultNodeIncludingDefaults, schemaNode, schema,
+                    originalResult, serializerOptions, nextDepth, searchState);
+                if (repairedResult is not null)
+                {
+                    return repairedResult;
+                }
             }
         }
 
@@ -1064,6 +1090,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         internal int CandidateSetEvaluations { get; set; }
 
         internal HashSet<string> VisitedStates { get; } = new(StringComparer.Ordinal);
+
+        internal Queue<(JsonNode Result, int Depth)> Pending { get; } = new();
     }
 
     private static void CollectSchemaContexts(
@@ -1551,10 +1579,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return false;
         }
 
-        object? placeholderValue = valueType.IsValueType
-            ? CreateDefaultValue(valueType)
-            : null;
-
         foreach (DictionaryEntry entry in dictionary)
         {
             if (entry.Key is null)
@@ -1565,7 +1589,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             try
             {
                 singleEntry.Clear();
-                singleEntry.Add(entry.Key, placeholderValue);
+                singleEntry.Add(entry.Key, entry.Value);
                 JsonElement serialized = JsonSerializer.SerializeToElement(singleEntry, dictionaryTypeInfo);
                 if (serialized.ValueKind == JsonValueKind.Object && serialized.TryGetProperty(propertyName, out _))
                 {
@@ -1573,7 +1597,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     return true;
                 }
             }
-            catch (Exception exception) when (exception is ArgumentException or NotSupportedException or InvalidOperationException)
+            catch (Exception exception) when (exception is ArgumentException or JsonException or NotSupportedException or InvalidOperationException)
             {
                 return false;
             }
@@ -1681,7 +1705,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonElement element = JsonSerializer.SerializeToElement(value, typeInfo);
             return JsonSerializer.SerializeToNode(element, McpJsonUtilities.JsonContext.Default.JsonElement);
         }
-        catch (NotSupportedException)
+        catch (Exception exception) when (exception is JsonException or NotSupportedException or InvalidOperationException)
         {
             return null;
         }

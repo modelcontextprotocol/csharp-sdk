@@ -680,6 +680,51 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RejectingEnumDoesNotPreventUnionRepair()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""
+            {"type":"object","properties":{"note":{"type":["string","null"]},"status":{"type":"string"}},"anyOf":[{"required":["status"]},{"required":["note"]}]}
+            """).RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        options.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
+        McpServerTool tool = McpServerTool.Create(
+            () => new ExplicitSchemaOutputWithUndefinedEnumDefault(),
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RecoversStructDictionaryValueWithEnumConverter()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""
+            {"type":"object","properties":{"items":{"type":"object","additionalProperties":{"type":"object","properties":{"count":{"type":"integer"},"status":{"type":"string"}},"required":["count","status"]}}},"required":["items"]}
+            """).RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        options.Converters.Add(new JsonStringEnumConverter(allowIntegerValues: false));
+        McpServerTool tool = McpServerTool.Create(
+            () => new StructDictionaryOutput { Items = new() { [42] = new() { Status = ExplicitSchemaStatus.Ready } } },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(0, result.StructuredContent.Value.GetProperty("items").GetProperty("42").GetProperty("count").GetInt32());
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_ExplicitSchema_TraversesDictionaryValuesAndReferences()
     {
         JsonElement outputSchema = JsonDocument.Parse("""
@@ -1312,8 +1357,18 @@ public partial class McpServerToolTests
         AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
     }
 
-    [Fact]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_SelectsAValidBranchFromBroadUnion()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_SelectsAValidBranchFromBroadUnion(int tag)
     {
         string branchSchemas = string.Join(",", Enumerable.Range(0, 10).Select(index =>
             $$$"""{"type":"object","properties":{"tag":{"const":"{{{index}}}"},"note{{{index}}}":{"type":["string","null"]}},"required":["tag","note{{{index}}}"],"additionalProperties":false}"""));
@@ -1325,15 +1380,41 @@ public partial class McpServerToolTests
             TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
         };
         McpServerTool tool = McpServerTool.Create(
-            () => new TenBranchStructuredOutput { Tag = "0" },
+            () => new TenBranchStructuredOutput { Tag = tag.ToString(System.Globalization.CultureInfo.InvariantCulture) },
             new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
 
         var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
 
         Assert.NotNull(result.StructuredContent);
-        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("note0").ValueKind);
-        Assert.False(result.StructuredContent.Value.TryGetProperty("note1", out _));
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty($"note{tag}").ValueKind);
         AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_SelectsBranchWithTwoRequiredMembers(int tag)
+    {
+        string branches = string.Join(",", Enumerable.Range(0, 3).Select(index =>
+            $$$"""{"type":"object","properties":{"tag":{"const":"{{{index}}}"},"note{{{index * 2}}}":{"type":["string","null"]},"note{{{index * 2 + 1}}}":{"type":["string","null"]}},"required":["tag","note{{{index * 2}}}","note{{{index * 2 + 1}}}"],"additionalProperties":false}"""));
+        using JsonDocument document = JsonDocument.Parse($$"""{"type":"object","oneOf":[{{branches}}]}""");
+        JsonElement outputSchema = document.RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new TenBranchStructuredOutput { Tag = tag.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty($"note{tag * 2}").ValueKind);
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty($"note{tag * 2 + 1}").ValueKind);
     }
 
     [Fact]
@@ -2140,6 +2221,19 @@ public partial class McpServerToolTests
         public string? Note { get; init; }
 
         public ExplicitSchemaStatus Status { get; init; }
+    }
+
+    private sealed class StructDictionaryOutput
+    {
+        public required Dictionary<int, StructDictionaryChild> Items { get; init; }
+    }
+
+    private struct StructDictionaryChild
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public int Count { get; set; }
+
+        public ExplicitSchemaStatus Status { get; set; }
     }
 
     private enum ExplicitSchemaStatus
