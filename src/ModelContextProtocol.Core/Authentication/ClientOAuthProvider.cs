@@ -447,11 +447,6 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         var cachedTokensMatchClientCredentials =
             CachedTokensMatchClientCredentials(cachedTokens, selectedAuthServer.OriginalString);
 
-        // Retain the validated resource verbatim with the auth server metadata, including when a
-        // cold-start challenge is satisfied by refreshing cached tokens instead of reauthorizing.
-        _authServerMetadata = authServerMetadata;
-        _resourceUri = resourceUri;
-
         // Only attempt a token refresh if we haven't attempted to already for this request.
         // Also only attempt a token refresh for a 401 Unauthorized responses. Other response status codes
         // should not be used for expired access tokens. This is important because 403 forbidden responses can
@@ -468,7 +463,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             var accessToken = await RefreshTokensAsync(refreshToken, resourceUri, authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (accessToken is not null)
             {
-                // A non-null result indicates the refresh succeeded and the new tokens have been stored.
+                // Retain discovery state when a cold-start refresh bypasses registration below.
+                _authServerMetadata = authServerMetadata;
+                _resourceUri = resourceUri;
                 return accessToken;
             }
         }
@@ -491,6 +488,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         // Determine the token endpoint auth method from server metadata if not already set by DCR.
         _tokenEndpointAuthMethod ??= authServerMetadata.TokenEndpointAuthMethodsSupported?.FirstOrDefault();
+
+        // Enable silent refresh only after client registration is ready.
+        // A successful cold-start refresh initializes this state before its early return.
+        _authServerMetadata = authServerMetadata;
+        _resourceUri = resourceUri;
 
         // Perform the OAuth flow
         return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);

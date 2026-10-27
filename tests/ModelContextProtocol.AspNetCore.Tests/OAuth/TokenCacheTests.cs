@@ -292,6 +292,68 @@ public class TokenCacheTests : OAuthTestBase
     }
 
     [Fact]
+    public async Task GetTokenAsync_FailedRegistrationWithExpiredUnboundTokens_CanRetrySameProvider()
+    {
+        await using var app = await StartMcpServerAsync();
+        var handler = new TokenRequestTrackingHandler(legacy: false, rejectFirstRegistration: true)
+        {
+            InnerHandler = SocketsHttpHandler,
+        };
+        using var httpClient = new HttpClient(handler, disposeHandler: false);
+        ConfigureHttpClient(httpClient);
+
+        var expiredTokens = new TokenContainer
+        {
+            TokenType = "Bearer",
+            AccessToken = "expired-token",
+            RefreshToken = "legacy-refresh-token",
+            ExpiresIn = 0,
+            ObtainedAt = DateTimeOffset.MinValue,
+        };
+        var tokenCache = new TestTokenCache(expiredTokens);
+        var authorizationCallbackCount = 0;
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                RedirectUri = new("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, cancellationToken) =>
+                {
+                    authorizationCallbackCount++;
+                    return HandleAuthorizationUrlAsync(context, cancellationToken);
+                },
+                TokenCache = tokenCache,
+            },
+        }, httpClient, LoggerFactory);
+
+        var exception = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("temporarily_unavailable", exception.Message);
+        Assert.Same(expiredTokens, tokenCache.LastStoredToken);
+        Assert.Equal(1, handler.RegistrationRequestCount);
+        Assert.Equal(0, authorizationCallbackCount);
+        Assert.Empty(handler.TokenRequests);
+
+        // Reuse the transport so the retry exercises the provider left behind by failed registration.
+        await using var client = await TestMcpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, handler.RegistrationRequestCount);
+        Assert.Equal(1, authorizationCallbackCount);
+        Assert.Equal(1, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+        Assert.False(TestOAuthServer.HasRefreshedToken);
+        Assert.NotSame(expiredTokens, tokenCache.LastStoredToken);
+        Assert.NotNull(tokenCache.LastStoredToken);
+        Assert.False(string.IsNullOrEmpty(tokenCache.LastStoredToken.ClientId));
+        Assert.Equal(OAuthServerUrl, tokenCache.LastStoredToken.AuthorizationServer);
+        Assert.Collection(handler.TokenRequests,
+            request => Assert.Equal(("authorization_code", McpServerUrl), request));
+    }
+
+    [Fact]
     public async Task GetTokenAsync_AuthorizationServerChangeUpdatesCanonicalResourceForSilentRefresh()
     {
         var metadata = new ProtectedResourceMetadata
@@ -811,17 +873,29 @@ public class TokenCacheTests : OAuthTestBase
         };
     }
 
-    private sealed class TokenRequestTrackingHandler(bool legacy) : DelegatingHandler
+    private sealed class TokenRequestTrackingHandler(bool legacy, bool rejectFirstRegistration = false) : DelegatingHandler
     {
         private int _unauthorizedResponseCount;
+        private int _registrationRequestCount;
 
         public ConcurrentQueue<(string GrantType, string? Resource)> TokenRequests { get; } = new();
         public int UnauthorizedResponseCount => Volatile.Read(ref _unauthorizedResponseCount);
+        public int RegistrationRequestCount => Volatile.Read(ref _registrationRequestCount);
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var requestUri = request.RequestUri!;
             var isMcpServer = requestUri.GetLeftPart(UriPartial.Authority) == McpServerUrl;
+
+            if (requestUri.AbsolutePath == "/register" &&
+                Interlocked.Increment(ref _registrationRequestCount) == 1 &&
+                rejectFirstRegistration)
+            {
+                return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+                {
+                    Content = new StringContent("""{"error":"temporarily_unavailable"}"""),
+                };
+            }
 
             if (legacy && isMcpServer)
             {
