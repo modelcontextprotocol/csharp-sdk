@@ -1,3 +1,4 @@
+using Json.Schema;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -127,6 +128,93 @@ public class DelegatingToolOutputSchemaTests
         });
     }
 
+    [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
+    public async Task ListTools_DelegatingTool_ComposedSchemaMatchesStructuredContent(string protocolVersion, bool innerUsesComposition)
+    {
+        JsonElement objectSchema = ParseJson(
+            """{"type":"object","properties":{"name":{"type":"string","minLength":1}},"required":["name"]}""");
+        JsonElement composedSchema = ParseJson($$"""{"allOf":[{{objectSchema.GetRawText()}}]}""");
+        JsonElement innerSchema = innerUsesComposition ? composedSchema : objectSchema;
+        JsonElement outerSchema = innerUsesComposition ? objectSchema : composedSchema;
+        McpServerTool inner = McpServerTool.Create(() => ParseJson("""{"name":"test"}"""), new()
+        {
+            Name = "composed",
+            UseStructuredContent = true,
+            OutputSchema = innerSchema,
+        });
+        McpServerTool tool = new SchemaOverrideTool(new DelegatingTool(inner), outerSchema);
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+            JsonElement schema = listed.ProtocolTool.OutputSchema!.Value;
+            JsonElement content = result.StructuredContent!.Value;
+            bool legacy = protocolVersion != "2026-07-28";
+            bool wrapped = legacy && innerUsesComposition;
+
+            if (legacy)
+            {
+                Assert.Equal("object", schema.GetProperty("type").GetString());
+            }
+            else
+            {
+                Assert.Equal(outerSchema.GetRawText(), schema.GetRawText());
+            }
+
+            Assert.Equal("test", (wrapped ? content.GetProperty("result") : content).GetProperty("name").GetString());
+            JsonSchema advertisedSchema = JsonSchema.FromText(schema.GetRawText());
+            Assert.True(advertisedSchema.Evaluate(content).IsValid);
+            JsonElement invalidContent = ParseJson(wrapped ? """{"result":{"name":""}}""" : """{"name":""}""");
+            Assert.False(advertisedSchema.Evaluate(invalidContent).IsValid);
+        });
+
+        Assert.Equal(outerSchema.GetRawText(), tool.ProtocolTool.OutputSchema!.Value.GetRawText());
+        Assert.Equal(innerSchema.GetRawText(), inner.ProtocolTool.OutputSchema!.Value.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
+    public async Task ListTools_DelegatingTool_BooleanSchemaMatchesStructuredContent(string protocolVersion)
+    {
+        McpServerTool inner = McpServerTool.Create(() => ParseJson("{}"), new()
+        {
+            Name = "boolean_schema",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object"}"""),
+        });
+        McpServerTool tool = new SchemaOverrideTool(inner, ParseJson("true"));
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+            JsonElement schema = listed.ProtocolTool.OutputSchema!.Value;
+            JsonElement content = result.StructuredContent!.Value;
+
+            if (protocolVersion == "2026-07-28")
+            {
+                Assert.Equal(JsonValueKind.True, schema.ValueKind);
+            }
+            else
+            {
+                Assert.Equal("object", schema.GetProperty("type").GetString());
+                Assert.False(schema.TryGetProperty("properties", out _));
+            }
+
+            Assert.Equal(JsonValueKind.Object, content.ValueKind);
+            Assert.True(JsonSchema.FromText(schema.GetRawText()).Evaluate(content).IsValid);
+        });
+
+        Assert.Equal(JsonValueKind.True, tool.ProtocolTool.OutputSchema!.Value.ValueKind);
+    }
+
     private static JsonElement ParseJson(string json)
     {
         using JsonDocument document = JsonDocument.Parse(json);
@@ -160,6 +248,16 @@ public class DelegatingToolOutputSchemaTests
     }
 
     private sealed class DelegatingTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
+
+    private sealed class SchemaOverrideTool(McpServerTool inner, JsonElement schema) : DelegatingMcpServerTool(inner)
+    {
+        public override Tool ProtocolTool { get; } = new()
+        {
+            Name = inner.ProtocolTool.Name,
+            InputSchema = inner.ProtocolTool.InputSchema,
+            OutputSchema = schema,
+        };
+    }
 
     private sealed class DescribedTool(McpServerTool inner) : DelegatingMcpServerTool(inner)
     {

@@ -238,21 +238,22 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// into the wire shape required by clients on protocol versions older than
     /// <c>"2026-07-28"</c>. Those versions require <c>outputSchema.type == "object"</c>;
     /// SEP-2106 (negotiated at <c>"2026-07-28"</c> and later) widens that to any JSON
-    /// Schema 2020-12 document. To stay compatible, non-object schemas are wrapped in
-    /// <c>{"type":"object","properties":{"result":&lt;schema&gt;}}</c> and the
-    /// <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>
-    /// before emission. Returns <paramref name="protocolTool"/> unchanged when there is no
+    /// Schema 2020-12 document. The supplied schema is wrapped in
+    /// <c>{"type":"object","properties":{"result":&lt;schema&gt;}}</c> only when this
+    /// SDK tool wraps its structured content; otherwise its root type is normalized to
+    /// <c>"object"</c>. Returns <paramref name="protocolTool"/> unchanged when there is no
     /// output schema. Callers must gate the call on the negotiated version — this method
     /// is unconditional; the gate lives at the emission site.
     /// </summary>
-    internal static Tool BuildLegacyWireProtocolTool(Tool protocolTool)
+    internal Tool BuildLegacyWireProtocolTool(Tool protocolTool)
     {
         if (protocolTool.OutputSchema is not { } natural)
         {
             return protocolTool;
         }
 
-        JsonElement legacyOutputSchema = TransformOutputSchemaForLegacyWire(natural);
+        JsonElement legacyOutputSchema = TransformOutputSchemaForLegacyWire(
+            natural, wrapValue: ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema ?? natural));
 
         return new Tool
         {
@@ -564,58 +565,60 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     /// <summary>
-    /// Transforms <paramref name="naturalSchema"/> into the wire shape required by clients
-    /// on protocol versions older than <c>"2026-07-28"</c>: non-object schemas are wrapped
-    /// in <c>{"type":"object","properties":{"result":&lt;schema&gt;},"required":["result"]}</c>,
-    /// the <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>,
-    /// and plain object-typed schemas pass through unchanged. SEP-2106 clients
+    /// Transforms <paramref name="naturalSchema"/> into an object-typed schema for clients
+    /// on protocol versions older than <c>"2026-07-28"</c>, adding a required
+    /// <c>result</c> envelope only when <paramref name="wrapValue"/> is true. SEP-2106 clients
     /// (<c>"2026-07-28"</c>+) see the natural schema and never need this transform.
-    /// Dispatches on <see cref="ShouldWrapValueForLegacyWire"/> so the wrap decision lives
-    /// in one place.
+    /// The envelope decision follows the underlying SDK tool's schema so it matches invocation,
+    /// even when a delegating wrapper expresses its schema differently.
     /// </summary>
     /// <param name="naturalSchema">The natural JSON Schema 2020-12 document.</param>
-    internal static JsonElement TransformOutputSchemaForLegacyWire(JsonElement naturalSchema)
+    /// <param name="wrapValue">Whether invocation wraps structured content in a result envelope.</param>
+    internal static JsonElement TransformOutputSchemaForLegacyWire(JsonElement naturalSchema, bool wrapValue)
     {
-        if (naturalSchema.ValueKind is not JsonValueKind.Object ||
-            !naturalSchema.TryGetProperty("type", out JsonElement typeProperty) ||
-            typeProperty.ValueKind is not JsonValueKind.String ||
-            typeProperty.GetString() is not "object")
+        if (!wrapValue &&
+            naturalSchema.ValueKind is JsonValueKind.Object &&
+            naturalSchema.TryGetProperty("type", out JsonElement typeProperty) &&
+            typeProperty.ValueKind is JsonValueKind.String &&
+            typeProperty.GetString() is "object")
         {
-            JsonNode? schemaNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
-
-            if (schemaNode is JsonObject objSchema &&
-                objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
-                typeNode is JsonArray { Count: 2 } typeArray &&
-                typeArray.Any(type => (string?)type is "object") &&
-                typeArray.Any(type => (string?)type is "null"))
-            {
-                // type:["object","null"] → normalize to plain "object". No envelope.
-                objSchema["type"] = "object";
-            }
-            else
-            {
-                // Anything else (string, integer, array, boolean schemas, missing type,
-                // compositions). Wrap in the {"result": <schema>} envelope.
-                schemaNode = new JsonObject
-                {
-                    ["type"] = "object",
-                    ["properties"] = new JsonObject
-                    {
-                        ["result"] = schemaNode
-                    },
-                    ["required"] = new JsonArray { (JsonNode)"result" }
-                };
-
-                // After wrapping, any internal $ref pointers that used absolute JSON Pointer
-                // paths (e.g., "#/items/..." or "#") are now invalid because the original schema
-                // has moved under "#/properties/result". Rewrite them to account for the new location.
-                RewriteRefPointers(schemaNode["properties"]!["result"]);
-            }
-
-            return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+            return naturalSchema;
         }
 
-        return naturalSchema;
+        JsonNode? schemaNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+
+        if (!wrapValue)
+        {
+            if (schemaNode is not JsonObject objSchema)
+            {
+                objSchema = new JsonObject
+                {
+                    ["allOf"] = new JsonArray { schemaNode },
+                };
+            }
+
+            objSchema["type"] = "object";
+            schemaNode = objSchema;
+        }
+        else
+        {
+            schemaNode = new JsonObject
+            {
+                ["type"] = "object",
+                ["properties"] = new JsonObject
+                {
+                    ["result"] = schemaNode
+                },
+                ["required"] = new JsonArray { (JsonNode)"result" }
+            };
+
+            // After wrapping, any internal $ref pointers that used absolute JSON Pointer
+            // paths (e.g., "#/items/..." or "#") are now invalid because the original schema
+            // has moved under "#/properties/result". Rewrite them to account for the new location.
+            RewriteRefPointers(schemaNode["properties"]!["result"]);
+        }
+
+        return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
     }
 
     /// <summary>

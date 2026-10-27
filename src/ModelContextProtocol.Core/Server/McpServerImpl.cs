@@ -1550,9 +1550,9 @@ internal sealed partial class McpServerImpl : McpServer
                             innerTool = delegatingTool.InnerTool;
                         }
 
-                        Tool wireTool = useNaturalSchemas || innerTool is not AIFunctionMcpServerTool
+                        Tool wireTool = useNaturalSchemas || innerTool is not AIFunctionMcpServerTool aiFunctionTool
                             ? t.ProtocolTool
-                            : AIFunctionMcpServerTool.BuildLegacyWireProtocolTool(t.ProtocolTool);
+                            : aiFunctionTool.BuildLegacyWireProtocolTool(t.ProtocolTool);
                         result.Tools.Add(wireTool);
                     }
                 }
