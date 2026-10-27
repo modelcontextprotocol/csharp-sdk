@@ -69,6 +69,8 @@ The client is configured with:
 - **OAuth Server**: `https://localhost:7029`
 - **Protected Resource**: `http://localhost:7071`
 
+The authorization server must advertise `S256` PKCE support in its metadata. The test server does this by default. The SDK rejects missing PKCE advertisement and, by default, unavailable authorization server metadata; see [OAuth PKCE metadata validation](../../docs/concepts/transports/transports.md#oauth-pkce-metadata-validation) for the narrowly scoped, process-wide legacy compatibility switch and its security requirements.
+
 ## Available Tools
 
 Once authenticated, the client can access weather tools including:
