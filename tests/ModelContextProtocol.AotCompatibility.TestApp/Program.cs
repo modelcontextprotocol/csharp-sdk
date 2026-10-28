@@ -98,7 +98,12 @@ McpServerTool preservedNongenericTool = McpServerTool.Create(
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([structuredTool, preservedTool, preservedNongenericTool])
+    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool])
+    .WithTools(
+    [
+        new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
+        new OverridingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "OverridingEcho", UseStructuredContent = true })),
+    ])
     .WithMcpApps()
     .WithSkills(catalog)
     .WithResources(authoredSkill.Resources);
@@ -170,6 +175,15 @@ foreach (string name in new[] { "PreservedDictionary", "PreservedNongenericDicti
     }
 }
 
+foreach (string name in new[] { "ForwardingEcho", "OverridingEcho" })
+{
+    var delegatedResult = await client.CallToolAsync(name, new Dictionary<string, object?> { ["arg"] = "Hello World" });
+    if (delegatedResult.StructuredContent?.GetString() != "Echo: Hello World")
+    {
+        throw new Exception($"Unexpected delegated result for {name}.");
+    }
+}
+
 // List, get, and verify a skill.
 var skills = await client.ListSkillsAsync();
 if (skills.Count != 1 || skills[0].Name != "aot")
@@ -213,7 +227,7 @@ Console.WriteLine("Success!");
 [McpServerToolType]
 internal sealed class AotTools
 {
-    [McpServerTool(Name = "Echo")]
+    [McpServerTool(Name = "Echo", UseStructuredContent = true)]
     [McpAppUi(ResourceUri = "ui://aot/echo")]
     public static string Echo(string arg) => $"Echo: {arg}";
 }
@@ -409,3 +423,12 @@ internal sealed class AotCachingResolver(IJsonTypeInfoResolver inner) : IJsonTyp
 [JsonSerializable(typeof(Dictionary<AotDictionaryKey, AotStructuredChild>))]
 [JsonSerializable(typeof(Hashtable))]
 internal partial class AotJsonContext : JsonSerializerContext;
+
+internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
+
+internal sealed class OverridingAotTool(McpServerTool inner) : ForwardingAotTool(inner)
+{
+    public override ValueTask<CallToolResult> InvokeAsync(
+        RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default) =>
+        base.InvokeAsync(request, cancellationToken);
+}
