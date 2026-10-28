@@ -25,7 +25,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     private OutputSchemaCache? _outputSchema;
     private static readonly ConditionalWeakTable<JsonTypeInfo, SourceObjectContract> s_sourceContracts = new();
     [ThreadStatic]
-    private static SourceRecoveryContext? t_serializingSourceMember;
+    private static SourceMemberSerializationState? t_serializingSourceMember;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -1986,9 +1986,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private sealed class SourceRecoveryContext(
         object? value, JsonTypeInfo contract, JsonPropertyInfo? property = null,
-        object? owner = null, JsonTypeInfo? ownerContract = null)
+        object? owner = null, JsonTypeInfo? ownerContract = null, SourceRecoveryContext? parent = null)
     {
         private readonly Dictionary<string, SourceRecoveryContext?> _children = new(StringComparer.Ordinal);
+        private Dictionary<JsonTypeInfo<object>, JsonTypeInfo<object>>? _scopeContracts;
+        private JsonTypeInfo? _activeContract;
         private List<object?>? _items;
         private bool _dictionaryRead;
 
@@ -1997,6 +1999,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         internal JsonPropertyInfo? Property { get; } = property;
         internal object? Owner { get; } = owner;
         internal JsonTypeInfo? OwnerContract { get; } = ownerContract;
+        internal SourceRecoveryContext? Parent { get; } = parent;
 
         internal SourceRecoveryContext? GetChild(string name, JsonNode? serializedParent)
         {
@@ -2039,7 +2042,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 if (typeInfo.Kind == JsonTypeInfoKind.Enumerable && name == "$values" &&
                     referenceObject["$values"] is JsonArray)
                 {
-                    return new(Value, typeInfo);
+                    return new(Value, typeInfo, parent: this);
                 }
             }
 
@@ -2069,7 +2072,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
                         _children[serializedKey] = _children.ContainsKey(serializedKey)
                             ? null
-                            : new(entryValue, options.GetTypeInfo(typeInfo.ElementType!));
+                            : new(entryValue, options.GetTypeInfo(typeInfo.ElementType!), parent: this);
                     }
                 }
 
@@ -2113,7 +2116,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     item = _items[index];
                 }
 
-                return new(item, options.GetTypeInfo(typeInfo.ElementType!));
+                return new(item, options.GetTypeInfo(typeInfo.ElementType!), parent: this);
             }
 
             if (typeInfo.Kind != JsonTypeInfoKind.Object)
@@ -2131,7 +2134,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
                 object? memberValue = member.Get(Value);
                 JsonTypeInfo memberContract = options.GetTypeInfo(member.PropertyType);
-                return new(memberValue, memberContract, member, Value, typeInfo);
+                return new(memberValue, memberContract, member, Value, typeInfo, this);
             }
 
             JsonPropertyInfo? extensionData = sourceContract.ExtensionData;
@@ -2156,18 +2159,48 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             object? extensionEntry;
             if (extensionValue is IDictionary<string, object?> objectData && objectData.TryGetValue(name, out extensionEntry))
             {
-                return new(extensionEntry, options.GetTypeInfo(extensionType.ElementType!));
+                return new(extensionEntry, options.GetTypeInfo(extensionType.ElementType!), parent: this);
             }
 
             if (extensionValue is IDictionary<string, JsonElement> elementData && elementData.TryGetValue(name, out JsonElement elementEntry))
             {
-                return new(elementEntry, options.GetTypeInfo(typeof(JsonElement)));
+                return new(elementEntry, options.GetTypeInfo(typeof(JsonElement)), parent: this);
             }
 
             return null;
         }
 
-        private JsonTypeInfo GetActiveContract()
+        internal object GetSerializationOwner() =>
+            GetActiveContract().Type.IsValueType ? RuntimeHelpers.GetObjectValue(Value!)! : Value!;
+
+        internal JsonTypeInfo<object> GetScopeContract(JsonTypeInfo<object> childContract)
+        {
+            _scopeContracts ??= new();
+            if (!_scopeContracts.TryGetValue(childContract, out JsonTypeInfo<object>? scope))
+            {
+                scope = CreateSerializationObjectContract(GetActiveContract());
+                JsonPropertyInfo child = JsonMetadataServices.CreatePropertyInfo<object>(scope.Options, new()
+                {
+                    DeclaringType = typeof(object),
+                    IsProperty = true,
+                    IsPublic = true,
+                    PropertyName = "value",
+                    JsonPropertyName = "value",
+                    PropertyTypeInfo = childContract,
+                    Getter = static _ => t_serializingSourceMember!.GetNextOwner(),
+                });
+                child.ShouldSerialize = static (_, _) => true;
+                scope.Properties.Add(child);
+                scope.MakeReadOnly();
+                _scopeContracts.Add(childContract, scope);
+            }
+
+            return scope;
+        }
+
+        private JsonTypeInfo GetActiveContract() => _activeContract ??= ResolveActiveContract();
+
+        private JsonTypeInfo ResolveActiveContract()
         {
             JsonSerializerOptions options = Contract.Options;
             Type runtimeType = Value!.GetType();
@@ -2259,13 +2292,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             JsonSerializerOptions options = _contract.Options;
             _ = options.GetTypeInfo(property.PropertyType);
-            // Reuse the owner's object converter, not its frozen metadata. The object-typed
-            // adapter still serializes the actual owner, preserving cycle detection.
-            JsonTypeInfo<object> contract = JsonMetadataServices.CreateValueInfo<object>(options, _contract.Converter);
-            contract.NumberHandling = _contract.NumberHandling;
-            contract.PolymorphismOptions = null;
-            contract.OnSerializing = null;
-            contract.OnSerialized = null;
+            JsonTypeInfo<object> contract = CreateSerializationObjectContract(_contract);
             JsonPropertyInfo candidate = contract.CreateJsonPropertyInfo(property.PropertyType, property.Name);
             candidate.Get = static _ => t_serializingSourceMember!.Value;
             candidate.ShouldSerialize = static (_, _) => true;
@@ -2276,6 +2303,30 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             contract.MakeReadOnly();
             return contract;
         }
+    }
+
+    private static JsonTypeInfo<object> CreateSerializationObjectContract(JsonTypeInfo original)
+    {
+        JsonConverter converter = original.Kind == JsonTypeInfoKind.Object
+            ? original.Converter
+            : JsonMetadataServices.CreateObjectInfo<IEnumerable>(original.Options, new()
+            {
+                PropertyMetadataInitializer = static _ => [],
+            }).Converter;
+        // Collections use a single-property object view to seed the same reference stack
+        // without enumerating unrelated entries. These ancestor envelopes are never published.
+        JsonTypeInfo<object> contract = JsonMetadataServices.CreateValueInfo<object>(original.Options, converter);
+        contract.NumberHandling = original.NumberHandling;
+        contract.PolymorphismOptions = null;
+        contract.OnSerializing = null;
+        contract.OnSerialized = null;
+        return contract;
+    }
+
+    private sealed class SourceMemberSerializationState(object? value, Stack<SourceRecoveryContext>? owners)
+    {
+        internal object? Value { get; } = value;
+        internal object GetNextOwner() => owners!.Pop().GetSerializationOwner();
     }
 
 #if !NETSTANDARD2_0
@@ -2386,15 +2437,36 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonPropertyInfo property = member.Property!;
             JsonTypeInfo<object> contract = s_sourceContracts.GetValue(originalContract, static owner => new(owner))
                 .GetSerializationContract(property);
+            SourceRecoveryContext ownerContext = member.Parent!;
+            Stack<SourceRecoveryContext>? owners = null;
+            int scopeDepth = 0;
+            if (ReferenceEquals(options.ReferenceHandler, ReferenceHandler.IgnoreCycles) && ownerContext.Parent is not null)
+            {
+                owners = new();
+                owners.Push(ownerContext);
+                while (ownerContext.Parent is { } ancestor)
+                {
+                    contract = ancestor.GetScopeContract(contract);
+                    owners.Push(ancestor);
+                    ownerContext = ancestor;
+                    scopeDepth++;
+                }
+                owners.Pop();
+            }
+
             JsonElement element;
-            SourceRecoveryContext? previous = t_serializingSourceMember;
+            SourceMemberSerializationState? previous = t_serializingSourceMember;
             try
             {
                 // Serialization is synchronous; restore the slot for nested invocations.
-                t_serializingSourceMember = member;
+                t_serializingSourceMember = new(member.Value, owners);
                 // Value-type serialization must not track the original box as a reference cycle.
-                object? owner = originalContract.Type.IsValueType ? RuntimeHelpers.GetObjectValue(member.Owner) : member.Owner;
-                element = JsonSerializer.SerializeToElement(owner!, contract).GetProperty(property.Name);
+                element = JsonSerializer.SerializeToElement(ownerContext.GetSerializationOwner(), contract);
+                for (int i = 0; i < scopeDepth; i++)
+                {
+                    element = element.GetProperty("value");
+                }
+                element = element.GetProperty(property.Name);
             }
             finally
             {

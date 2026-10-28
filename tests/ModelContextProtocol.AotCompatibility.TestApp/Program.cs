@@ -95,10 +95,33 @@ McpServerTool preservedNongenericTool = McpServerTool.Create(
         UseStructuredContent = true,
         OutputSchema = preservedTool.ProtocolTool.OutputSchema,
     });
+McpServerTool ancestorTool = McpServerTool.Create(
+    new AotAncestorFunction(new(structuredOptions)
+    {
+        ReferenceHandler = ReferenceHandler.IgnoreCycles,
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+    }),
+    new()
+    {
+        UseStructuredContent = true,
+        OutputSchema = JsonDocument.Parse("""
+            {
+              "type":"object",
+              "$defs":{"node":{"required":["missing"],"properties":{"missing":{
+                "required":["owner"],"properties":{"owner":{"type":"null"}}
+              }}}},
+              "properties":{
+                "child":{"$ref":"#/$defs/node"},
+                "items":{"items":{"$ref":"#/$defs/node"}},
+                "entries":{"additionalProperties":{"$ref":"#/$defs/node"}}
+              }
+            }
+            """).RootElement,
+    });
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool])
+    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool])
     .WithTools(
     [
         new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
@@ -181,6 +204,18 @@ foreach (string name in new[] { "ForwardingEcho", "OverridingEcho" })
     if (delegatedResult.StructuredContent?.GetString() != "Echo: Hello World")
     {
         throw new Exception($"Unexpected delegated result for {name}.");
+    }
+}
+
+var ancestorResult = await client.CallToolAsync("AncestorCycles");
+JsonElement ancestor = ancestorResult.StructuredContent!.Value;
+foreach (JsonElement node in ancestor.GetProperty("items").EnumerateArray()
+    .Concat(ancestor.GetProperty("entries").EnumerateObject().Select(property => property.Value))
+    .Prepend(ancestor.GetProperty("child")))
+{
+    if (node.GetProperty("missing").GetProperty("owner").ValueKind != JsonValueKind.Null)
+    {
+        throw new Exception($"Unexpected ancestor cycle output: {ancestor}");
     }
 }
 
@@ -410,6 +445,52 @@ internal sealed class AotPreservedFunction(JsonSerializerOptions options, bool n
         new(_value);
 }
 
+internal sealed class AotAncestorRoot
+{
+    public AotAncestorOwner Child { get; set; } = new();
+    public AotAncestorOwner[] Items { get; set; } = [new(), new()];
+    public Dictionary<string, AotAncestorOwner> Entries { get; set; } = new()
+    {
+        ["root"] = new(),
+        ["container"] = new(),
+    };
+}
+
+internal sealed class AotAncestorOwner
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public AotAncestorValue Missing { get; set; }
+}
+
+internal struct AotAncestorValue : IEquatable<AotAncestorValue>
+{
+    public object? Owner { get; set; }
+    public bool Equals(AotAncestorValue other) => true;
+    public override bool Equals(object? obj) => obj is AotAncestorValue;
+    public override int GetHashCode() => 0;
+}
+
+internal sealed class AotAncestorFunction(JsonSerializerOptions options) : AIFunction
+{
+    private readonly AotAncestorRoot _value = CreateValue();
+    public override string Name => "AncestorCycles";
+    public override JsonElement JsonSchema { get; } = JsonDocument.Parse("""{"type":"object"}""").RootElement;
+    public override JsonSerializerOptions JsonSerializerOptions => options;
+    protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken) =>
+        new(_value);
+
+    private static AotAncestorRoot CreateValue()
+    {
+        AotAncestorRoot root = new();
+        root.Child.Missing = new() { Owner = root };
+        root.Items[0].Missing = new() { Owner = root };
+        root.Items[1].Missing = new() { Owner = root.Items };
+        root.Entries["root"].Missing = new() { Owner = root };
+        root.Entries["container"].Missing = new() { Owner = root.Entries };
+        return root;
+    }
+}
+
 internal sealed class AotCachingResolver(IJsonTypeInfoResolver inner) : IJsonTypeInfoResolver
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, JsonSerializerOptions), JsonTypeInfo> _contracts = new();
@@ -422,6 +503,7 @@ internal sealed class AotCachingResolver(IJsonTypeInfoResolver inner) : IJsonTyp
 [JsonSerializable(typeof(AotDerivedOutput))]
 [JsonSerializable(typeof(Dictionary<AotDictionaryKey, AotStructuredChild>))]
 [JsonSerializable(typeof(Hashtable))]
+[JsonSerializable(typeof(AotAncestorRoot))]
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
