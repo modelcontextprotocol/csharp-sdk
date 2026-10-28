@@ -199,7 +199,7 @@ attached to the request, the request-bound `Server`, and the request's `Services
 
 All catalog overloads register `IMcpSkillCatalog` in the container and resolve it when a Skills request runs,
 not while configuring the server's options. The generic and factory overloads default to
-<xref:Microsoft.Extensions.DependencyInjection.ServiceLifetime.Transient>.
+`ServiceLifetime.Transient`.
 Use the factory overload instead when construction needs application-specific configuration:
 
 ```csharp

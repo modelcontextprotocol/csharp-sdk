@@ -48,6 +48,8 @@ public sealed class McpServerRequestHandler
     /// <remarks>
     /// The handler receives the raw JSON parameters in <see cref="RequestContext{TParams}.Params"/> and the
     /// full <see cref="JsonRpcRequest"/> in <see cref="RequestContext{TParams}.JsonRpcRequest"/>.
+    /// Composed handlers may replace <see cref="RequestContext{TParams}.Params"/> without changing the
+    /// original request, so read operation parameters from the context rather than from the raw request.
     /// It returns a serialized <see cref="JsonNode"/> response, or <see langword="null"/> for void methods.
     /// </remarks>
     public required McpRequestHandler<JsonNode?, JsonNode?> Handler { get; init; }

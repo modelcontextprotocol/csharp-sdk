@@ -31,10 +31,18 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 | `MCPEXP002` | Experimental SDK extensibility APIs used to implement features in standalone packages without requiring Core to understand those features. For example, the Tasks package uses these APIs to extend the SDK while keeping the Tasks concept out of Core. This includes `McpClient`/`McpServer` subclassing, custom request handlers, alternate handlers and filters, outgoing request interception, and `RunSessionHandler`. These APIs remain experimental until additional extensibility scenarios validate the design. |
 | `MCPEXP003` | Experimental MCP Apps extension APIs. MCP Apps is the first official MCP extension (`io.modelcontextprotocol/ui`), enabling servers to deliver interactive UIs inside AI clients (see [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)). |
 
-The experimental `McpServerRequestHandler.Handler` delegate now receives `RequestContext<JsonNode?>` rather
-than `JsonRpcRequest`. Existing custom handlers can access the raw request through `context.JsonRpcRequest`;
-`context.Params` remains the raw JSON parameters. Handlers also receive the request-bound `context.Server`
-and `context.Services`, and use the same service scope lifecycle as built-in handlers, honoring
+The experimental `McpServerRequestHandler.Handler` property now uses
+`McpRequestHandler<JsonNode?, JsonNode?>` rather than
+`Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>>`. This is an intentional **source- and
+binary-breaking change** to the `MCPEXP002` extensibility API, not a compatibility adapter. Extension packages
+compiled against the previous property signature must be rebuilt against the updated Core package, even when
+their handler lambda still compiles without source changes. Explicitly typed handler methods must change their
+first parameter from `JsonRpcRequest` to `RequestContext<JsonNode?>`.
+
+Read operation arguments from `context.Params`. Composed handlers can replace this value without changing
+`context.JsonRpcRequest.Params`; the raw request remains available through `context.JsonRpcRequest` for
+envelope and transport information. Handlers also receive the request-bound `context.Server` and
+`context.Services`, and use the same service scope lifecycle as built-in handlers, honoring
 `McpServerOptions.ScopeRequests`. They still control JSON serialization and bypass the typed request filters.
 
 ## Obsolete APIs
