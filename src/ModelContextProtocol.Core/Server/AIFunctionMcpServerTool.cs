@@ -14,6 +14,7 @@ namespace ModelContextProtocol.Server;
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
+    private readonly bool _returnsCallToolResult;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -41,9 +42,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         options = DeriveOptions(method, options);
 
-        return Create(
+        return CreateCore(
             AIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
-            options);
+            options,
+            returnsCallToolResult: ReturnsCallToolResult(method));
     }
 
     /// <summary>
@@ -59,13 +61,22 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         options = DeriveOptions(method, options);
 
-        return Create(
+        return CreateCore(
             AIFunctionFactory.Create(method, args =>
             {
                 Debug.Assert(args.Services is RequestServiceProvider<CallToolRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<>)} for this method to work correctly.");
                 return createTargetFunc(((RequestServiceProvider<CallToolRequestParams>)args.Services!).Request);
             }, CreateAIFunctionFactoryOptions(method, options)),
-            options);
+            options,
+            returnsCallToolResult: ReturnsCallToolResult(method));
+    }
+
+    private static bool ReturnsCallToolResult(MethodInfo method)
+    {
+        Type returnType = method.ReturnType;
+        return returnType == typeof(CallToolResult) ||
+            returnType == typeof(Task<CallToolResult>) ||
+            returnType == typeof(ValueTask<CallToolResult>);
     }
 
     private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
@@ -110,7 +121,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
-    public static new AIFunctionMcpServerTool Create(AIFunction function, McpServerToolCreateOptions? options)
+    public static new AIFunctionMcpServerTool Create(AIFunction function, McpServerToolCreateOptions? options) =>
+        CreateCore(function, options, returnsCallToolResult: false);
+
+    private static AIFunctionMcpServerTool CreateCore(AIFunction function, McpServerToolCreateOptions? options, bool returnsCallToolResult)
     {
         Throw.IfNull(function);
 
@@ -155,7 +169,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 options.Meta;
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? []);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? [], returnsCallToolResult);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -217,7 +231,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata)
+    private AIFunctionMcpServerTool(
+        AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata, bool returnsCallToolResult)
     {
         ValidateToolName(tool.Name);
 
@@ -225,6 +240,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         ProtocolTool = tool;
 
         _metadata = metadata;
+        _returnsCallToolResult = returnsCallToolResult;
     }
 
     /// <inheritdoc />
@@ -253,7 +269,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         JsonElement legacyOutputSchema = TransformOutputSchemaForLegacyWire(
-            natural, wrapValue: ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema ?? natural));
+            natural, wrapValue: !_returnsCallToolResult && ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema ?? natural));
 
         return new Tool
         {
