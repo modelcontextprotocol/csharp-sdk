@@ -736,7 +736,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return elementResult;
         }
 
-        if (IsSchemaValid(schema, resultNode))
+        if (IsSchemaValid(schema, resultNode) || HasDuplicatePropertyNames(result))
         {
             return elementResult;
         }
@@ -770,11 +770,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         JsonNode? schemaDocument = null,
         SchemaReferenceResolver? references = null,
         List<JsonNode>? dynamicScope = null,
-        RepairTraversalBudget? traversalBudget = null)
+        RepairTraversalBudget? traversalBudget = null,
+        List<RepairCondition>? inheritedConditions = null)
     {
         // An explicit schema may deliberately omit optional nulls.  Preserve that valid output
         // before looking for missing required members.
-        if (remainingDepth <= 0 || IsSchemaValid(schema, resultNode))
+        if (remainingDepth <= 0)
         {
             return null;
         }
@@ -786,7 +787,59 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         schemaDocument ??= schemaNode;
         references ??= new(schemaDocument);
         traversalBudget ??= new();
+        // Cache predicates independently of their callers. Conditional expectations and
+        // instance paths remain on each group and are checked on every tentative repair.
         Dictionary<(JsonNode Schema, string Scope), JsonSchema?> branchSchemas = new();
+
+        JsonSchema? GetBranchSchema(JsonNode branch, List<JsonNode> scope)
+        {
+            var schemaKey = (branch, references.GetScopeKey(scope));
+            if (!branchSchemas.TryGetValue(schemaKey, out JsonSchema? branchSchema))
+            {
+                JsonNode document = schemaDocument.DeepClone();
+                references.BindDynamicReferences(schemaDocument, document, scope);
+                if (document is JsonObject documentObject)
+                {
+                    documentObject["$id"] = references.GetSchemaUri(schemaDocument).AbsoluteUri;
+                }
+
+                JsonObject branchDocument = new()
+                {
+                    ["$ref"] = references.GetSchemaUri(branch).AbsoluteUri,
+                    ["$defs"] = new JsonObject { ["document"] = document },
+                };
+                TryBuildJsonSchema(branchDocument, out branchSchema);
+                branchSchemas.Add(schemaKey, branchSchema);
+            }
+
+            return branchSchema;
+        }
+
+        bool AreConditionsValid(JsonNode instance, List<RepairCondition> conditions)
+        {
+            foreach (RepairCondition condition in conditions)
+            {
+                JsonSchema? conditionSchema = GetBranchSchema(condition.Schema, condition.DynamicScope);
+                if (conditionSchema is null ||
+                    !TryGetNodeAtPath(instance, condition.InstancePath, out JsonNode? conditionInstance) ||
+                    conditionInstance is null ||
+                    IsSchemaValid(conditionSchema, ProjectConditionInstance(conditionInstance, condition.Schema)) != condition.Expected)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool IsRepairValid(JsonNode instance) =>
+            IsSchemaValid(schema, instance) &&
+            (inheritedConditions is null || AreConditionsValid(instance, inheritedConditions));
+
+        if (IsRepairValid(resultNode))
+        {
+            return null;
+        }
 
         JsonNode? EnqueueRepairs(JsonNode instance, int depth)
         {
@@ -800,6 +853,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             CollectSchemaContexts(
                 instance, schemaNode, references.GetResourceRoot(schemaNode), string.Empty, contexts,
                 new SchemaTraversal(traversalBudget), groups, references, dynamicScope);
+            if (inheritedConditions is { Count: > 0 })
+            {
+                groups = groups.Select(group => group with
+                {
+                    Conditions = [.. inheritedConditions, .. group.Conditions],
+                }).ToList();
+            }
+
             List<RepairCandidate> candidates = CreateRepairCandidates(
                 instance, originalResult, serializerOptions, contexts);
             if (candidates.Count == 0)
@@ -833,29 +894,17 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     continue;
                 }
 
-                var schemaKey = (group.Schema, references.GetScopeKey(group.DynamicScope));
-                if (!branchSchemas.TryGetValue(schemaKey, out JsonSchema? branchSchema))
-                {
-                    JsonNode document = schemaDocument.DeepClone();
-                    references.BindDynamicReferences(schemaDocument, document, group.DynamicScope);
-                    if (document is JsonObject documentObject)
-                    {
-                        documentObject["$id"] = references.GetSchemaUri(schemaDocument).AbsoluteUri;
-                    }
-
-                    JsonObject branchDocument = new()
-                    {
-                        ["$ref"] = references.GetSchemaUri(group.Schema).AbsoluteUri,
-                        ["$defs"] = new JsonObject { ["document"] = document },
-                    };
-                    TryBuildJsonSchema(branchDocument, out branchSchema);
-                    branchSchemas.Add(schemaKey, branchSchema);
-                }
-
+                JsonSchema? branchSchema = GetBranchSchema(group.Schema, group.DynamicScope);
                 if (branchSchema is null)
                 {
                     continue;
                 }
+
+                // A leaf must not lock an enclosing oneOf branch whose assertions fail.
+                // Once that ancestor has qualified, avoid revalidating its entire subtree.
+                List<RepairExclusiveChoice> unqualifiedAncestors = group.Choices.Where(choice =>
+                    !(ReferenceEquals(choice.Branch, group.Schema) && choice.InstancePath == group.InstancePath) &&
+                    !exclusiveChoices.ContainsKey((choice.Applicator, choice.InstancePath))).ToList();
 
                 // Compose independently valid subtree repairs before searching whole-document subsets.
                 List<RepairCandidate> groupCandidates = [];
@@ -871,7 +920,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 {
                     List<RepairCandidate> branchCandidates = includeDescendants
                         ? groupCandidates
-                        : groupCandidates.Where(candidate => candidate.ParentPath == group.InstancePath).ToList();
+                        : groupCandidates.Where(candidate =>
+                            candidate.ParentPath == group.InstancePath && group.DirectKeys.Contains(candidate.Key)).ToList();
                     JsonNode branchResult = currentBranch.DeepClone();
                     foreach (RepairCandidate candidate in branchCandidates)
                     {
@@ -879,7 +929,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     }
 
                     bool branchIsValid = IsSchemaValid(branchSchema, branchResult);
-                    if (!branchIsValid && includeDescendants && branchCandidates.Count > 0 && depth + 1 < remainingDepth)
+                    if (!branchIsValid && (branchCandidates.Count > 0 || !includeDescendants) && depth + 1 < remainingDepth)
                     {
                         SourceRecoveryContext? branchSource = null;
                         if (originalResult is not null)
@@ -890,10 +940,55 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         if (RepairStructuredResult(
                             branchResult, group.Schema, branchSchema, branchSource,
                             serializerOptions, remainingDepth - depth - 1, schemaDocument, references,
-                            group.DynamicScope, traversalBudget) is JsonNode repairedBranch)
+                            group.DynamicScope, traversalBudget,
+                            group.Conditions.Where(condition =>
+                                condition.InstancePath == group.InstancePath ||
+                                condition.InstancePath.StartsWith(group.InstancePath + "/", StringComparison.Ordinal))
+                                .Select(condition => condition with
+                                {
+                                    InstancePath = condition.InstancePath.Substring(group.InstancePath.Length),
+                                }).ToList()) is JsonNode repairedBranch)
                         {
                             branchResult = repairedBranch;
                             branchIsValid = true;
+                        }
+                    }
+
+                    if (branchIsValid && (group.Conditions.Count > 0 || unqualifiedAncestors.Count > 0))
+                    {
+                        // Conditions belong to the caller's instance and dynamic scope, which
+                        // may differ from the nested branch being repaired. Test the tentative
+                        // replacement, not the original instance or an isolated leaf schema.
+                        JsonNode tentativeResult = branchResult;
+                        if (group.InstancePath.Length > 0)
+                        {
+                            ReplaceRepairBranch(currentBranch, group.InstancePath, branchResult);
+                            tentativeResult = combinedResult;
+                        }
+
+                        try
+                        {
+                            branchIsValid = AreConditionsValid(tentativeResult, group.Conditions);
+                            foreach (RepairExclusiveChoice ancestor in unqualifiedAncestors)
+                            {
+                                if (!branchIsValid)
+                                {
+                                    break;
+                                }
+
+                                JsonSchema? ancestorSchema = GetBranchSchema(ancestor.Branch, ancestor.DynamicScope);
+                                branchIsValid = ancestorSchema is not null &&
+                                    TryGetNodeAtPath(tentativeResult, ancestor.InstancePath, out JsonNode? ancestorInstance) &&
+                                    ancestorInstance is not null &&
+                                    IsSchemaValid(ancestorSchema, ancestorInstance);
+                            }
+                        }
+                        finally
+                        {
+                            if (group.InstancePath.Length > 0)
+                            {
+                                ReplaceRepairBranch(branchResult, group.InstancePath, currentBranch);
+                            }
                         }
                     }
 
@@ -903,13 +998,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         {
                             combinedResult = branchResult;
                         }
-                        else if (currentBranch.Parent is JsonArray parentArray)
+                        else
                         {
-                            parentArray[parentArray.IndexOf(currentBranch)] = branchResult;
-                        }
-                        else if (currentBranch.Parent is JsonObject parentObject)
-                        {
-                            parentObject[parentObject.First(property => ReferenceEquals(property.Value, currentBranch)).Key] = branchResult;
+                            ReplaceRepairBranch(currentBranch, group.InstancePath, branchResult);
                         }
 
                         hasCombinedRepairs = true;
@@ -927,7 +1018,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             {
                 // The common case composes independent repairs. Avoid allocating subset queues
                 // (or repeatedly scanning the full candidate list) when that result already works.
-                if (IsSchemaValid(schema, combinedResult))
+                if (IsRepairValid(combinedResult))
                 {
                     return combinedResult;
                 }
@@ -994,7 +1085,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             evaluations++;
-            if (IsSchemaValid(schema, candidateResult))
+            if (IsRepairValid(candidateResult))
             {
                 return candidateResult;
             }
@@ -1123,11 +1214,68 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private sealed record RepairAttempt(JsonNode Result, List<RepairCandidate> Candidates, int Depth);
 
-    private sealed record RepairExclusiveChoice(JsonNode Applicator, JsonNode Branch, string InstancePath);
+    private sealed record RepairExclusiveChoice(
+        JsonNode Applicator, JsonNode Branch, string InstancePath, List<JsonNode> DynamicScope);
+
+    private sealed record RepairCondition(
+        JsonNode Schema, string InstancePath, List<JsonNode> DynamicScope, bool Expected);
+
+    private static JsonNode ProjectConditionInstance(JsonNode instance, JsonNode schema)
+    {
+        if (instance is not JsonObject instanceObject || schema is not JsonObject schemaObject ||
+            schemaObject.Any(static property => property.Key is not ("properties" or "required" or "type")))
+        {
+            return instance;
+        }
+
+        // These keywords cannot observe unrelated properties. In particular, do not
+        // copy a large sibling collection for every small descendant repair.
+        JsonObject projection = new();
+        if (schemaObject["properties"] is JsonObject properties)
+        {
+            foreach (var property in properties)
+            {
+                if (instanceObject.TryGetPropertyValue(property.Key, out JsonNode? value))
+                {
+                    projection[property.Key] = value?.DeepClone();
+                }
+            }
+        }
+
+        if (schemaObject["required"] is JsonArray required)
+        {
+            foreach (JsonNode? item in required)
+            {
+                if (item is JsonValue name && name.TryGetValue<string>(out string? propertyName) &&
+                    propertyName is not null && !projection.ContainsKey(propertyName) &&
+                    instanceObject.ContainsKey(propertyName))
+                {
+                    projection[propertyName] = null;
+                }
+            }
+        }
+
+        return projection;
+    }
 
     private sealed record RepairCandidateGroup(
-        HashSet<string> Keys, string InstancePath, JsonNode Schema,
-        List<JsonNode> DynamicScope, List<RepairExclusiveChoice> Choices);
+        HashSet<string> Keys, HashSet<string> DirectKeys, string InstancePath, JsonNode Schema,
+        List<JsonNode> DynamicScope, List<RepairExclusiveChoice> Choices, List<RepairCondition> Conditions);
+
+    private static void ReplaceRepairBranch(JsonNode currentBranch, string instancePath, JsonNode replacement)
+    {
+        string segment = DecodeJsonPointerSegment(instancePath.Substring(instancePath.LastIndexOf('/') + 1));
+        if (currentBranch.Parent is JsonArray parentArray)
+        {
+            parentArray[int.Parse(segment, NumberStyles.None, CultureInfo.InvariantCulture)] = replacement;
+        }
+        else if (currentBranch.Parent is JsonObject parentObject)
+        {
+            parentObject[segment] = replacement;
+        }
+    }
+
+    private static string DecodeJsonPointerSegment(string segment) => segment.Replace("~1", "/").Replace("~0", "~");
 
     private sealed class RepairTraversalBudget
     {
@@ -1447,12 +1595,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             if (schemaObject["then"] is JsonNode thenSchema)
             {
-                CollectSchemaBranch(instanceNode, thenSchema, schemaRoot, instancePath, contexts, traversal, groups, references, dynamicScope);
+                CollectSchemaBranch(instanceNode, thenSchema, schemaRoot, instancePath, contexts, traversal, groups, references, dynamicScope,
+                    condition: new(ifSchema, instancePath,
+                        SchemaReferenceResolver.EnterResource(dynamicScope, references.GetResourceRoot(ifSchema)), true));
             }
 
             if (schemaObject["else"] is JsonNode elseSchema)
             {
-                CollectSchemaBranch(instanceNode, elseSchema, schemaRoot, instancePath, contexts, traversal, groups, references, dynamicScope);
+                CollectSchemaBranch(instanceNode, elseSchema, schemaRoot, instancePath, contexts, traversal, groups, references, dynamicScope,
+                    condition: new(ifSchema, instancePath,
+                        SchemaReferenceResolver.EnterResource(dynamicScope, references.GetResourceRoot(ifSchema)), false));
             }
         }
 
@@ -1491,20 +1643,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         List<RepairCandidateGroup> groups,
         SchemaReferenceResolver references,
         List<JsonNode> dynamicScope,
-        JsonNode? exclusiveApplicator = null)
+        JsonNode? exclusiveApplicator = null,
+        RepairCondition? condition = null)
     {
         Dictionary<string, SchemaObjectContext> branchContexts = new(StringComparer.Ordinal);
         List<RepairCandidateGroup> branchGroups = [];
         CollectSchemaContexts(
             instanceNode, branch, schemaRoot, instancePath, branchContexts,
             traversal, branchGroups, references, dynamicScope);
+        List<JsonNode> branchScope = SchemaReferenceResolver.EnterResource(dynamicScope, references.GetResourceRoot(branch));
         List<RepairExclusiveChoice> choices = exclusiveApplicator is null
-            ? [] : [new(exclusiveApplicator, branch, instancePath)];
-        foreach (RepairCandidateGroup branchGroup in branchGroups)
-        {
-            groups.Add(branchGroup with { Choices = [.. choices, .. branchGroup.Choices] });
-        }
-
+            ? [] : [new(exclusiveApplicator, branch, instancePath, branchScope)];
+        List<RepairCondition> conditions = condition is null ? [] : [condition];
         HashSet<string> group = new(StringComparer.Ordinal);
         foreach (KeyValuePair<string, SchemaObjectContext> entry in branchContexts)
         {
@@ -1517,8 +1667,20 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         if (group.Count > 0)
         {
-            groups.Add(new(group, instancePath, branch,
-                SchemaReferenceResolver.EnterResource(dynamicScope, references.GetResourceRoot(branch)), choices));
+            HashSet<string> directKeys = new(group, StringComparer.Ordinal);
+            directKeys.ExceptWith(branchGroups.SelectMany(static nested => nested.Keys));
+            // Restore this branch's own discriminator before composing nested selectors.
+            // Nested alternatives must not be added en masse before re-evaluating them.
+            groups.Add(new(group, directKeys, instancePath, branch, branchScope, choices, conditions));
+        }
+
+        foreach (RepairCandidateGroup branchGroup in branchGroups)
+        {
+            groups.Add(branchGroup with
+            {
+                Choices = [.. choices, .. branchGroup.Choices],
+                Conditions = [.. conditions, .. branchGroup.Conditions],
+            });
         }
     }
 
@@ -1554,7 +1716,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         foreach (string rawSegment in path.Substring(1).Split('/'))
         {
-            string segment = rawSegment.Replace("~1", "/").Replace("~0", "~");
+            string segment = DecodeJsonPointerSegment(rawSegment);
             if (value is JsonObject objectValue && objectValue.TryGetPropertyValue(segment, out JsonNode? objectChild))
             {
                 value = objectChild;
@@ -1597,7 +1759,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return false;
         }
 
-        return TrySerializeSourceValue(member.Value, member.Contract.Type, serializerOptions, property, member.NumberHandling, out value);
+        return TrySerializeSourceMember(member, out value);
     }
 
     private static bool WasOmittedBySupportedIgnoreCondition(
@@ -1646,12 +1808,26 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 .FirstOrDefault()
             : null;
 
-    private static bool IsExcludedReadOnlyMember(JsonPropertyInfo propertyInfo, JsonSerializerOptions serializerOptions) =>
-        propertyInfo.ShouldSerialize is null && GetIgnoreAttribute(propertyInfo) is null && propertyInfo.Set is null &&
-            (propertyInfo.AttributeProvider is FieldInfo
-                ? serializerOptions.IgnoreReadOnlyFields
-                : serializerOptions.IgnoreReadOnlyProperties &&
-                    serializerOptions.GetTypeInfo(propertyInfo.PropertyType).Kind is not (JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary));
+    private static bool IsExcludedReadOnlyMember(JsonPropertyInfo propertyInfo, JsonSerializerOptions serializerOptions)
+    {
+        if (propertyInfo.ShouldSerialize is not null || GetIgnoreAttribute(propertyInfo) is not null || propertyInfo.Set is not null)
+        {
+            return false;
+        }
+
+        if (propertyInfo.AttributeProvider is FieldInfo)
+        {
+            return serializerOptions.IgnoreReadOnlyFields;
+        }
+
+        if (propertyInfo.AttributeProvider is not PropertyInfo && serializerOptions.IgnoreReadOnlyFields)
+        {
+            return true;
+        }
+
+        return serializerOptions.IgnoreReadOnlyProperties &&
+            serializerOptions.GetTypeInfo(propertyInfo.PropertyType).Kind is not (JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary);
+    }
 
     // System.Text.Json uses this generated delegate for JsonIgnore conditions; evaluate those from metadata instead.
     private static bool IsJsonIgnoreConditionPredicate(Delegate predicate)
@@ -1706,8 +1882,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     private sealed class SourceRecoveryContext(
-        object? value, JsonTypeInfo contract, JsonNumberHandling? numberHandling = null,
-        JsonPropertyInfo? property = null, object? owner = null)
+        object? value, JsonTypeInfo contract, JsonPropertyInfo? property = null,
+        object? owner = null, JsonTypeInfo? ownerContract = null)
     {
         private readonly Dictionary<string, SourceRecoveryContext?> _children = new(StringComparer.Ordinal);
         private List<object?>? _items;
@@ -1715,9 +1891,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         internal object? Value { get; } = value;
         internal JsonTypeInfo Contract { get; } = contract;
-        internal JsonNumberHandling? NumberHandling { get; } = numberHandling;
         internal JsonPropertyInfo? Property { get; } = property;
         internal object? Owner { get; } = owner;
+        internal JsonTypeInfo? OwnerContract { get; } = ownerContract;
 
         internal SourceRecoveryContext? GetChild(string name, JsonNode? serializedParent)
         {
@@ -1749,25 +1925,48 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             JsonSerializerOptions options = Contract.Options;
             JsonTypeInfo typeInfo = GetActiveContract();
+            if (options.ReferenceHandler is { } handler && !ReferenceEquals(handler, ReferenceHandler.IgnoreCycles) &&
+                serializedParent is JsonObject referenceObject)
+            {
+                if (referenceObject.ContainsKey("$ref"))
+                {
+                    return null;
+                }
+
+                if (typeInfo.Kind == JsonTypeInfoKind.Enumerable && name == "$values" &&
+                    referenceObject["$values"] is JsonArray)
+                {
+                    return new(Value, typeInfo);
+                }
+            }
+
             if (typeInfo.Kind == JsonTypeInfoKind.Dictionary &&
                 serializedParent is JsonObject serializedDictionary && Value is IEnumerable entries)
             {
                 if (!_dictionaryRead)
                 {
                     _dictionaryRead = true;
-                    using IEnumerator<KeyValuePair<string, JsonNode?>> properties = serializedDictionary.GetEnumerator();
+                    JsonTypeInfo keyContract = options.GetTypeInfo(typeInfo.KeyType!);
                     foreach (object entry in entries)
                     {
-                        if (!properties.MoveNext())
+                        if (!TryGetDictionaryEntry(entry, out object? entryKey, out object? entryValue))
                         {
-                            break;
+                            continue;
                         }
 
-                        if (TryGetDictionaryEntryValue(entry, out object? entryValue))
+                        // Non-generic dictionaries dispatch non-string keys through the object converter.
+                        JsonTypeInfo entryKeyContract = Value is IDictionary && keyContract.Type == typeof(string) && entryKey is not string
+                            ? options.GetTypeInfo(typeof(object))
+                            : keyContract;
+                        if (!TrySerializeDictionaryKey(entryKey, entryKeyContract, out string serializedKey) ||
+                            !serializedDictionary.ContainsKey(serializedKey))
                         {
-                            _children[properties.Current.Key] = new(
-                                entryValue, options.GetTypeInfo(typeInfo.ElementType!), NumberHandling ?? typeInfo.NumberHandling);
+                            continue;
                         }
+
+                        _children[serializedKey] = _children.ContainsKey(serializedKey)
+                            ? null
+                            : new(entryValue, options.GetTypeInfo(typeInfo.ElementType!));
                     }
                 }
 
@@ -1811,7 +2010,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     item = _items[index];
                 }
 
-                return new(item, options.GetTypeInfo(typeInfo.ElementType!), NumberHandling ?? typeInfo.NumberHandling);
+                return new(item, options.GetTypeInfo(typeInfo.ElementType!));
             }
 
             if (typeInfo.Kind != JsonTypeInfoKind.Object)
@@ -1835,9 +2034,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
                     object? memberValue = member.Get(Value);
                     JsonTypeInfo memberContract = options.GetTypeInfo(member.PropertyType);
-                    return new(memberValue, memberContract,
-                        GetEffectiveNumberHandling(member, typeInfo, memberContract),
-                        member, Value);
+                    return new(memberValue, memberContract, member, Value, typeInfo);
                 }
             }
 
@@ -1871,29 +2068,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             return null;
-        }
-
-        private static JsonNumberHandling? GetEffectiveNumberHandling(
-            JsonPropertyInfo property, JsonTypeInfo declaringType, JsonTypeInfo memberType)
-        {
-            if (property.CustomConverter is not null || memberType.Converter.GetType().Assembly != typeof(JsonSerializer).Assembly)
-            {
-                return null;
-            }
-
-            Type type = memberType.Kind is JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary
-                ? memberType.ElementType!
-                : memberType.Type;
-            type = Nullable.GetUnderlyingType(type) ?? type;
-            bool supportsNumberHandling = !type.IsEnum && (type == typeof(object) ||
-                Type.GetTypeCode(type) is TypeCode.Byte or TypeCode.SByte or TypeCode.Int16 or TypeCode.UInt16 or
-                    TypeCode.Int32 or TypeCode.UInt32 or TypeCode.Int64 or TypeCode.UInt64 or
-                    TypeCode.Single or TypeCode.Double or TypeCode.Decimal ||
-                (type.Assembly == typeof(int).Assembly && type.FullName is "System.Half" or "System.Int128" or "System.UInt128"));
-
-            return supportsNumberHandling
-                ? property.NumberHandling ?? declaringType.NumberHandling ?? memberType.NumberHandling
-                : null;
         }
 
         private JsonTypeInfo GetActiveContract()
@@ -1957,11 +2131,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 #endif
     [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
         "Trimming", "IL2075",
-        Justification = "The reflected property belongs to KeyValuePair<,>, whose public properties are explicitly preserved.")]
-    private static bool TryGetDictionaryEntryValue(object entry, out object? value)
+        Justification = "The reflected properties belong to KeyValuePair<,>, whose public properties are explicitly preserved.")]
+    private static bool TryGetDictionaryEntry(object entry, out object? key, out object? value)
     {
         if (entry is DictionaryEntry dictionaryEntry)
         {
+            key = dictionaryEntry.Key;
             value = dictionaryEntry.Value;
             return true;
         }
@@ -1969,45 +2144,129 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         Type type = entry.GetType();
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))
         {
+            key = type.GetProperty(nameof(KeyValuePair<object, object>.Key))!.GetValue(entry);
             value = type.GetProperty(nameof(KeyValuePair<object, object>.Value))!.GetValue(entry);
             return true;
         }
 
-        value = null;
+        key = value = null;
         return false;
     }
 
-    private static bool TrySerializeSourceValue(
-        object? value,
-        Type? declaredType,
-        JsonSerializerOptions serializerOptions,
-        JsonPropertyInfo? propertyInfo,
-        JsonNumberHandling? numberHandling,
-        out JsonNode? serializedValue)
+#if !NETSTANDARD2_0
+    [System.Diagnostics.CodeAnalysis.DynamicDependency(
+        nameof(JsonConverter<object>.WriteAsPropertyName), typeof(JsonConverter<>))]
+#endif
+    [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+        "Trimming", "IL2075",
+        Justification = "The reflected method belongs to JsonConverter<T>, whose WriteAsPropertyName method is explicitly preserved.")]
+    private static bool TrySerializeDictionaryKey(object? key, JsonTypeInfo contract, out string name)
     {
-        serializedValue = null;
-        Type valueType = declaredType ?? value?.GetType() ?? typeof(object);
+        name = string.Empty;
         try
         {
-            JsonSerializerOptions effectiveOptions = serializerOptions;
-            JsonConverter? propertyConverter = GetPropertyConverter(propertyInfo, valueType);
-            if (propertyConverter is not null || numberHandling is not null)
+            if (key is string stringValue && contract.Type == typeof(string) &&
+                contract.Converter.GetType().Assembly == typeof(JsonSerializer).Assembly)
             {
-                effectiveOptions = new JsonSerializerOptions(serializerOptions);
-                if (propertyConverter is not null)
+                name = contract.Options.DictionaryKeyPolicy is { } policy ? policy.ConvertName(stringValue) : stringValue;
+                if (name is not null)
                 {
-                    effectiveOptions.Converters.Insert(0, propertyConverter);
+                    return true;
+                }
+
+                name = string.Empty;
+                return false;
+            }
+
+            using MemoryStream stream = new();
+            using (Utf8JsonWriter writer = new(stream))
+            {
+                writer.WriteStartObject();
+                if (contract.Converter is JsonConverter<string> stringConverter && key is string stringKey)
+                {
+                    stringConverter.WriteAsPropertyName(writer, stringKey, contract.Options);
+                }
+                else if (contract.Converter is JsonConverter<object> objectConverter && key is not null)
+                {
+                    objectConverter.WriteAsPropertyName(writer, key, contract.Options);
+                }
+                else
+                {
+                    Type? converterType = contract.Converter.GetType();
+                    while (converterType is not null &&
+                        (!converterType.IsGenericType || converterType.GetGenericTypeDefinition() != typeof(JsonConverter<>)))
+                    {
+                        converterType = converterType.BaseType;
+                    }
+
+                    converterType?.GetMethod(nameof(JsonConverter<object>.WriteAsPropertyName))?
+                        .Invoke(contract.Converter, [writer, key, contract.Options]);
+                }
+
+                writer.WriteNullValue();
+                writer.WriteEndObject();
+            }
+
+            using JsonDocument document = JsonDocument.Parse(stream.ToArray());
+            name = document.RootElement.EnumerateObject().Single().Name;
+            return true;
+        }
+        catch (TargetInvocationException exception) when (exception.InnerException is
+            OperationCanceledException or OutOfMemoryException or StackOverflowException or AccessViolationException)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException!).Throw();
+            throw;
+        }
+        catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException or AccessViolationException))
+        {
+            return false;
+        }
+    }
+
+    private static bool TrySerializeSourceMember(SourceRecoveryContext member, out JsonNode? serializedValue)
+    {
+        serializedValue = null;
+        try
+        {
+            JsonTypeInfo originalContract = member.OwnerContract!;
+            JsonSerializerOptions options = originalContract.Options;
+            // Ask the resolver for uncached metadata so converters still receive the original
+            // options and their delegated serialization uses the unchanged cached contracts.
+            JsonTypeInfo? contract = options.TypeInfoResolver?.GetTypeInfo(originalContract.Type, options);
+            if (contract is not { Kind: JsonTypeInfoKind.Object, IsReadOnly: false } ||
+                ReferenceEquals(contract, originalContract))
+            {
+                return false;
+            }
+
+            JsonPropertyInfo property = member.Property!;
+            foreach (JsonPropertyInfo candidate in contract.Properties)
+            {
+                if (candidate.Name == property.Name && candidate.PropertyType == property.PropertyType)
+                {
+                    candidate.Get = _ => member.Value;
+                    candidate.ShouldSerialize = static (_, _) => true;
+                    candidate.CustomConverter = GetPropertyConverter(property, property.PropertyType);
+                    candidate.NumberHandling = property.NumberHandling;
+                    candidate.IsGetNullable = property.IsGetNullable;
+                }
+                else
+                {
+                    candidate.Get = null;
                 }
             }
 
-            JsonTypeInfo typeInfo = effectiveOptions.GetTypeInfo(valueType);
-            if (numberHandling is { } effectiveNumberHandling)
+            contract.NumberHandling = originalContract.NumberHandling;
+            contract.PolymorphismOptions = null;
+            contract.OnSerializing = null;
+            contract.OnSerialized = null;
+            JsonElement element = JsonSerializer.SerializeToElement(member.Owner, contract).GetProperty(property.Name);
+            if (options.ReferenceHandler is { } handler && !ReferenceEquals(handler, ReferenceHandler.IgnoreCycles) &&
+                ContainsReferenceMetadata(element))
             {
-                // Changing global options would also change nested objects and custom converters.
-                typeInfo.NumberHandling = effectiveNumberHandling;
+                return false;
             }
 
-            JsonElement element = JsonSerializer.SerializeToElement(value, typeInfo);
             serializedValue = JsonSerializer.SerializeToNode(element, McpJsonUtilities.JsonContext.Default.JsonElement);
             return true;
         }
@@ -2015,6 +2274,36 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             return false;
         }
+    }
+
+    private static bool ContainsReferenceMetadata(JsonElement element) =>
+        element.ValueKind switch
+        {
+            JsonValueKind.Object => element.EnumerateObject().Any(static property =>
+                property.Name is "$id" or "$ref" || ContainsReferenceMetadata(property.Value)),
+            JsonValueKind.Array => element.EnumerateArray().Any(static item => ContainsReferenceMetadata(item)),
+            _ => false,
+        };
+
+    private static bool HasDuplicatePropertyNames(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            HashSet<string> names = new(StringComparer.Ordinal);
+            foreach (JsonProperty property in element.EnumerateObject())
+            {
+                if (!names.Add(property.Name) || HasDuplicatePropertyNames(property.Value))
+                {
+                    return true;
+                }
+            }
+        }
+        else if (element.ValueKind == JsonValueKind.Array)
+        {
+            return element.EnumerateArray().Any(static item => HasDuplicatePropertyNames(item));
+        }
+
+        return false;
     }
 
     private static JsonConverter? GetPropertyConverter(JsonPropertyInfo? propertyInfo, Type propertyType)

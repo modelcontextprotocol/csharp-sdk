@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Apps;
@@ -6,6 +7,7 @@ using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.Dynamic;
 using System.IO.Pipelines;
@@ -49,7 +51,7 @@ McpServerTool structuredTool = McpServerTool.Create(
             {
               "$id":"https://example.test/aot",
               "type":"object",
-              "required":["id","note","value","items","genericItems","dynamicItems","unions","numbers","extension","contract","nullable"],
+              "required":["id","note","value","items","genericItems","dynamicItems","unions","numbers","extension","contract","nullable","delegatingCount"],
               "anyOf":[{"required":["count"]},{"required":["note"]}],
               "$defs":{"child":{"$id":"child","type":"object","required":["count"],"properties":{"count":{"const":0}}}},
               "properties":{
@@ -61,6 +63,7 @@ McpServerTool structuredTool = McpServerTool.Create(
                 "extension":{"properties":{"child/~":{"required":["note"]}}},
                 "contract":{"oneOf":[{"required":["flag"]},{"required":["note"]}]},
                 "nullable":{"required":["note"]},
+                "delegatingCount":{"const":0},
                 "unions":{"type":"array","items":{"oneOf":[
                   {"properties":{"tag":{"const":"0"},"child0":{"required":["note"]}},"required":["tag","child0"],"additionalProperties":false},
                   {"properties":{"tag":{"const":"1"},"child1":{"required":["note"]}},"required":["tag","child1"],"additionalProperties":false}
@@ -69,10 +72,33 @@ McpServerTool structuredTool = McpServerTool.Create(
             }
             """).RootElement,
     });
+JsonSerializerOptions preservedOptions = new(structuredOptions) { ReferenceHandler = ReferenceHandler.Preserve };
+McpServerTool preservedTool = McpServerTool.Create(
+    new AotPreservedFunction(preservedOptions),
+    new()
+    {
+        UseStructuredContent = true,
+        OutputSchema = JsonDocument.Parse("""
+            {
+              "required":["entry/1~","entry/2~"],
+              "properties":{
+                "entry/1~":{"required":["count"],"properties":{"count":{"type":"integer"}}},
+                "entry/2~":{"required":["count"],"properties":{"count":{"type":"integer"}}}
+              }
+            }
+            """).RootElement,
+    });
+McpServerTool preservedNongenericTool = McpServerTool.Create(
+    new AotPreservedFunction(preservedOptions, nongeneric: true),
+    new()
+    {
+        UseStructuredContent = true,
+        OutputSchema = preservedTool.ProtocolTool.OutputSchema,
+    });
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([structuredTool])
+    .WithTools([structuredTool, preservedTool, preservedNongenericTool])
     .WithMcpApps()
     .WithSkills(catalog)
     .WithResources(authoredSkill.Resources);
@@ -118,6 +144,7 @@ if (structuredResult.StructuredContent is not { } structured ||
     structured.GetProperty("contract").GetProperty("note").ValueKind != JsonValueKind.Null ||
     structured.GetProperty("contract").TryGetProperty("flag", out _) ||
     structured.GetProperty("nullable").GetProperty("note").ValueKind != JsonValueKind.Null ||
+    structured.GetProperty("delegatingCount").GetInt32() != 0 ||
     structured.TryGetProperty("count", out _))
 {
     throw new Exception($"Unexpected structured output: {structuredResult.StructuredContent}");
@@ -129,6 +156,17 @@ foreach (JsonElement item in structured.GetProperty("unions").EnumerateArray())
         item.TryGetProperty("child1", out _))
     {
         throw new Exception($"Unexpected union output: {item}");
+    }
+}
+
+foreach (string name in new[] { "PreservedDictionary", "PreservedNongenericDictionary" })
+{
+    var preservedResult = await client.CallToolAsync(name);
+    if (preservedResult.StructuredContent is not { } preserved ||
+        preserved.GetProperty("entry/1~").GetProperty("count").GetInt32() != 0 ||
+        preserved.GetProperty("entry/2~").GetProperty("count").GetInt32() != 5)
+    {
+        throw new Exception($"Unexpected preserved dictionary output: {preservedResult.StructuredContent}");
     }
 }
 
@@ -208,6 +246,10 @@ internal sealed class AotStructuredOutput
     public AotExtensionOutput Extension { get; init; } = new();
     public AotBaseOutput Contract { get; init; } = new AotDerivedOutput();
     public AotNullableChild? Nullable { get; init; } = new AotNullableChild();
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    [JsonConverter(typeof(AotDelegatingIntConverter))]
+    public int DelegatingCount { get; init; }
 
     [JsonConverter(typeof(AotRejectNullConverter))]
     public string? Optional { get; init; }
@@ -297,6 +339,65 @@ internal sealed class AotElementConverter : JsonConverter<JsonElement>
         writer.WriteStringValue("converted");
 }
 
+internal sealed class AotDelegatingIntConverter : JsonConverter<int>
+{
+    private bool _writing;
+    public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        throw new NotSupportedException();
+    public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
+    {
+        if (_writing)
+        {
+            throw new InvalidOperationException("Recursive member converter invocation.");
+        }
+
+        _writing = true;
+        try
+        {
+            JsonSerializer.Serialize(writer, value, options.GetTypeInfo(typeof(int)));
+        }
+        finally
+        {
+            _writing = false;
+        }
+    }
+}
+
+[JsonConverter(typeof(AotDictionaryKeyConverter))]
+internal readonly record struct AotDictionaryKey(int Value);
+
+internal sealed class AotDictionaryKeyConverter : JsonConverter<AotDictionaryKey>
+{
+    public override AotDictionaryKey Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        throw new NotSupportedException();
+    public override void Write(Utf8JsonWriter writer, AotDictionaryKey value, JsonSerializerOptions options) =>
+        writer.WriteNumberValue(value.Value);
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, AotDictionaryKey value, JsonSerializerOptions options) =>
+        writer.WritePropertyName($"entry/{value.Value}~");
+}
+
+internal sealed class AotPreservedFunction(JsonSerializerOptions options, bool nongeneric = false) : AIFunction
+{
+    private readonly object _value = nongeneric
+        ? new Hashtable
+        {
+            [new AotDictionaryKey(1)] = default(AotStructuredChild),
+            [new AotDictionaryKey(2)] = new AotStructuredChild { Count = 5 },
+        }
+        : new Dictionary<AotDictionaryKey, AotStructuredChild>
+        {
+            [new(1)] = default,
+            [new(2)] = new() { Count = 5 },
+        };
+    public override string Name => nongeneric ? "PreservedNongenericDictionary" : "PreservedDictionary";
+    public override JsonElement JsonSchema { get; } = JsonDocument.Parse("""{"type":"object"}""").RootElement;
+    public override JsonSerializerOptions JsonSerializerOptions => options;
+    protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken) =>
+        new(_value);
+}
+
 [JsonSerializable(typeof(AotStructuredOutput))]
 [JsonSerializable(typeof(AotDerivedOutput))]
+[JsonSerializable(typeof(Dictionary<AotDictionaryKey, AotStructuredChild>))]
+[JsonSerializable(typeof(Hashtable))]
 internal partial class AotJsonContext : JsonSerializerContext;
