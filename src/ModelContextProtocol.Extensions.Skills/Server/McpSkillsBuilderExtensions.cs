@@ -330,8 +330,10 @@ public static class McpSkillsBuilderExtensions
     /// dependency-injection registration overload.
     /// </para>
     /// <para>
-    /// The instance is registered as <see cref="IMcpSkillCatalog"/> and resolved from the request's services.
-    /// When creating a server with <see cref="McpServer.Create"/> directly, supply the service provider as well as the options.
+    /// The configured handlers retain the supplied instance, which is also registered as <see cref="IMcpSkillCatalog"/>.
+    /// A server created with <see cref="McpServer.Create"/> can use these options without a service provider
+    /// when the catalog and its resource handlers do not require services. In that case,
+    /// <see cref="MessageContext.Services"/> on the request context is <see langword="null"/>.
     /// </para>
     /// <para>
     /// <c>skills/list</c> and <c>skills/get</c> are registered as raw request handlers and do not pass through the
@@ -372,6 +374,7 @@ public static class McpSkillsBuilderExtensions
     /// a Skills method is invoked, not when the server's options are configured. Scoped and transient catalogs
     /// can capture scoped dependencies. Singleton catalogs must not capture them; they can instead resolve
     /// them from <see cref="MessageContext.Services"/> on the supplied <see cref="RequestContext{TParams}"/>.
+    /// When creating a server with <see cref="McpServer.Create"/> directly, supply the corresponding service provider.
     /// </para>
     /// <para>
     /// The request uses the same service scope lifecycle as built-in MCP handlers. Stateless HTTP uses the
@@ -446,7 +449,8 @@ public static class McpSkillsBuilderExtensions
 
         builder.Services.Add(registration);
         builder.Services.AddSingleton(new SkillsRegistrationMarker());
-        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>>(new McpSkillsConfigureOptions(options));
+        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>>(
+            new McpSkillsConfigureOptions(options, registration.ImplementationInstance is IMcpSkillCatalog catalog ? catalog : null));
 
         return builder;
     }
@@ -500,7 +504,7 @@ public static class McpSkillsBuilderExtensions
         }
     }
 
-    private sealed class McpSkillsConfigureOptions(McpSkillsOptions skillsOptions)
+    private sealed class McpSkillsConfigureOptions(McpSkillsOptions skillsOptions, IMcpSkillCatalog? suppliedCatalog)
         : IConfigureOptions<McpServerOptions>
     {
         public void Configure(McpServerOptions options)
@@ -609,9 +613,9 @@ public static class McpSkillsBuilderExtensions
             return JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.GetSkillResult);
         }
 
-        private static IMcpSkillCatalog ResolveCatalog(MessageContext context) =>
-            (context.Services ??
-                throw new InvalidOperationException("Skills catalogs require a service provider for the request."))
+        private IMcpSkillCatalog ResolveCatalog(MessageContext context) =>
+            suppliedCatalog ?? (context.Services ??
+                throw new InvalidOperationException("Dependency-injected Skills catalogs require a service provider for the request."))
                 .GetRequiredService<IMcpSkillCatalog>();
 
         /// <summary>

@@ -197,9 +197,10 @@ The context also exposes the JSON-RPC request, the caller's <xref:System.Securit
 when the transport supplies one (the ASP.NET Core transport does), any items that incoming-message filters
 attached to the request, the request-bound `Server`, and the request's `Services`.
 
-All catalog overloads register `IMcpSkillCatalog` in the container and resolve it when a Skills request runs,
-not while configuring the server's options. The generic and factory overloads default to
-`ServiceLifetime.Transient`.
+All catalog overloads register `IMcpSkillCatalog` in the container. Generic and factory registrations resolve it
+from the request's services when a Skills request runs, not while configuring the server's options.
+Supplied catalog instances are retained directly by the configured handlers.
+The generic and factory overloads default to `ServiceLifetime.Transient`.
 Use the factory overload instead when construction needs application-specific configuration:
 
 ```csharp
@@ -235,15 +236,18 @@ public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context,
 
 Use `context.Services`, not `context.Server.Services`, for request-scoped dependencies. The latter may be the
 server's longer-lived provider. The SDK supplies a provider when the server is created through dependency
-injection. If creating a low-level server directly from configured options, also pass the corresponding service
-provider to `McpServer.Create`; the options do not capture a catalog instance.
+injection. For a low-level server created directly with `McpServer.Create`, supply the corresponding provider
+when using a generic or factory registration, or when the catalog or its resource handlers need services.
+Supplied catalogs, fixed skills, and directory-loaded skills can use the configured options without a provider
+when their handlers need no services. Then `context.Services` is null; the options retain only the supplied
+catalog, not the provider used to configure them. Supplied instances remain caller-owned.
 
 The scope follows the same lifecycle as built-in MCP request handlers:
 
 | Transport or configuration | Request services |
 |---|---|
 | Stateless Streamable HTTP, including modern clients on a hybrid endpoint | The existing `HttpContext.RequestServices`. Scoped state set by HTTP middleware is preserved; Skills does not create another scope. ASP.NET Core owns and disposes it. |
-| Stream/stdio, stateful Streamable HTTP, and legacy SSE | With the default `McpServerOptions.ScopeRequests = true`, Core creates an independent scope per MCP request and disposes it asynchronously after the handler finishes, including on failure or cancellation. This is not the HTTP middleware's scope. |
+| Stream/stdio, stateful Streamable HTTP, and legacy SSE | When a scope factory is available and `McpServerOptions.ScopeRequests = true` (the default), Core creates an independent scope per MCP request and disposes it asynchronously after the handler finishes, including on failure or cancellation. This is not the HTTP middleware's scope. |
 | `McpServerOptions.ScopeRequests = false` | The provider supplied to the server is used as-is and remains caller-owned. Supply an appropriately scoped provider when using scoped catalogs or dependencies. |
 
 Neither the catalog nor application code should dispose the request provider or retain its scoped services
