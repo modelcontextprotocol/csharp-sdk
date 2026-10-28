@@ -12,6 +12,59 @@ namespace ModelContextProtocol.Tests.Server;
 public partial class McpServerToolTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_RecoveryBoundary_PrunesUnevaluatedRepairsAtControlCharacterPaths(bool sourceGenerated)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions();
+        if (sourceGenerated)
+        {
+            options.TypeInfoResolver = RecoveryBoundaryJsonContext.Default;
+        }
+        McpServerTool tool = CreateRecoveryBoundaryTool(
+            new Dictionary<string, RecoveryBoundaryControlNameOutput>
+            {
+                ["evaluated\0path"] = new(),
+                ["other"] = new(),
+            }, """{"allOf":[{"properties":{"evaluated\u0000path":{"required":["real"]}}}],"unevaluatedProperties":{"required":["note"]}}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("evaluated\0path").GetProperty("real").ValueKind);
+        Assert.False(result.GetProperty("evaluated\0path").TryGetProperty("note", out _));
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("other").GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_RecoveryBoundary_DoesNotTraverseHiddenExtensionDataCollisions(bool sourceGenerated, bool defaultIgnored)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        IJsonTypeInfoResolver resolver = sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver();
+        options.TypeInfoResolver = resolver.WithAddedModifier(info =>
+        {
+            if (info.Type == typeof(RecoveryBoundaryFilteredParent) && !defaultIgnored)
+            {
+                info.Properties.Single(property => property.Name == "child").ShouldSerialize = static (_, _) => false;
+            }
+        });
+        object output = defaultIgnored
+            ? new RecoveryBoundaryDefaultParent { Child = new() { Count = 42 } }
+            : new RecoveryBoundaryFilteredParent();
+        McpServerTool tool = CreateRecoveryBoundaryTool(output, """
+            {"properties":{"child":{"required":["count"],"properties":{"count":{"type":"integer"}}}}}
+            """, options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Empty(result.GetProperty("child").EnumerateObject());
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]
@@ -592,6 +645,34 @@ public partial class McpServerToolTests
         public int Count { get; set; }
     }
 
+    private sealed class RecoveryBoundaryControlNameOutput
+    {
+        public string? Real { get; set; }
+        public string? Note { get; set; }
+    }
+
+    private sealed class RecoveryBoundaryFilteredParent
+    {
+        public RecoveryBoundaryConvertedOutput Child { get; set; } = new() { Count = 42 };
+        [JsonExtensionData]
+        public Dictionary<string, object?> Data { get; set; } = new() { ["child"] = new Dictionary<string, object?>() };
+    }
+
+    private sealed class RecoveryBoundaryDefaultParent
+    {
+        public RecoveryBoundaryHiddenValue Child { get; set; }
+        [JsonExtensionData]
+        public Dictionary<string, object?> Data { get; set; } = new() { ["child"] = new Dictionary<string, object?>() };
+    }
+
+    private struct RecoveryBoundaryHiddenValue : IEquatable<RecoveryBoundaryHiddenValue>
+    {
+        public int Count { get; set; }
+        public bool Equals(RecoveryBoundaryHiddenValue other) => true;
+        public override bool Equals(object? obj) => obj is RecoveryBoundaryHiddenValue;
+        public override int GetHashCode() => 0;
+    }
+
     private sealed class RecoveryBoundaryDelegatingConverter : JsonConverter<int>
     {
         private bool _writing;
@@ -822,6 +903,9 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(RecoveryBoundaryAttributedOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryNullableOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryNullableRecord))]
+    [JsonSerializable(typeof(Dictionary<string, RecoveryBoundaryControlNameOutput>))]
+    [JsonSerializable(typeof(RecoveryBoundaryFilteredParent))]
+    [JsonSerializable(typeof(RecoveryBoundaryDefaultParent))]
     [JsonSerializable(typeof(RecoveryBoundaryCyclicOwner))]
     [JsonSerializable(typeof(RecoveryBoundaryCyclicStructOwner))]
     [JsonSerializable(typeof(RecoveryBoundaryAncestorRoot))]

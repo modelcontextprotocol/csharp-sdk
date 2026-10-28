@@ -15,6 +15,40 @@ namespace ModelContextProtocol.Tests.Server;
 public partial class DelegatingToolOutputSchemaTests
 {
     [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
+    public async Task ListTools_DelegatingTool_RecoversAgainstEffectiveSchema(string protocolVersion, bool outerRequiresNull)
+    {
+        JsonElement requiredSchema = ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""");
+        JsonElement optionalSchema = ParseJson("""{"type":"object","properties":{"note":{"type":"string"}}}""");
+        McpServerTool inner = McpServerTool.Create(() => new { Note = (string?)null }, new()
+        {
+            Name = "effective_note",
+            UseStructuredContent = true,
+            OutputSchema = outerRequiresNull ? optionalSchema : requiredSchema,
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        McpServerTool tool = new SchemaOverrideTool(new DelegatingTool(inner), outerRequiresNull ? requiredSchema : optionalSchema);
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+            JsonElement content = result.StructuredContent!.Value;
+
+            Assert.True(ParseSchema(listed.ProtocolTool.OutputSchema!.Value).Evaluate(content).IsValid);
+            Assert.Equal(outerRequiresNull, content.TryGetProperty("note", out _));
+        });
+    }
+
+    [Theory]
     [InlineData("2025-06-18", 1, false)]
     [InlineData("2025-06-18", 2, false)]
     [InlineData("2025-06-18", 1, true)]

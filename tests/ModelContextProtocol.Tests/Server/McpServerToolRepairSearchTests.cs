@@ -8,6 +8,84 @@ namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerToolTests
 {
+    [Theory]
+    [InlineData("anyOf")]
+    [InlineData("oneOf")]
+    [InlineData("allOf")]
+    [InlineData("reference")]
+    [InlineData("crossParents")]
+    [InlineData("crossReferences")]
+    public async Task StructuredOutput_Search_QualifiesEnclosingItemAssertions(string shape)
+    {
+        string item = shape switch
+        {
+            "oneOf" => """{"properties":{"a":true},"additionalProperties":false,"oneOf":[{"required":["b"]},{"required":["a"]}]}""",
+            "allOf" => """{"allOf":[{"anyOf":[{"required":["a"]},{"required":["b"]}]},{"not":{"required":["b"]}}]}""",
+            "reference" => """{"$ref":"#/$defs/choice","properties":{"a":true},"additionalProperties":false}""",
+            _ => """{"properties":{"a":true},"additionalProperties":false,"anyOf":[{"required":["a"]},{"required":["b"]}]}""",
+        };
+        var output = Enumerable.Range(0, 129).Select(_ => new { A = (string?)null, B = (string?)null, C = (string?)null }).ToArray();
+        string schema = shape switch
+        {
+            "crossParents" => """{"allOf":[{"items":{"anyOf":[{"required":["b"]},{"required":["a"]}]}},{"items":{"required":["c"],"not":{"required":["b"]}}}]}""",
+            "crossReferences" => """{"allOf":[{"items":{"$ref":"#/$defs/choice"}},{"items":{"$ref":"#/$defs/guard"}}],"$defs":{"choice":{"$id":"choice","anyOf":[{"required":["b"]},{"required":["a"]}]},"guard":{"$id":"guard","required":["c"],"not":{"required":["b"]}}}}""",
+            _ => $$$$"""{"items":{{{{item}}}},"$defs":{"choice":{"anyOf":[{"required":["a"]},{"required":["b"]}]}}}""",
+        };
+        McpServerTool tool = CreateStructuredOutputTestTool(output, schema);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.All(result.EnumerateArray(), child =>
+        {
+            Assert.Equal(JsonValueKind.Null, child.GetProperty("a").ValueKind);
+            Assert.False(child.TryGetProperty("b", out _));
+            Assert.Equal(shape is "crossParents" or "crossReferences", child.TryGetProperty("c", out _));
+        });
+    }
+
+    [Theory]
+    [InlineData("object")]
+    [InlineData("array")]
+    [InlineData("reference")]
+    [InlineData("allOf")]
+    [InlineData("anyOf")]
+    [InlineData("contains")]
+    [InlineData("becomesEvaluated")]
+    [InlineData("validAlternative")]
+    public async Task StructuredOutput_Search_DoesNotRepairEvaluatedOptionalMembers(string shape)
+    {
+        var first = new { Note = (string?)null, Real = (string?)null };
+        var second = new { Note = (string?)null, Real = (string?)null };
+        bool array = shape is "array" or "contains";
+        object output = array ? new[] { first, second } : new { Evaluated = first, Other = second };
+        string schema = shape switch
+        {
+            "array" => """{"prefixItems":[{"type":"object"}],"unevaluatedItems":{"required":["note"]}}""",
+            "contains" => """{"prefixItems":[{"properties":{"real":true}}],"contains":{"required":["real"]},"unevaluatedItems":{"required":["note"]}}""",
+            "reference" => """{"$id":"https://example.test/unevaluated","$defs":{"rule":{"properties":{"evaluated":true},"unevaluatedProperties":{"required":["note"]}}},"allOf":[{"$ref":"#/$defs/rule"}]}""",
+            "allOf" => """{"allOf":[{"properties":{"evaluated":true}}],"unevaluatedProperties":{"required":["note"]}}""",
+            "anyOf" => """{"anyOf":[{"properties":{"evaluated":true}}],"unevaluatedProperties":{"required":["note"]}}""",
+            "becomesEvaluated" => """{"properties":{"evaluated":{"required":["real"]}},"unevaluatedProperties":{"required":["note"]}}""",
+            "validAlternative" => """{"anyOf":[{"properties":{"evaluated":true}},{"properties":{"other":{"required":["real"]}}}],"unevaluatedProperties":{"required":["note"]}}""",
+            _ => """{"properties":{"evaluated":{"type":"object"}},"unevaluatedProperties":{"required":["note"]}}""",
+        };
+        if (shape == "contains")
+        {
+            output = new[] { new { Note = (string?)null, Real = (string?)"present" }, first };
+        }
+        McpServerTool tool = CreateStructuredOutputTestTool(output, schema);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        JsonElement evaluated = array ? result[0] : result.GetProperty("evaluated");
+        JsonElement other = array ? result[1] : result.GetProperty("other");
+        Assert.False(evaluated.TryGetProperty("note", out _));
+        Assert.Equal(JsonValueKind.Null, other.GetProperty("note").ValueKind);
+        Assert.False(other.TryGetProperty("real", out _));
+    }
+
     [Fact]
     public async Task StructuredOutput_Search_ComposesIndependentExclusiveChoicesAtSamePath()
     {

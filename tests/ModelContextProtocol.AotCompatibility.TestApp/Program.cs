@@ -63,11 +63,12 @@ McpServerTool structuredTool = McpServerTool.Create(
                 "extension":{"properties":{"child/~":{"required":["note"]}}},
                 "contract":{"oneOf":[{"required":["flag"]},{"required":["note"]}]},
                 "nullable":{"required":["note"]},
+                "unevaluated":{"allOf":[{"properties":{"evaluated\u0000path":{"required":["real"]}}}],"unevaluatedProperties":{"required":["note"]}},
                 "delegatingCount":{"const":0},
-                "unions":{"type":"array","items":{"oneOf":[
+                "unions":{"type":"array","allOf":[{"items":{"oneOf":[
                   {"properties":{"tag":{"const":"0"},"child0":{"required":["note"]}},"required":["tag","child0"],"additionalProperties":false},
                   {"properties":{"tag":{"const":"1"},"child1":{"required":["note"]}},"required":["tag","child1"],"additionalProperties":false}
-                ]}}
+                ]}},{"items":{"not":{"required":["child1"]}}}]}
               }
             }
             """).RootElement,
@@ -172,6 +173,9 @@ if (structuredResult.StructuredContent is not { } structured ||
     structured.GetProperty("contract").GetProperty("note").ValueKind != JsonValueKind.Null ||
     structured.GetProperty("contract").TryGetProperty("flag", out _) ||
     structured.GetProperty("nullable").GetProperty("note").ValueKind != JsonValueKind.Null ||
+    structured.GetProperty("unevaluated").GetProperty("evaluated\0path").GetProperty("real").ValueKind != JsonValueKind.Null ||
+    structured.GetProperty("unevaluated").GetProperty("evaluated\0path").TryGetProperty("note", out _) ||
+    structured.GetProperty("unevaluated").GetProperty("other").GetProperty("note").ValueKind != JsonValueKind.Null ||
     structured.GetProperty("delegatingCount").GetInt32() != 0 ||
     structured.TryGetProperty("count", out _))
 {
@@ -295,6 +299,7 @@ internal sealed class AotStructuredOutput
     public AotExtensionOutput Extension { get; init; } = new();
     public AotBaseOutput Contract { get; init; } = new AotDerivedOutput();
     public AotNullableChild? Nullable { get; init; } = new AotNullableChild();
+    public AotUnevaluatedOutput Unevaluated { get; init; } = new();
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     [JsonConverter(typeof(AotDelegatingIntConverter))]
@@ -359,6 +364,16 @@ internal struct AotNullableChild
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Note { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Real { get; init; }
+}
+
+internal sealed class AotUnevaluatedOutput
+{
+    [JsonPropertyName("evaluated\0path")]
+    public AotNullableChild Evaluated { get; init; }
+    public AotNullableChild Other { get; init; }
 }
 
 internal sealed class AotGenericOnlyDictionary<TKey, TValue>(IReadOnlyDictionary<TKey, TValue> entries) : IReadOnlyDictionary<TKey, TValue>
