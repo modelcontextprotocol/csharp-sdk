@@ -1950,7 +1950,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 }
             }
 
-            foreach (string keyword in new[] { "items", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains", "if", "then", "else", "not" })
+            foreach (string keyword in new[] { "items", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains", "if", "then", "else", "not", "propertyNames" })
             {
                 Register(schemaObject[keyword], baseUri);
             }
@@ -2067,7 +2067,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
         }
 
-        foreach (string keyword in new[] { "items", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains", "if", "then", "else", "not" })
+        foreach (string keyword in new[] { "items", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains", "if", "then", "else", "not", "propertyNames" })
         {
             if (TryFindSchemaAnchor(schemaObject[keyword], anchor, out resolvedSchema, dynamicOnly, isResourceRoot: false))
             {
