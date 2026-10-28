@@ -29,7 +29,14 @@ var services = new ServiceCollection();
 JsonSerializerOptions structuredOptions = new(McpJsonUtilities.DefaultOptions)
 {
     IgnoreReadOnlyProperties = true,
-    TypeInfoResolver = JsonTypeInfoResolver.Combine(AotJsonContext.Default, McpJsonUtilities.DefaultOptions.TypeInfoResolver),
+    TypeInfoResolver = JsonTypeInfoResolver.Combine(AotJsonContext.Default, McpJsonUtilities.DefaultOptions.TypeInfoResolver)
+        .WithAddedModifier(typeInfo =>
+        {
+            if (typeInfo.Type == typeof(AotBaseOutput))
+            {
+                typeInfo.Properties.Single(property => property.Name == "flag").ShouldSerialize = static (_, _) => false;
+            }
+        }),
 };
 McpServerTool structuredTool = McpServerTool.Create(
     () => new AotStructuredOutput(),
@@ -42,7 +49,7 @@ McpServerTool structuredTool = McpServerTool.Create(
             {
               "$id":"https://example.test/aot",
               "type":"object",
-              "required":["id","note","value","items","genericItems","dynamicItems","unions"],
+              "required":["id","note","value","items","genericItems","dynamicItems","unions","numbers","extension","contract","nullable"],
               "anyOf":[{"required":["count"]},{"required":["note"]}],
               "$defs":{"child":{"$id":"child","type":"object","required":["count"],"properties":{"count":{"const":0}}}},
               "properties":{
@@ -50,6 +57,10 @@ McpServerTool structuredTool = McpServerTool.Create(
                 "items":{"type":"object","additionalProperties":{"$ref":"child"}},
                 "genericItems":{"type":"object","additionalProperties":{"$ref":"child"}},
                 "dynamicItems":{"type":"object","additionalProperties":{"$ref":"child"}},
+                "numbers":{"required":["count"],"properties":{"count":{"const":"0"}}},
+                "extension":{"properties":{"child/~":{"required":["note"]}}},
+                "contract":{"oneOf":[{"required":["flag"]},{"required":["note"]}]},
+                "nullable":{"required":["note"]},
                 "unions":{"type":"array","items":{"oneOf":[
                   {"properties":{"tag":{"const":"0"},"child0":{"required":["note"]}},"required":["tag","child0"],"additionalProperties":false},
                   {"properties":{"tag":{"const":"1"},"child1":{"required":["note"]}},"required":["tag","child1"],"additionalProperties":false}
@@ -102,6 +113,11 @@ if (structuredResult.StructuredContent is not { } structured ||
     structured.GetProperty("items").GetProperty("42").GetProperty("count").GetInt32() != 0 ||
     structured.GetProperty("genericItems").GetProperty("42").GetProperty("count").GetInt32() != 0 ||
     structured.GetProperty("dynamicItems").GetProperty("entry").GetProperty("count").GetInt32() != 0 ||
+    structured.GetProperty("numbers").GetProperty("count").GetString() != "0" ||
+    structured.GetProperty("extension").GetProperty("child/~").GetProperty("note").ValueKind != JsonValueKind.Null ||
+    structured.GetProperty("contract").GetProperty("note").ValueKind != JsonValueKind.Null ||
+    structured.GetProperty("contract").TryGetProperty("flag", out _) ||
+    structured.GetProperty("nullable").GetProperty("note").ValueKind != JsonValueKind.Null ||
     structured.TryGetProperty("count", out _))
 {
     throw new Exception($"Unexpected structured output: {structuredResult.StructuredContent}");
@@ -188,12 +204,53 @@ internal sealed class AotStructuredOutput
 
     public AotUnionOutput[] Unions { get; init; } = Enumerable.Range(0, 5).Select(_ => new AotUnionOutput()).ToArray();
 
+    public AotNumberOutput Numbers { get; init; } = new();
+    public AotExtensionOutput Extension { get; init; } = new();
+    public AotBaseOutput Contract { get; init; } = new AotDerivedOutput();
+    public AotNullableChild? Nullable { get; init; } = new AotNullableChild();
+
+    [JsonConverter(typeof(AotRejectNullConverter))]
+    public string? Optional { get; init; }
+
     private static ExpandoObject CreateDynamicItems()
     {
         ExpandoObject items = new();
         ((IDictionary<string, object?>)items)["entry"] = default(AotStructuredChild);
         return items;
     }
+}
+
+[JsonNumberHandling(JsonNumberHandling.WriteAsString)]
+internal sealed class AotNumberOutput
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int Count { get; init; }
+}
+
+internal sealed class AotExtensionOutput
+{
+    [JsonExtensionData]
+    public Dictionary<string, object?> Data { get; set; } = new() { ["child/~"] = new AotNullableChild() };
+}
+
+internal class AotBaseOutput
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Flag { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Note { get; init; }
+}
+
+internal sealed class AotDerivedOutput : AotBaseOutput;
+
+internal sealed class AotRejectNullConverter : JsonConverter<string>
+{
+    public override bool HandleNull => true;
+    public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        throw new NotSupportedException();
+    public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options) =>
+        throw new ArgumentNullException(nameof(value));
 }
 
 internal sealed class AotUnionOutput
@@ -241,4 +298,5 @@ internal sealed class AotElementConverter : JsonConverter<JsonElement>
 }
 
 [JsonSerializable(typeof(AotStructuredOutput))]
+[JsonSerializable(typeof(AotDerivedOutput))]
 internal partial class AotJsonContext : JsonSerializerContext;
