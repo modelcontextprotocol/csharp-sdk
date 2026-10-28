@@ -199,7 +199,7 @@ attached to the request, the request-bound `Server`, and the request's `Services
 
 All catalog overloads register `IMcpSkillCatalog` in the container and resolve it when a Skills request runs,
 not while configuring the server's options. The generic and factory overloads default to
-<xref:Microsoft.Extensions.DependencyInjection.ServiceLifetime.Scoped>.
+<xref:Microsoft.Extensions.DependencyInjection.ServiceLifetime.Transient>.
 Use the factory overload instead when construction needs application-specific configuration:
 
 ```csharp
@@ -208,7 +208,6 @@ builder.Services
     .WithHttpTransport()
     .WithSkills(
         services => new DatabaseSkillCatalog(services.GetRequiredService<SkillRepository>()),
-        lifetime: ServiceLifetime.Scoped,
         configure: options => options.TimeToLive = TimeSpan.FromMinutes(1));
 ```
 
@@ -216,10 +215,13 @@ Choose a lifetime for the catalog, independently of the lifetimes of its depende
 
 | Registration | Lifetime and ownership |
 |---|---|
-| `WithSkills<TCatalog>()` or `WithSkills(factory)` | Scoped by default. The catalog and scoped constructor dependencies come from the request's provider. DI owns them. |
-| Either overload with `lifetime: ServiceLifetime.Transient` | A new catalog is created on resolution and disposed by its owning scope. Scoped dependencies still come from the request's provider. |
+| `WithSkills<TCatalog>()` or `WithSkills(factory)` | Transient by default. A new catalog is created on resolution and disposed by its owning scope. Scoped dependencies still come from the request's provider. |
+| Either overload with `lifetime: ServiceLifetime.Scoped` | One catalog instance per scope, shared by resolutions within that scope. DI owns the catalog and its dependencies. |
 | Either overload with `lifetime: ServiceLifetime.Singleton` | One container-owned catalog is shared across requests. Its constructor or factory must not capture scoped dependencies. |
 | `WithSkills(catalog)` | The supplied instance is shared across requests and remains caller-owned; the SDK does not dispose it. It must not capture scoped dependencies. |
+
+Catalog lifetime does not determine whether to create a scope. A transient catalog can depend on scoped
+services: resolving it from `context.Services` uses the request's existing scoped instances.
 
 A singleton or externally supplied catalog can use request-scoped services without retaining them:
 

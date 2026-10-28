@@ -31,6 +31,12 @@ If you use experimental APIs, you will get one of the diagnostics shown below. T
 | `MCPEXP002` | Experimental SDK extensibility APIs used to implement features in standalone packages without requiring Core to understand those features. For example, the Tasks package uses these APIs to extend the SDK while keeping the Tasks concept out of Core. This includes `McpClient`/`McpServer` subclassing, custom request handlers, alternate handlers and filters, outgoing request interception, and `RunSessionHandler`. These APIs remain experimental until additional extensibility scenarios validate the design. |
 | `MCPEXP003` | Experimental MCP Apps extension APIs. MCP Apps is the first official MCP extension (`io.modelcontextprotocol/ui`), enabling servers to deliver interactive UIs inside AI clients (see [MCP Apps specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)). |
 
+The experimental `McpServerRequestHandler.Handler` delegate now receives `RequestContext<JsonNode?>` rather
+than `JsonRpcRequest`. Existing custom handlers can access the raw request through `context.JsonRpcRequest`;
+`context.Params` remains the raw JSON parameters. Handlers also receive the request-bound `context.Server`
+and `context.Services`, and use the same service scope lifecycle as built-in handlers, honoring
+`McpServerOptions.ScopeRequests`. They still control JSON serialization and bypass the typed request filters.
+
 ## Obsolete APIs
 
 Obsolete diagnostic IDs are in the format `MCP9###`.

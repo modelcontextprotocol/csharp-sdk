@@ -80,9 +80,9 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
 
         var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-#pragma warning disable MCPEXP002 // ContextualRequestHandlers is experimental.
-        Assert.Single(options.ContextualRequestHandlers!, handler => handler.Method == "skills/list");
-        Assert.Single(options.ContextualRequestHandlers!, handler => handler.Method == "skills/get");
+#pragma warning disable MCPEXP002 // RequestHandlers is experimental.
+        Assert.Single(options.RequestHandlers!, handler => handler.Method == "skills/list");
+        Assert.Single(options.RequestHandlers!, handler => handler.Method == "skills/get");
 #pragma warning restore MCPEXP002
     }
 
@@ -249,31 +249,6 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
 
     private McpServerSkill CreateGitWorkflow() =>
         McpServerSkill.Create(GitWorkflowUri, [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)]);
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void InvalidLifetime_LeavesTheServiceCollectionUnchanged(bool factory)
-    {
-        var services = new ServiceCollection();
-        var builder = services.AddMcpServer();
-        int registrationCount = services.Count;
-
-        Assert.Throws<ArgumentOutOfRangeException>("lifetime", () =>
-        {
-            if (factory)
-            {
-                builder.WithSkills(_ => new EmptyCatalog(), (ServiceLifetime)(-1));
-            }
-            else
-            {
-                builder.WithSkills<EmptyCatalog>((ServiceLifetime)(-1));
-            }
-        });
-
-        Assert.Equal(registrationCount, services.Count);
-        builder.WithSkills<EmptyCatalog>();
-    }
 
     [Fact]
     public async Task SuppliedInstance_IsRegisteredInDi_AndRemainsCallerOwned()

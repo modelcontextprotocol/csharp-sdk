@@ -7,13 +7,13 @@ using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Tests.Server;
 
-public class ContextualRequestHandlerScopeTests(ITestOutputHelper output) : LoggedTest(output)
+public class CustomRequestHandlerScopeTests(ITestOutputHelper output) : LoggedTest(output)
 {
 #pragma warning disable MCPEXP002
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task ContextualHandler_RespectsBorrowedScopeOwnership(bool scopeRequests)
+    public async Task CustomHandler_RespectsBorrowedScopeOwnership(bool scopeRequests)
     {
         var services = new ServiceCollection().AddScoped<AsyncDependency>();
         await using var provider = services.BuildServiceProvider(validateScopes: true);
@@ -25,9 +25,9 @@ public class ContextualRequestHandlerScopeTests(ITestOutputHelper output) : Logg
             var options = new McpServerOptions
             {
                 ScopeRequests = scopeRequests,
-                ContextualRequestHandlers =
+                RequestHandlers =
                 [
-                    new McpServerContextualRequestHandler
+                    new McpServerRequestHandler
                     {
                         Method = "custom/scope",
                         Handler = (context, cancellationToken) =>
@@ -58,13 +58,13 @@ public class ContextualRequestHandlerScopeTests(ITestOutputHelper output) : Logg
     }
 
     [Fact]
-    public async Task ContextualHandler_WorksWithoutAServiceProvider()
+    public async Task CustomHandler_WorksWithoutAServiceProvider()
     {
         var options = new McpServerOptions
         {
-            ContextualRequestHandlers =
+            RequestHandlers =
             [
-                new McpServerContextualRequestHandler
+                new McpServerRequestHandler
                 {
                     Method = "custom/scope",
                     Handler = (context, cancellationToken) =>

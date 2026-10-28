@@ -215,7 +215,8 @@ public sealed class McpServerOptions
     /// for methods not known to Core at compile time.
     /// </para>
     /// <para>
-    /// Use <see cref="ContextualRequestHandlers"/> for access to request-scoped services and the request's server.
+    /// Handlers receive the request's server and services through <see cref="RequestContext{TParams}"/>
+    /// and use the same service scope lifecycle as built-in request handlers, honoring <see cref="ScopeRequests"/>.
     /// </para>
     /// <para>
     /// Each method must be unique. Custom handlers cannot replace built-in handlers or other custom handlers.
@@ -223,20 +224,4 @@ public sealed class McpServerOptions
     /// </remarks>
     [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
     public IList<McpServerRequestHandler>? RequestHandlers { get; set; }
-
-    /// <summary>
-    /// Gets or sets custom request handlers with access to the request's server and services.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Each <see cref="McpServerContextualRequestHandler"/> controls its own JSON serialization and
-    /// bypasses the typed request filters, while using the same service scope lifecycle as built-in
-    /// request handlers. The lifecycle honors <see cref="ScopeRequests"/>.
-    /// </para>
-    /// <para>
-    /// Each method must be unique across this collection, <see cref="RequestHandlers"/>, and the built-in handlers.
-    /// </para>
-    /// </remarks>
-    [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
-    public IList<McpServerContextualRequestHandler>? ContextualRequestHandlers { get; set; }
 }

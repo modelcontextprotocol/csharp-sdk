@@ -361,11 +361,10 @@ public static class McpSkillsBuilderExtensions
     /// </summary>
     /// <typeparam name="TCatalog">The catalog implementation type.</typeparam>
     /// <param name="builder">The server builder.</param>
-    /// <param name="lifetime">The catalog's dependency injection lifetime. Defaults to scoped.</param>
+    /// <param name="lifetime">The catalog's dependency injection lifetime. Defaults to transient.</param>
     /// <param name="configure">An optional callback that configures the extension's behavior.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="lifetime"/> is not a supported service lifetime.</exception>
     /// <exception cref="InvalidOperationException">Skills are already registered for this server.</exception>
     /// <remarks>
     /// <para>
@@ -390,7 +389,7 @@ public static class McpSkillsBuilderExtensions
     public static IMcpServerBuilder WithSkills<
         [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TCatalog>(
         this IMcpServerBuilder builder,
-        ServiceLifetime lifetime = ServiceLifetime.Scoped,
+        ServiceLifetime lifetime = ServiceLifetime.Transient,
         Action<McpSkillsOptions>? configure = null)
         where TCatalog : class, IMcpSkillCatalog
     {
@@ -400,7 +399,6 @@ public static class McpSkillsBuilderExtensions
         if (builder is null) throw new ArgumentNullException(nameof(builder));
 #endif
 
-        ValidateLifetime(lifetime);
         return WithSkillsCore(builder, new ServiceDescriptor(typeof(IMcpSkillCatalog), typeof(TCatalog), lifetime), configure);
     }
 
@@ -409,11 +407,10 @@ public static class McpSkillsBuilderExtensions
     /// </summary>
     /// <param name="builder">The server builder.</param>
     /// <param name="catalogFactory">The factory, invoked with the provider selected by the catalog's service lifetime.</param>
-    /// <param name="lifetime">The catalog's dependency injection lifetime. Defaults to scoped.</param>
+    /// <param name="lifetime">The catalog's dependency injection lifetime. Defaults to transient.</param>
     /// <param name="configure">An optional callback that configures the extension's behavior.</param>
     /// <returns>The builder provided in <paramref name="builder"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="catalogFactory"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="lifetime"/> is not a supported service lifetime.</exception>
     /// <exception cref="InvalidOperationException">Skills are already registered for this server.</exception>
     /// <remarks>
     /// The registration, request scope, ownership, and authorization behavior is the same as
@@ -423,7 +420,7 @@ public static class McpSkillsBuilderExtensions
     public static IMcpServerBuilder WithSkills(
         this IMcpServerBuilder builder,
         Func<IServiceProvider, IMcpSkillCatalog> catalogFactory,
-        ServiceLifetime lifetime = ServiceLifetime.Scoped,
+        ServiceLifetime lifetime = ServiceLifetime.Transient,
         Action<McpSkillsOptions>? configure = null)
     {
 #if NET
@@ -434,16 +431,7 @@ public static class McpSkillsBuilderExtensions
         if (catalogFactory is null) throw new ArgumentNullException(nameof(catalogFactory));
 #endif
 
-        ValidateLifetime(lifetime);
         return WithSkillsCore(builder, new ServiceDescriptor(typeof(IMcpSkillCatalog), catalogFactory, lifetime), configure);
-    }
-
-    private static void ValidateLifetime(ServiceLifetime lifetime)
-    {
-        if (lifetime is not (ServiceLifetime.Singleton or ServiceLifetime.Scoped or ServiceLifetime.Transient))
-        {
-            throw new ArgumentOutOfRangeException(nameof(lifetime), lifetime, "The catalog lifetime must be singleton, scoped, or transient.");
-        }
     }
 
     private static IMcpServerBuilder WithSkillsCore(
@@ -534,13 +522,13 @@ public static class McpSkillsBuilderExtensions
             // files are read through resources/read.
             options.Capabilities.Resources ??= new ResourcesCapability();
 
-            options.ContextualRequestHandlers ??= new List<McpServerContextualRequestHandler>();
-            options.ContextualRequestHandlers.Add(new McpServerContextualRequestHandler
+            options.RequestHandlers ??= new List<McpServerRequestHandler>();
+            options.RequestHandlers.Add(new McpServerRequestHandler
             {
                 Method = SkillsProtocol.MethodSkillsList,
                 Handler = HandleListSkillsAsync,
             });
-            options.ContextualRequestHandlers.Add(new McpServerContextualRequestHandler
+            options.RequestHandlers.Add(new McpServerRequestHandler
             {
                 // RoutingNameParameter is deliberately left unset. The specification defines no Mcp-Name header
                 // mapping for skills/get, so requiring one on Streamable HTTP would reject conforming clients.

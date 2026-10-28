@@ -307,8 +307,9 @@ public static class McpTasksBuilderExtensions
             }
         }
 
-        private async ValueTask<JsonNode?> HandleGetTask(JsonRpcRequest request, CancellationToken cancellationToken)
+        private async ValueTask<JsonNode?> HandleGetTask(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
+            var request = context.JsonRpcRequest;
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksGet);
             GateToTasksCapability(request);
 
@@ -324,8 +325,9 @@ public static class McpTasksBuilderExtensions
             return JsonSerializer.SerializeToNode(ToGetTaskResult(info), McpTasksJsonContext.Default.GetTaskResult);
         }
 
-        private async ValueTask<JsonNode?> HandleUpdateTask(JsonRpcRequest request, CancellationToken cancellationToken)
+        private async ValueTask<JsonNode?> HandleUpdateTask(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
+            var request = context.JsonRpcRequest;
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksUpdate);
             GateToTasksCapability(request);
 
@@ -344,8 +346,9 @@ public static class McpTasksBuilderExtensions
             return JsonSerializer.SerializeToNode(new UpdateTaskResult(), McpTasksJsonContext.Default.UpdateTaskResult);
         }
 
-        private async ValueTask<JsonNode?> HandleCancelTask(JsonRpcRequest request, CancellationToken cancellationToken)
+        private async ValueTask<JsonNode?> HandleCancelTask(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
+            var request = context.JsonRpcRequest;
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksCancel);
             GateToTasksCapability(request);
 

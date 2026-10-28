@@ -28,6 +28,40 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DefaultLifetime_IsTransient_AndReusesScopedDependencies(bool factory)
+    {
+        if (factory)
+        {
+            McpServerBuilder.WithSkills(services => new ScopedCatalog(
+                services.GetRequiredService<RequestDependency>(), services.GetRequiredService<CatalogTracker>()));
+        }
+        else
+        {
+            McpServerBuilder.WithSkills<ScopedCatalog>();
+        }
+        _tracker.OnRequest = (invocation, _) =>
+        {
+            var other = Assert.IsType<ScopedCatalog>(invocation.Services.GetRequiredService<IMcpSkillCatalog>());
+            Assert.NotSame(invocation.Catalog, other);
+            Assert.Same(invocation.Dependency, other.Dependency);
+            return default;
+        };
+        StartServer();
+        await using var client = await CreateMcpClientForServer();
+        Assert.Empty(_tracker.Catalogs);
+
+        await client.ListSkillsAsync(TestContext.Current.CancellationToken);
+        await client.GetSkillAsync(SkillUri, TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, _tracker.Catalogs.Count);
+        Assert.Equal(2, _tracker.Dependencies.Count);
+        Assert.All(_tracker.Catalogs, catalog => Assert.Equal(1, catalog.DisposeCount));
+        Assert.All(_tracker.Dependencies, dependency => Assert.Equal(1, dependency.DisposeCount));
+    }
+
+    [Theory]
     [InlineData(false, ServiceLifetime.Singleton)]
     [InlineData(false, ServiceLifetime.Scoped)]
     [InlineData(false, ServiceLifetime.Transient)]
@@ -408,6 +442,8 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
 
     private sealed class ScopedCatalog(RequestDependency dependency, CatalogTracker tracker) : TestCatalog(tracker)
     {
+        public RequestDependency Dependency => dependency;
+
         protected override void ValidateDependency(RequestDependency resolvedDependency) => Assert.Same(dependency, resolvedDependency);
     }
 }

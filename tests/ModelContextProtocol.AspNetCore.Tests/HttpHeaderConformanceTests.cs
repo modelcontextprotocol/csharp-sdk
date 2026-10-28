@@ -44,16 +44,6 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
                         new JsonObject { ["resultType"] = "complete" }),
                 },
             ];
-            options.ContextualRequestHandlers =
-            [
-                new McpServerContextualRequestHandler
-                {
-                    Method = "extension/contextual-get",
-                    RoutingNameParameter = "itemId",
-                    Handler = static (_, _) => new ValueTask<JsonNode?>(
-                        new JsonObject { ["resultType"] = "complete" }),
-                },
-            ];
 #pragma warning restore MCPEXP002
         }).WithTools(Tools).WithHttpTransport();
 
@@ -134,24 +124,21 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     #region Server-side validation tests
 
     [Theory]
-    [InlineData("extension/get", "item-42", HttpStatusCode.OK)]
-    [InlineData("extension/get", null, HttpStatusCode.BadRequest)]
-    [InlineData("extension/get", "other-item", HttpStatusCode.BadRequest)]
-    [InlineData("extension/contextual-get", "item-42", HttpStatusCode.OK)]
-    [InlineData("extension/contextual-get", null, HttpStatusCode.BadRequest)]
-    [InlineData("extension/contextual-get", "other-item", HttpStatusCode.BadRequest)]
-    public async Task Server_UsesCustomHandlerRoutingNameMetadata(string method, string? routingName, HttpStatusCode expectedStatus)
+    [InlineData("item-42", HttpStatusCode.OK)]
+    [InlineData(null, HttpStatusCode.BadRequest)]
+    [InlineData("other-item", HttpStatusCode.BadRequest)]
+    public async Task Server_UsesCustomHandlerRoutingNameMetadata(string? routingName, HttpStatusCode expectedStatus)
     {
         await StartAsync();
         await ProbeWithJuly2026ProtocolVersionAsync();
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(
-            $$"""
+            """
             {
                 "jsonrpc": "2.0",
                 "id": 2,
-                "method": "{{method}}",
+                "method": "extension/get",
                 "params": {
                     "itemId": "item-42",
                     "_meta": {
@@ -163,7 +150,7 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
             }
             """);
         request.Headers.Add(McpHttpHeaders.ProtocolVersion, "2026-07-28");
-        request.Headers.Add(McpHttpHeaders.Method, method);
+        request.Headers.Add(McpHttpHeaders.Method, "extension/get");
         if (routingName is not null)
         {
             request.Headers.Add(McpHttpHeaders.Name, routingName);
