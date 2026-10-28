@@ -60,6 +60,12 @@ public sealed class Program
     // Track if we've already issued an already-expired token for the CanAuthenticate_WithTokenRefresh test which uses the test-refresh-client registration.
     public bool HasRefreshedToken { get; set; }
 
+    /// <summary>Gets or sets whether token responses include refresh tokens.</summary>
+    public bool IssueRefreshTokens { get; set; } = true;
+
+    /// <summary>Gets or sets whether refresh grants replace and invalidate the previous refresh token.</summary>
+    public bool RotateRefreshTokens { get; set; } = true;
+
     /// <summary>
     /// Gets or sets a value indicating whether the server supports the Enterprise Managed
     /// Authorization (SEP-990) flow, including the IdP token-exchange endpoint and the
@@ -540,10 +546,10 @@ public sealed class Program
                 }
 
                 // Generate new token response, keeping the same scopes
-                var response = GenerateJwtTokenResponse(client.ClientId, tokenInfo.Scopes, tokenInfo.Resource);
+                var response = GenerateJwtTokenResponse(client.ClientId, tokenInfo.Scopes, tokenInfo.Resource, issueRefreshToken: RotateRefreshTokens);
 
-                // Remove the old refresh token
-                if (!string.IsNullOrEmpty(refresh_token))
+                // Non-rotating refresh tokens remain valid for subsequent refresh grants.
+                if (RotateRefreshTokens)
                 {
                     _tokens.TryRemove(refresh_token, out _);
                 }
@@ -834,8 +840,9 @@ public sealed class Program
     /// <param name="clientId">The client ID.</param>
     /// <param name="scopes">The approved scopes.</param>
     /// <param name="resource">The resource URI.</param>
+    /// <param name="issueRefreshToken">Whether this grant should issue a refresh token.</param>
     /// <returns>A token response.</returns>
-    private TokenResponse GenerateJwtTokenResponse(string clientId, List<string> scopes, Uri? resource)
+    private TokenResponse GenerateJwtTokenResponse(string clientId, List<string> scopes, Uri? resource, bool issueRefreshToken = true)
     {
         var expiresIn = TimeSpan.FromHours(1);
         var issuedAt = DateTimeOffset.UtcNow;
@@ -877,7 +884,7 @@ public sealed class Program
         var jwtToken = $"{headerBase64}.{payloadBase64}.{signatureBase64}";
 
         // Generate opaque refresh token
-        var refreshToken = GenerateRandomToken();
+        var refreshToken = IssueRefreshTokens && issueRefreshToken ? GenerateRandomToken() : null;
 
         // Store token info (for refresh token and introspection)
         var tokenInfo = new TokenInfo
@@ -890,7 +897,10 @@ public sealed class Program
             JwtId = jwtId
         };
 
-        _tokens[refreshToken] = tokenInfo;
+        if (refreshToken is not null)
+        {
+            _tokens[refreshToken] = tokenInfo;
+        }
 
         return new TokenResponse
         {

@@ -189,6 +189,119 @@ public class TokenCacheTests : OAuthTestBase
         Assert.NotEqual("invalid-token", tokenCache.LastStoredToken.AccessToken);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetTokenAsync_RepeatedRefreshUsesRetainedOrRotatedRefreshToken(bool rotateRefreshTokens)
+    {
+        TestOAuthServer.RotateRefreshTokens = rotateRefreshTokens;
+        await using var app = await StartMcpServerAsync();
+
+        var tokenCache = new TestTokenCache();
+        var authorizationCallbackCount = 0;
+        var options = new HttpClientTransportOptions
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    authorizationCallbackCount++;
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+                TokenCache = tokenCache,
+            },
+        };
+
+        await using (var setupTransport = new HttpClientTransport(options, HttpClient, LoggerFactory))
+        await using (var setupClient = await TestMcpClient.CreateAsync(
+            setupTransport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
+        {
+        }
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        var previousRefreshToken = tokenCache.LastStoredToken.RefreshToken;
+        Assert.False(string.IsNullOrEmpty(previousRefreshToken));
+        tokenCache.LastStoredToken.ObtainedAt = DateTimeOffset.UnixEpoch;
+        tokenCache.LastStoredToken.ExpiresIn = 1;
+
+        // A new provider discovers the authorization server through the challenge before refreshing.
+        await using var transport = new HttpClientTransport(options, HttpClient, LoggerFactory);
+        await using var client = await TestMcpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        Assert.False(string.IsNullOrEmpty(tokenCache.LastStoredToken.RefreshToken));
+        Assert.Equal(rotateRefreshTokens, previousRefreshToken != tokenCache.LastStoredToken.RefreshToken);
+        Assert.Equal(1, authorizationCallbackCount);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+        Assert.Equal(2, TestOAuthServer.TokenRequestCount);
+
+        // The next expiration uses the established provider's proactive refresh path.
+        var previousAccessToken = tokenCache.LastStoredToken.AccessToken;
+        previousRefreshToken = tokenCache.LastStoredToken.RefreshToken;
+        tokenCache.LastStoredToken.ObtainedAt = DateTimeOffset.UnixEpoch;
+        tokenCache.LastStoredToken.ExpiresIn = 1;
+
+        await client.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        Assert.NotEqual(previousAccessToken, tokenCache.LastStoredToken.AccessToken);
+        Assert.False(string.IsNullOrEmpty(tokenCache.LastStoredToken.RefreshToken));
+        Assert.Equal(rotateRefreshTokens, previousRefreshToken != tokenCache.LastStoredToken.RefreshToken);
+        Assert.Equal(1, authorizationCallbackCount);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+        Assert.Equal(3, TestOAuthServer.TokenRequestCount);
+    }
+
+    [Fact]
+    public async Task GetTokenAsync_ReauthorizationWithoutRefreshTokenDiscardsStaleRefreshToken()
+    {
+        TestOAuthServer.IssueRefreshTokens = false;
+        await using var app = await StartMcpServerAsync();
+
+        var tokenCache = new TestTokenCache(new TokenContainer
+        {
+            AccessToken = "expired-access-token",
+            RefreshToken = "stale-refresh-token",
+            TokenType = "Bearer",
+            ObtainedAt = DateTimeOffset.UnixEpoch,
+            ExpiresIn = 1,
+            ClientId = "demo-client",
+            ClientSecret = "demo-secret",
+            AuthorizationServer = OAuthServerUrl,
+        });
+        var authorizationCallbackCount = 0;
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new(McpServerUrl),
+            OAuth = new()
+            {
+                ClientId = "demo-client",
+                ClientSecret = "demo-secret",
+                RedirectUri = new("http://localhost:1179/callback"),
+                AuthorizationCallbackHandler = (context, ct) =>
+                {
+                    authorizationCallbackCount++;
+                    return HandleAuthorizationUrlAsync(context, ct);
+                },
+                TokenCache = tokenCache,
+            },
+        }, HttpClient, LoggerFactory);
+        await using var client = await TestMcpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tokenCache.LastStoredToken);
+        Assert.Null(tokenCache.LastStoredToken.RefreshToken);
+        Assert.Equal(1, authorizationCallbackCount);
+        Assert.Equal(2, TestOAuthServer.TokenRequestCount);
+        Assert.Equal(1, TestOAuthServer.AuthorizationCodeTokenRequestCount);
+        Assert.False(TestOAuthServer.HasRefreshedToken);
+    }
+
     [Fact]
     public async Task GetTokenAsync_ExplicitClientDoesNotRefreshTokenFromDifferentAuthorizationServer()
     {
