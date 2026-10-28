@@ -1792,6 +1792,70 @@ public partial class McpServerToolTests
         Assert.False(result.TryGetProperty("count", out _));
     }
 
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RepairsIndependentArrayUnions()
+    {
+        const string schema = """{"type":"array","items":{"oneOf":[{"type":"object","properties":{"tag":{"const":"0"},"note0":{"type":"null"}},"required":["tag","note0"],"additionalProperties":false},{"type":"object","properties":{"tag":{"const":"1"},"note1":{"type":"null"}},"required":["tag","note1"],"additionalProperties":false}]}}""";
+        McpServerTool tool = CreateStructuredOutputTestTool(Enumerable.Range(0, 5).Select(_ => new ManyBranchStructuredOutput { Tag = "0" }).ToArray(), schema);
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.All(result.EnumerateArray(), item => Assert.Equal(JsonValueKind.Null, item.GetProperty("note0").ValueKind));
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RecoversExpandoMember()
+    {
+        var output = new System.Dynamic.ExpandoObject();
+        ((IDictionary<string, object?>)output)["child"] = new ExplicitSchemaOutputWithMemberIgnore { Id = "42" };
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """{"type":"object","properties":{"child":{"type":"object","required":["ignoredNote"],"properties":{"ignoredNote":{"type":"null"}}}}}""");
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("child").GetProperty("ignoredNote").ValueKind);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotReadIgnoredGetter(bool noAttributeProvider)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions();
+        options.IgnoreReadOnlyProperties = true;
+        if (noAttributeProvider)
+        {
+            var resolver = new DefaultJsonTypeInfoResolver();
+            resolver.Modifiers.Add(typeInfo =>
+            {
+                if (typeInfo.Type == typeof(ThrowingGetterOutput))
+                {
+                    foreach (JsonPropertyInfo property in typeInfo.Properties)
+                    {
+                        property.AttributeProvider = null;
+                    }
+                }
+            });
+            options.TypeInfoResolver = resolver;
+        }
+        McpServerTool tool = CreateStructuredOutputTestTool(new ThrowingGetterOutput(), """{"anyOf":[{"required":["count"]},{"required":["note"],"properties":{"note":{"type":"null"}}}]}""", options);
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("note").ValueKind);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_ResolvesEmbeddedResource()
+    {
+        McpServerTool tool = CreateStructuredOutputTestTool(new ExplicitSchemaOutput { Id = "42" }, """{"$id":"https://example.test/root","default":{"$id":"entry"},"$defs":{"entry":{"$id":"entry","type":"object","required":["note"],"properties":{"note":{"type":"null"}}}},"$ref":"entry"}""");
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("note").ValueKind);
+    }
+
+    private sealed class ThrowingGetterOutput
+    {
+        public int Count => throw new InvalidOperationException("Excluded getter was invoked");
+        public string? Note { get; init; }
+    }
+
     private static JsonSerializerOptions CreateStructuredOutputTestOptions(JsonIgnoreCondition condition = JsonIgnoreCondition.WhenWritingNull) =>
         new(McpJsonUtilities.DefaultOptions)
         {

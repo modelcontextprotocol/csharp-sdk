@@ -831,6 +831,28 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             pending.Enqueue(new(instance, candidates, depth + 1));
             HashSet<string> grouped = new(groups.SelectMany(static group => group), StringComparer.Ordinal);
+            // Combine alternatives at distinct instance paths before trying isolated subsets.
+            var groupsByPath = groups.Where(static group => group.Count > 0)
+                .GroupBy(static group => group.First().Split('\0')[0], StringComparer.Ordinal).ToArray();
+            List<HashSet<string>> combinations = [new(StringComparer.Ordinal)];
+            foreach (var pathGroups in groupsByPath)
+            {
+                combinations = combinations.SelectMany(combination => pathGroups.Select(group =>
+                    new HashSet<string>(combination.Concat(group), StringComparer.Ordinal)))
+                    .Take(maxCandidateSetEvaluations / 2).ToList();
+            }
+            if (groupsByPath.Length > 1)
+            {
+                foreach (HashSet<string> combination in combinations)
+                {
+                    List<RepairCandidate> combinedCandidates = candidates.Where(candidate =>
+                        combination.Contains(candidate.Key) || !grouped.Contains(candidate.Key)).ToList();
+                    if (combinedCandidates.Count > 0 && combinedCandidates.Count < candidates.Count)
+                    {
+                        pending.Enqueue(new(instance, combinedCandidates, depth + 1));
+                    }
+                }
+            }
             foreach (HashSet<string> group in groups)
             {
                 List<RepairCandidate> branchCandidates = candidates.Where(candidate =>
@@ -1532,6 +1554,33 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 continue;
             }
 
+            if (value is IDictionary<string, object?> stringDictionary && serializedParent is JsonObject genericSerializedDictionary)
+            {
+                using IEnumerator<KeyValuePair<string, JsonNode?>> serializedEntries = genericSerializedDictionary.GetEnumerator();
+                bool found = false;
+                object? foundValue = null;
+                foreach (KeyValuePair<string, object?> entry in stringDictionary)
+                {
+                    if (!serializedEntries.MoveNext())
+                    {
+                        break;
+                    }
+
+                    if (string.Equals(serializedEntries.Current.Key, segment, StringComparison.Ordinal))
+                    {
+                        foundValue = entry.Value;
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (found)
+                {
+                    value = foundValue;
+                    continue;
+                }
+            }
+
             if (int.TryParse(segment, NumberStyles.None, CultureInfo.InvariantCulture, out int index) && value is IEnumerable enumerable)
             {
                 int currentIndex = 0;
@@ -1650,6 +1699,17 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             {
                 if (string.Equals(property.Name, propertyName, StringComparison.Ordinal) && property.Get is not null)
                 {
+                    if (property.Set is null &&
+                        (property.AttributeProvider is not ICustomAttributeProvider attributes ||
+                            !attributes.IsDefined(typeof(JsonIgnoreAttribute), inherit: true)) &&
+                        (property.AttributeProvider is FieldInfo
+                            ? serializerOptions.IgnoreReadOnlyFields
+                            : serializerOptions.IgnoreReadOnlyProperties &&
+                                serializerOptions.GetTypeInfo(property.PropertyType).Kind is not (JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary)))
+                    {
+                        return false;
+                    }
+
                     value = property.Get(source);
                     declaredType = property.PropertyType;
                     propertyInfo = property;
@@ -1732,7 +1792,22 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         resolvedSchema = null;
         if (!reference.StartsWith("#", StringComparison.Ordinal))
         {
-            return false;
+            JsonNode documentRoot = schemaRoot.Root;
+            Uri initialBase = new("https://mcp.invalid/");
+            if (!TryFindResource(documentRoot, schemaRoot, null, initialBase, out _, out Uri? baseUri) ||
+                !Uri.TryCreate(baseUri, reference, out Uri? target))
+            {
+                return false;
+            }
+
+            string fragment = target.Fragment;
+            Uri resourceUri = new(target.GetComponents(UriComponents.AbsoluteUri & ~UriComponents.Fragment, UriFormat.UriEscaped));
+            if (!TryFindResource(documentRoot, null, resourceUri, initialBase, out JsonNode? resource, out _) || resource is null)
+            {
+                return false;
+            }
+
+            return TryResolveLocalReference(resource, fragment.Length == 0 ? "#" : fragment, out resolvedSchema);
         }
 
         string pointer = Uri.UnescapeDataString(reference[1..]);
@@ -1767,6 +1842,69 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         resolvedSchema = current;
         return true;
+    }
+
+    private static bool TryFindResource(JsonNode? node, JsonNode? soughtNode, Uri? soughtUri, Uri baseUri, out JsonNode? resource, out Uri? resourceUri)
+    {
+        resource = null;
+        resourceUri = null;
+        if (node is JsonObject obj && obj["$id"] is JsonValue id && id.TryGetValue<string>(out string? idText) &&
+            Uri.TryCreate(baseUri, idText, out Uri? updatedBase))
+        {
+            baseUri = updatedBase;
+        }
+
+        if ((soughtNode is not null && ReferenceEquals(node, soughtNode)) ||
+            (soughtUri is not null && node is JsonObject resourceObject && resourceObject.ContainsKey("$id") &&
+                Uri.Compare(baseUri, soughtUri, UriComponents.AbsoluteUri, UriFormat.SafeUnescaped, StringComparison.Ordinal) == 0))
+        {
+            resource = node;
+            resourceUri = baseUri;
+            return true;
+        }
+
+        if (node is not JsonObject schema)
+        {
+            return false;
+        }
+
+        foreach (string keyword in new[] { "$defs", "definitions", "properties", "patternProperties", "dependentSchemas" })
+        {
+            if (schema[keyword] is JsonObject schemas)
+            {
+                foreach (KeyValuePair<string, JsonNode?> child in schemas)
+                {
+                    if (TryFindResource(child.Value, soughtNode, soughtUri, baseUri, out resource, out resourceUri))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        foreach (string keyword in new[] { "allOf", "anyOf", "oneOf", "prefixItems" })
+        {
+            if (schema[keyword] is JsonArray schemas)
+            {
+                foreach (JsonNode? child in schemas)
+                {
+                    if (TryFindResource(child, soughtNode, soughtUri, baseUri, out resource, out resourceUri))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        foreach (string keyword in new[] { "items", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contains", "if", "then", "else", "not", "propertyNames" })
+        {
+            if (TryFindResource(schema[keyword], soughtNode, soughtUri, baseUri, out resource, out resourceUri))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryFindSchemaAnchor(JsonNode? node, string anchor, out JsonNode? resolvedSchema, bool dynamicOnly = false, bool isResourceRoot = true)
