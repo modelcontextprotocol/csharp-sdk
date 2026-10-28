@@ -383,6 +383,10 @@ public class AuthTests : OAuthTestBase
         await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
 
+        Assert.Equal(0, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(0, TestOAuthServer.TokenRequestCount);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.Message.Contains("Using legacy OAuth metadata fallback"));
+
         // No discovery endpoint advertises PKCE, so metadata discovery is exhausted. The precise PKCE reason
         // is logged as each endpoint is skipped.
         Assert.Contains(
@@ -410,6 +414,10 @@ public class AuthTests : OAuthTestBase
 
         await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Equal(0, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(0, TestOAuthServer.TokenRequestCount);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.Message.Contains("Using legacy OAuth metadata fallback"));
 
         Assert.Contains(
             MockLoggerProvider.LogMessages,
@@ -439,6 +447,35 @@ public class AuthTests : OAuthTestBase
 
         await using var client = await TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Contains("/.well-known/oauth-authorization-server", TestOAuthServer.MetadataRequests);
+        Assert.Contains("/.well-known/openid-configuration", TestOAuthServer.MetadataRequests);
+        Assert.Equal(1, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(1, TestOAuthServer.TokenRequestCount);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.Message.Contains("Using legacy OAuth metadata fallback"));
+    }
+
+    [Fact]
+    public async Task CannotAuthenticate_WhenAuthorizationServerMetadataIsUnavailable_WithProtectedResourceMetadata()
+    {
+        TestOAuthServer.DisabledMetadataPaths.Add("/.well-known/oauth-authorization-server");
+        TestOAuthServer.DisabledMetadataPaths.Add("/.well-known/openid-configuration");
+        await using var app = await StartMcpServerAsync();
+        var authorizationCallbackCalled = false;
+
+        await using var transport = CreateOAuthTransport((context, cancellationToken) =>
+        {
+            authorizationCallbackCalled = true;
+            return HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
+
+        await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.False(authorizationCallbackCalled);
+        Assert.Equal(0, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(0, TestOAuthServer.TokenRequestCount);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.Message.Contains("Using legacy OAuth metadata fallback"));
     }
 
     [Fact]
@@ -2077,11 +2114,10 @@ public class AuthTests : OAuthTestBase
     }
 
     [Fact]
-    public async Task CanAuthenticate_WithLegacyServerUsingDefaultEndpointFallback()
+    public async Task CannotAuthenticate_WithLegacyServerWithoutMetadata_ByDefault()
     {
         // 2025-03-26 backcompat: server does NOT serve PRM AND does NOT serve auth server metadata.
-        // The client should fall back to default endpoint paths (/authorize, /token, /register)
-        // on the MCP server's origin.
+        // Default clients must reject authentication before using the conventional OAuth endpoints.
         TestOAuthServer.ExpectResource = false;
 
         // Use JwtBearer as the challenge scheme so the 401 response does NOT include resource_metadata.
@@ -2095,8 +2131,8 @@ public class AuthTests : OAuthTestBase
 
         await using var app = Builder.Build();
 
-        // Capture HttpClient for use in the proxy middleware.
-        var httpClient = HttpClient;
+        var oauthRequests = 0;
+        var authorizationCallbackCalled = false;
 
         app.Use(async (context, next) =>
         {
@@ -2107,7 +2143,7 @@ public class AuthTests : OAuthTestBase
                 return;
             }
 
-            // Return 404 for auth server metadata to force fallback to default endpoints.
+            // Return 404 for auth server metadata to exercise the metadata-free legacy path.
             if (context.Request.Path.StartsWithSegments("/.well-known/oauth-authorization-server") ||
                 context.Request.Path.StartsWithSegments("/.well-known/openid-configuration"))
             {
@@ -2115,42 +2151,11 @@ public class AuthTests : OAuthTestBase
                 return;
             }
 
-            // Proxy default OAuth endpoints to the real OAuth server.
-            // In a real 2025-03-26 deployment, the MCP server itself would host these endpoints.
             var path = context.Request.Path.Value;
             if (path is "/authorize" or "/token" or "/register")
             {
-                var targetUrl = $"{OAuthServerUrl}{path}{context.Request.QueryString}";
-                using var proxyRequest = new HttpRequestMessage(new HttpMethod(context.Request.Method), targetUrl);
-
-                if (context.Request.ContentLength > 0 || context.Request.ContentType is not null)
-                {
-                    proxyRequest.Content = new StreamContent(context.Request.Body);
-                    if (context.Request.ContentType is not null)
-                    {
-                        proxyRequest.Content.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(context.Request.ContentType);
-                    }
-                }
-
-                if (context.Request.Headers.Authorization.Count > 0)
-                {
-                    proxyRequest.Headers.TryAddWithoutValidation("Authorization", context.Request.Headers.Authorization.ToString());
-                }
-
-                using var response = await httpClient.SendAsync(proxyRequest);
-                context.Response.StatusCode = (int)response.StatusCode;
-
-                if (response.Headers.Location is not null)
-                {
-                    context.Response.Headers.Location = response.Headers.Location.ToString();
-                }
-
-                if (response.Content.Headers.ContentType is not null)
-                {
-                    context.Response.ContentType = response.Content.Headers.ContentType.ToString();
-                }
-
-                await response.Content.CopyToAsync(context.Response.Body);
+                Interlocked.Increment(ref oauthRequests);
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                 return;
             }
 
@@ -2170,19 +2175,32 @@ public class AuthTests : OAuthTestBase
                 ClientId = "demo-client",
                 ClientSecret = "demo-secret",
                 RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
+                AuthorizationCallbackHandler = (context, cancellationToken) =>
+                {
+                    authorizationCallbackCalled = true;
+                    return HandleAuthorizationUrlAsync(context, cancellationToken);
+                },
             },
         }, HttpClient, LoggerFactory);
 
-        await using var client = await TestMcpClient.CreateAsync(
-            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken);
+        var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("PKCE support could not be verified", ex.Message);
+        Assert.False(authorizationCallbackCalled);
+        Assert.Equal(0, oauthRequests);
+        Assert.Equal(0, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(0, TestOAuthServer.TokenRequestCount);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.Message.Contains("Using legacy OAuth metadata fallback"));
     }
 
-    [Fact]
-    public async Task CannotAuthenticate_WithLegacyServerWhoseMetadataOmitsPkceMethods()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CannotAuthenticate_WithLegacyServerWhoseMetadataLacksPkceSupport(bool advertisePlain)
     {
         // 2025-03-26 backcompat regression guard: PRM is unavailable (resourceUri is null), but the server
-        // DOES serve an auth server metadata document that omits 'code_challenge_methods_supported'.
+        // DOES serve an auth server metadata document that omits PKCE support or advertises only plain.
         // The client must refuse to proceed rather than falling back to synthesized S256 defaults, since a
         // discovered metadata document that fails PKCE validation disqualifies the legacy default fallback.
         TestOAuthServer.ExpectResource = false;
@@ -2206,7 +2224,7 @@ public class AuthTests : OAuthTestBase
                 return;
             }
 
-            // Serve auth server metadata that omits 'code_challenge_methods_supported' entirely.
+            // Serve metadata that omits PKCE support or advertises only plain.
             if (context.Request.Path.StartsWithSegments("/.well-known/oauth-authorization-server") ||
                 context.Request.Path.StartsWithSegments("/.well-known/openid-configuration"))
             {
@@ -2214,6 +2232,7 @@ public class AuthTests : OAuthTestBase
                 await context.Response.WriteAsync($$"""
                     {
                         "issuer": "{{OAuthServerUrl}}",
+                        {{(advertisePlain ? "\"code_challenge_methods_supported\": [\"plain\"]," : "")}}
                         "authorization_endpoint": "{{McpServerUrl}}/authorize",
                         "token_endpoint": "{{McpServerUrl}}/token",
                         "registration_endpoint": "{{McpServerUrl}}/register",
@@ -2233,17 +2252,12 @@ public class AuthTests : OAuthTestBase
         app.MapMcp().RequireAuthorization();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        await using var transport = new HttpClientTransport(new()
+        var authorizationCallbackCalled = false;
+        await using var transport = CreateOAuthTransport((context, cancellationToken) =>
         {
-            Endpoint = new(McpServerUrl),
-            OAuth = new()
-            {
-                ClientId = "demo-client",
-                ClientSecret = "demo-secret",
-                RedirectUri = new Uri("http://localhost:1179/callback"),
-                AuthorizationCallbackHandler = HandleAuthorizationUrlAsync,
-            },
-        }, HttpClient, LoggerFactory);
+            authorizationCallbackCalled = true;
+            return HandleAuthorizationUrlAsync(context, cancellationToken);
+        });
 
         var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
             transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
@@ -2251,6 +2265,10 @@ public class AuthTests : OAuthTestBase
         // The specific PKCE failure reason is surfaced rather than a generic discovery failure or a
         // silently-synthesized S256 fallback.
         Assert.Contains("code_challenge_methods_supported", ex.Message);
+        Assert.False(authorizationCallbackCalled);
+        Assert.Equal(0, TestOAuthServer.AuthorizationRequestCount);
+        Assert.Equal(0, TestOAuthServer.TokenRequestCount);
+        Assert.DoesNotContain(MockLoggerProvider.LogMessages, m => m.Message.Contains("Using legacy OAuth metadata fallback"));
     }
 
     [Fact]
