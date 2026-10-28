@@ -5,11 +5,138 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerToolTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_RecoveryBoundary_SupportsCachedReadonlyMetadata(bool sourceGenerated, bool record)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions();
+        RecoveryBoundaryCachingResolver resolver = new(
+            sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver());
+        options.TypeInfoResolver = resolver;
+        object output = record ? new RecoveryBoundaryNullableRecord() : new RecoveryBoundaryNullableOutput();
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """{"required":["note"]}""", options);
+        JsonTypeInfo original = options.GetTypeInfo(output.GetType());
+        Func<object, object?>? originalGetter = original.Properties.Single().Get;
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("note").ValueKind);
+        Assert.True(original.IsReadOnly);
+        Assert.Same(original, resolver.GetTypeInfo(original.Type, options));
+        Assert.Same(originalGetter, original.Properties.Single().Get);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_RecoveryBoundary_DoesNotRebuildWideContracts(bool cacheMetadata)
+    {
+        const int width = 32;
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        int ownerResolutions = 0;
+        IJsonTypeInfoResolver resolver = new DefaultJsonTypeInfoResolver().WithAddedModifier(typeInfo =>
+        {
+            if (typeInfo.Type == typeof(RecoveryBoundaryValue))
+            {
+                Interlocked.Increment(ref ownerResolutions);
+                typeInfo.Properties.Clear();
+                for (int i = 0; i < width; i++)
+                {
+                    JsonPropertyInfo property = typeInfo.CreateJsonPropertyInfo(typeof(int), $"count{i}");
+                    property.Get = static value => ((RecoveryBoundaryValue)value).Count;
+                    typeInfo.Properties.Add(property);
+                }
+            }
+        });
+        options.TypeInfoResolver = cacheMetadata ? new RecoveryBoundaryCachingResolver(resolver) : resolver;
+        string required = string.Join(",", Enumerable.Range(0, width).Select(i => $"\"count{i}\""));
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new RecoveryBoundaryValue[8], $$$$"""{"items":{"required":[{{{{required}}}}]}}""", options);
+        options.MakeReadOnly();
+        JsonSerializer.SerializeToElement(new RecoveryBoundaryValue[8], options.GetTypeInfo(typeof(RecoveryBoundaryValue[])));
+        int resolutionsBeforeRecovery = ownerResolutions;
+
+        for (int invocation = 0; invocation < 2; invocation++)
+        {
+            JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+            Assert.All(result.EnumerateArray(), item =>
+            {
+                Assert.Equal(width, item.EnumerateObject().Count());
+                Assert.All(item.EnumerateObject(), property => Assert.Equal(0, property.Value.GetInt32()));
+            });
+            AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        }
+
+        Assert.Equal(resolutionsBeforeRecovery, ownerResolutions);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_RecoveryBoundary_KeepsConcurrentPlanValuesSeparate()
+    {
+        using Barrier barrier = new(2);
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        options.TypeInfoResolver = new RecoveryBoundaryCachingResolver(new DefaultJsonTypeInfoResolver());
+        options.Converters.Add(new RecoveryBoundaryInvocationConverter(barrier, TestContext.Current.CancellationToken));
+        McpServerTool[] tools = [CreateTool(1), CreateTool(2)];
+
+        JsonElement[] results = await Task.WhenAll(tools.Select(tool =>
+            Task.Run(() => InvokeStructuredOutputTestTool(tool), TestContext.Current.CancellationToken)));
+
+        Assert.Equal(1, results[0].GetProperty("value").GetInt32());
+        Assert.Equal(2, results[1].GetProperty("value").GetInt32());
+
+        McpServerTool CreateTool(int value) => CreateStructuredOutputTestTool(
+            new RecoveryBoundaryInvocationOutput { Value = new(value) }, """{"required":["value"]}""", options);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_RecoveryBoundary_PreservesOwnerCycleScope(bool valueTypeOwner, bool sourceGenerated)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.Never);
+        options.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+        options.TypeInfoResolver = new RecoveryBoundaryCachingResolver(
+            sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver());
+        object output = valueTypeOwner ? new RecoveryBoundaryCyclicStructOwner() : new RecoveryBoundaryCyclicOwner();
+        RecoveryBoundaryCyclicValue value = new() { Owner = output };
+        if (output is RecoveryBoundaryCyclicOwner referenceOwner)
+        {
+            referenceOwner.Missing = value;
+        }
+        else
+        {
+            typeof(RecoveryBoundaryCyclicStructOwner).GetProperty(nameof(RecoveryBoundaryCyclicStructOwner.Missing))!.SetValue(output, value);
+        }
+        McpServerTool tool = CreateRecoveryBoundaryTool(output, """{"required":["missing"]}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        JsonElement owner = result.GetProperty("missing").GetProperty("owner");
+        if (valueTypeOwner)
+        {
+            Assert.Equal(JsonValueKind.Object, owner.ValueKind);
+            Assert.Empty(owner.EnumerateObject());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, owner.ValueKind);
+        }
+    }
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -414,6 +541,64 @@ public partial class McpServerToolTests
         public string? Note { get; set; }
     }
 
+    private sealed record RecoveryBoundaryNullableRecord(string? Note = null);
+
+    private sealed class RecoveryBoundaryInvocationOutput
+    {
+        public RecoveryBoundaryInvocationValue Value { get; set; }
+    }
+
+    private readonly struct RecoveryBoundaryInvocationValue(int value) : IEquatable<RecoveryBoundaryInvocationValue>
+    {
+        public int Value { get; } = value;
+        public bool Equals(RecoveryBoundaryInvocationValue other) => true;
+        public override bool Equals(object? obj) => obj is RecoveryBoundaryInvocationValue;
+        public override int GetHashCode() => 0;
+    }
+
+    private sealed class RecoveryBoundaryInvocationConverter(Barrier barrier, CancellationToken cancellationToken) : JsonConverter<RecoveryBoundaryInvocationValue>
+    {
+        public override RecoveryBoundaryInvocationValue Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, RecoveryBoundaryInvocationValue value, JsonSerializerOptions options)
+        {
+            if (!barrier.SignalAndWait(TestConstants.DefaultTimeout, cancellationToken))
+            {
+                throw new TimeoutException("Concurrent recovery did not enter both converters.");
+            }
+            writer.WriteNumberValue(value.Value);
+        }
+    }
+
+    private sealed class RecoveryBoundaryCyclicOwner
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public RecoveryBoundaryCyclicValue Missing { get; set; }
+    }
+
+    private struct RecoveryBoundaryCyclicStructOwner
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public RecoveryBoundaryCyclicValue Missing { get; set; }
+    }
+
+    private struct RecoveryBoundaryCyclicValue : IEquatable<RecoveryBoundaryCyclicValue>
+    {
+        public object? Owner { get; set; }
+        public bool Equals(RecoveryBoundaryCyclicValue other) => true;
+        public override bool Equals(object? obj) => obj is RecoveryBoundaryCyclicValue;
+        public override int GetHashCode() => 0;
+    }
+
+    private sealed class RecoveryBoundaryCachingResolver(IJsonTypeInfoResolver inner) : IJsonTypeInfoResolver
+    {
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, JsonSerializerOptions), JsonTypeInfo> _contracts = new();
+
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
+            _contracts.GetOrAdd((type, options), key => inner.GetTypeInfo(key.Item1, key.Item2)!);
+    }
+
     private struct RecoveryBoundaryReferenceValue
     {
         public RecoveryBoundaryNullableOutput Child => new();
@@ -454,6 +639,10 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(RecoveryBoundaryReadonlyOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryCallbackOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryAttributedOutput))]
+    [JsonSerializable(typeof(RecoveryBoundaryNullableOutput))]
+    [JsonSerializable(typeof(RecoveryBoundaryNullableRecord))]
+    [JsonSerializable(typeof(RecoveryBoundaryCyclicOwner))]
+    [JsonSerializable(typeof(RecoveryBoundaryCyclicStructOwner))]
     [JsonSerializable(typeof(object))]
     private partial class RecoveryBoundaryJsonContext : JsonSerializerContext;
 }

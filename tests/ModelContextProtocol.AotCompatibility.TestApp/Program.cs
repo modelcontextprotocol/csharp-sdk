@@ -31,14 +31,14 @@ var services = new ServiceCollection();
 JsonSerializerOptions structuredOptions = new(McpJsonUtilities.DefaultOptions)
 {
     IgnoreReadOnlyProperties = true,
-    TypeInfoResolver = JsonTypeInfoResolver.Combine(AotJsonContext.Default, McpJsonUtilities.DefaultOptions.TypeInfoResolver)
+    TypeInfoResolver = new AotCachingResolver(JsonTypeInfoResolver.Combine(AotJsonContext.Default, McpJsonUtilities.DefaultOptions.TypeInfoResolver)
         .WithAddedModifier(typeInfo =>
         {
             if (typeInfo.Type == typeof(AotBaseOutput))
             {
                 typeInfo.Properties.Single(property => property.Name == "flag").ShouldSerialize = static (_, _) => false;
             }
-        }),
+        })),
 };
 McpServerTool structuredTool = McpServerTool.Create(
     () => new AotStructuredOutput(),
@@ -394,6 +394,14 @@ internal sealed class AotPreservedFunction(JsonSerializerOptions options, bool n
     public override JsonSerializerOptions JsonSerializerOptions => options;
     protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken) =>
         new(_value);
+}
+
+internal sealed class AotCachingResolver(IJsonTypeInfoResolver inner) : IJsonTypeInfoResolver
+{
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(Type, JsonSerializerOptions), JsonTypeInfo> _contracts = new();
+
+    public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
+        _contracts.GetOrAdd((type, options), key => inner.GetTypeInfo(key.Item1, key.Item2)!);
 }
 
 [JsonSerializable(typeof(AotStructuredOutput))]

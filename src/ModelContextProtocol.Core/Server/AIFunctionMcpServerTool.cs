@@ -3,10 +3,12 @@ using Json.Schema;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Globalization;
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -20,6 +22,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
     private OutputSchemaCache? _outputSchema;
+    private static readonly ConditionalWeakTable<JsonTypeInfo, SourceObjectContract> s_sourceContracts = new();
+    [ThreadStatic]
+    private static SourceRecoveryContext? t_serializingSourceMember;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -2018,26 +2023,20 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 return null;
             }
 
-            JsonPropertyInfo? extensionData = null;
-            foreach (JsonPropertyInfo member in typeInfo.Properties)
+            SourceObjectContract sourceContract = s_sourceContracts.GetValue(typeInfo, static contract => new(contract));
+            if (sourceContract.Properties.TryGetValue(name, out JsonPropertyInfo? member))
             {
-                if (member.IsExtensionData)
+                if (member.Get is null || IsExcludedReadOnlyMember(member, options))
                 {
-                    extensionData = member;
+                    return null;
                 }
-                else if (string.Equals(member.Name, name, StringComparison.Ordinal))
-                {
-                    if (member.Get is null || IsExcludedReadOnlyMember(member, options))
-                    {
-                        return null;
-                    }
 
-                    object? memberValue = member.Get(Value);
-                    JsonTypeInfo memberContract = options.GetTypeInfo(member.PropertyType);
-                    return new(memberValue, memberContract, member, Value, typeInfo);
-                }
+                object? memberValue = member.Get(Value);
+                JsonTypeInfo memberContract = options.GetTypeInfo(member.PropertyType);
+                return new(memberValue, memberContract, member, Value, typeInfo);
             }
 
+            JsonPropertyInfo? extensionData = sourceContract.ExtensionData;
             if (extensionData?.Get is not { } getExtensionData ||
                 extensionData.CustomConverter is not null || IsExcludedReadOnlyMember(extensionData, options))
             {
@@ -2122,6 +2121,62 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             return Contract;
+        }
+    }
+
+    private sealed class SourceObjectContract
+    {
+        private readonly JsonTypeInfo _contract;
+        private readonly ConcurrentDictionary<JsonPropertyInfo, Lazy<JsonTypeInfo<object>>> _serializationContracts = new();
+
+        internal Dictionary<string, JsonPropertyInfo> Properties { get; } = new(StringComparer.Ordinal);
+        internal JsonPropertyInfo? ExtensionData { get; }
+
+        internal SourceObjectContract(JsonTypeInfo contract)
+        {
+            _contract = contract;
+            foreach (JsonPropertyInfo property in contract.Properties)
+            {
+                if (property.IsExtensionData)
+                {
+                    ExtensionData = property;
+                }
+                else
+                {
+                    Properties.Add(property.Name, property);
+                }
+            }
+        }
+
+        internal JsonTypeInfo<object> GetSerializationContract(JsonPropertyInfo property) =>
+            _serializationContracts.GetOrAdd(property, member => new(() => CreateSerializationContract(member))).Value;
+
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+            "Trimming", "IL2026",
+            Justification = "The property type metadata is cached in the original options before CreateJsonPropertyInfo reuses its typed property factory.")]
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+            "Aot", "IL3050",
+            Justification = "CreateJsonPropertyInfo uses the cached property type metadata, so no new generic types are constructed.")]
+        private JsonTypeInfo<object> CreateSerializationContract(JsonPropertyInfo property)
+        {
+            JsonSerializerOptions options = _contract.Options;
+            _ = options.GetTypeInfo(property.PropertyType);
+            // Reuse the owner's object converter, not its frozen metadata. The object-typed
+            // adapter still serializes the actual owner, preserving cycle detection.
+            JsonTypeInfo<object> contract = JsonMetadataServices.CreateValueInfo<object>(options, _contract.Converter);
+            contract.NumberHandling = _contract.NumberHandling;
+            contract.PolymorphismOptions = null;
+            contract.OnSerializing = null;
+            contract.OnSerialized = null;
+            JsonPropertyInfo candidate = contract.CreateJsonPropertyInfo(property.PropertyType, property.Name);
+            candidate.Get = static _ => t_serializingSourceMember!.Value;
+            candidate.ShouldSerialize = static (_, _) => true;
+            candidate.CustomConverter = GetPropertyConverter(property, property.PropertyType);
+            candidate.NumberHandling = property.NumberHandling;
+            candidate.IsGetNullable = property.IsGetNullable;
+            contract.Properties.Add(candidate);
+            contract.MakeReadOnly();
+            return contract;
         }
     }
 
@@ -2230,37 +2285,23 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         {
             JsonTypeInfo originalContract = member.OwnerContract!;
             JsonSerializerOptions options = originalContract.Options;
-            // Ask the resolver for uncached metadata so converters still receive the original
-            // options and their delegated serialization uses the unchanged cached contracts.
-            JsonTypeInfo? contract = options.TypeInfoResolver?.GetTypeInfo(originalContract.Type, options);
-            if (contract is not { Kind: JsonTypeInfoKind.Object, IsReadOnly: false } ||
-                ReferenceEquals(contract, originalContract))
-            {
-                return false;
-            }
-
             JsonPropertyInfo property = member.Property!;
-            foreach (JsonPropertyInfo candidate in contract.Properties)
+            JsonTypeInfo<object> contract = s_sourceContracts.GetValue(originalContract, static owner => new(owner))
+                .GetSerializationContract(property);
+            JsonElement element;
+            SourceRecoveryContext? previous = t_serializingSourceMember;
+            try
             {
-                if (candidate.Name == property.Name && candidate.PropertyType == property.PropertyType)
-                {
-                    candidate.Get = _ => member.Value;
-                    candidate.ShouldSerialize = static (_, _) => true;
-                    candidate.CustomConverter = GetPropertyConverter(property, property.PropertyType);
-                    candidate.NumberHandling = property.NumberHandling;
-                    candidate.IsGetNullable = property.IsGetNullable;
-                }
-                else
-                {
-                    candidate.Get = null;
-                }
+                // Serialization is synchronous; restore the slot for nested invocations.
+                t_serializingSourceMember = member;
+                // Value-type serialization must not track the original box as a reference cycle.
+                object? owner = originalContract.Type.IsValueType ? RuntimeHelpers.GetObjectValue(member.Owner) : member.Owner;
+                element = JsonSerializer.SerializeToElement(owner!, contract).GetProperty(property.Name);
             }
-
-            contract.NumberHandling = originalContract.NumberHandling;
-            contract.PolymorphismOptions = null;
-            contract.OnSerializing = null;
-            contract.OnSerialized = null;
-            JsonElement element = JsonSerializer.SerializeToElement(member.Owner, contract).GetProperty(property.Name);
+            finally
+            {
+                t_serializingSourceMember = previous;
+            }
             if (options.ReferenceHandler is { } handler && !ReferenceEquals(handler, ReferenceHandler.IgnoreCycles) &&
                 ContainsReferenceMetadata(element))
             {
