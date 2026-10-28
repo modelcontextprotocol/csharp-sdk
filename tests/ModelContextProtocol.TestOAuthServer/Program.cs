@@ -528,7 +528,7 @@ public sealed class Program
                 }
 
                 // Generate JWT token response
-                var response = GenerateJwtTokenResponse(client.ClientId, codeInfo.Scope, codeInfo.Resource);
+                var response = GenerateJwtTokenResponse(client.ClientId, codeInfo.Scope, codeInfo.Resource, issueRefreshToken: IssueRefreshTokens);
                 return Results.Ok(response);
             }
             else if (grant_type == "refresh_token")
@@ -546,7 +546,7 @@ public sealed class Program
                 }
 
                 // Generate new token response, keeping the same scopes
-                var response = GenerateJwtTokenResponse(client.ClientId, tokenInfo.Scopes, tokenInfo.Resource, issueRefreshToken: RotateRefreshTokens);
+                var response = GenerateJwtTokenResponse(client.ClientId, tokenInfo.Scopes, tokenInfo.Resource, issueRefreshToken: IssueRefreshTokens && RotateRefreshTokens);
 
                 // Non-rotating refresh tokens remain valid for subsequent refresh grants.
                 if (RotateRefreshTokens)
@@ -593,7 +593,7 @@ public sealed class Program
                     ? ["mcp:tools"]
                     : scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-                var response = GenerateJwtTokenResponse(client.ClientId, scopes, resourceUri);
+                var response = GenerateJwtTokenResponse(client.ClientId, scopes, resourceUri, issueRefreshToken: IssueRefreshTokens);
                 return Results.Ok(response);
             }
             else
@@ -842,7 +842,7 @@ public sealed class Program
     /// <param name="resource">The resource URI.</param>
     /// <param name="issueRefreshToken">Whether this grant should issue a refresh token.</param>
     /// <returns>A token response.</returns>
-    private TokenResponse GenerateJwtTokenResponse(string clientId, List<string> scopes, Uri? resource, bool issueRefreshToken = true)
+    private TokenResponse GenerateJwtTokenResponse(string clientId, List<string> scopes, Uri? resource, bool issueRefreshToken)
     {
         var expiresIn = TimeSpan.FromHours(1);
         var issuedAt = DateTimeOffset.UtcNow;
@@ -884,7 +884,7 @@ public sealed class Program
         var jwtToken = $"{headerBase64}.{payloadBase64}.{signatureBase64}";
 
         // Generate opaque refresh token
-        var refreshToken = IssueRefreshTokens && issueRefreshToken ? GenerateRandomToken() : null;
+        var refreshToken = issueRefreshToken ? GenerateRandomToken() : null;
 
         // Store token info (for refresh token and introspection)
         var tokenInfo = new TokenInfo
