@@ -267,7 +267,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// output schema. Callers must gate the call on the negotiated version — this method
     /// is unconditional; the gate lives at the emission site.
     /// </summary>
-    internal Tool BuildLegacyWireProtocolTool(Tool protocolTool)
+    internal Tool BuildLegacyWireProtocolTool(Tool protocolTool, bool hasCustomInvocation)
     {
         if (protocolTool.OutputSchema is not { } natural)
         {
@@ -275,9 +275,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         bool wrapValue = ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema ?? natural);
-        JsonElement legacyOutputSchema = wrapValue && _returnsCallToolResult is null
-            ? TransformOutputSchemaForUnknownMarshalling(natural)
-            : TransformOutputSchemaForLegacyWire(natural, wrapValue: wrapValue && _returnsCallToolResult is false);
+        bool? returnsCallToolResult = hasCustomInvocation ? null : _returnsCallToolResult;
+        JsonElement legacyOutputSchema = wrapValue && returnsCallToolResult is not false
+            ? TransformOutputSchemaForPossibleToolResult(natural, nullEnvelopeOnly: returnsCallToolResult is true)
+            : TransformOutputSchemaForLegacyWire(natural, wrapValue);
 
         return new Tool
         {
@@ -612,29 +613,22 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return naturalSchema;
         }
 
-        JsonNode? schemaNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
-
+        JsonNode? schemaNode;
         if (!wrapValue)
         {
-            if (schemaNode is not JsonObject objSchema)
-            {
-                objSchema = new JsonObject
-                {
-                    ["allOf"] = new JsonArray { schemaNode },
-                };
-            }
-
-            objSchema["type"] = "object";
+            JsonObject objSchema = CreateObjectWireSchema(naturalSchema);
+            objSchema["$ref"] = "#/$defs/output";
             schemaNode = objSchema;
         }
         else
         {
+            JsonNode? naturalNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
             schemaNode = new JsonObject
             {
                 ["type"] = "object",
                 ["properties"] = new JsonObject
                 {
-                    ["result"] = schemaNode
+                    ["result"] = naturalNode
                 },
                 ["required"] = new JsonArray { (JsonNode)"result" }
             };
@@ -648,26 +642,38 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
     }
 
-    private static JsonElement TransformOutputSchemaForUnknownMarshalling(JsonElement naturalSchema)
+    private static JsonObject CreateObjectWireSchema(JsonElement naturalSchema)
     {
         JsonNode? naturalNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
         RewriteRefPointers(naturalNode, "/$defs/output");
-        const string outputReference = "#/$defs/output";
-        JsonObject schemaNode = new()
+        return new JsonObject
         {
             ["type"] = "object",
             ["$defs"] = new JsonObject { ["output"] = naturalNode },
-            ["anyOf"] = new JsonArray
+        };
+    }
+
+    private static JsonElement TransformOutputSchemaForPossibleToolResult(JsonElement naturalSchema, bool nullEnvelopeOnly)
+    {
+        const string outputReference = "#/$defs/output";
+        JsonObject resultSchema = new() { ["$ref"] = outputReference };
+        if (nullEnvelopeOnly)
+        {
+            // A null CallToolResult follows the ordinary result path.
+            resultSchema["type"] = "null";
+        }
+
+        JsonObject schemaNode = CreateObjectWireSchema(naturalSchema);
+        schemaNode["anyOf"] = new JsonArray
+        {
+            (JsonNode)new JsonObject { ["$ref"] = outputReference },
+            (JsonNode)new JsonObject
             {
-                (JsonNode)new JsonObject { ["$ref"] = outputReference },
-                (JsonNode)new JsonObject
+                ["properties"] = new JsonObject
                 {
-                    ["properties"] = new JsonObject
-                    {
-                        ["result"] = new JsonObject { ["$ref"] = outputReference },
-                    },
-                    ["required"] = new JsonArray { (JsonNode)"result" },
+                    ["result"] = resultSchema,
                 },
+                ["required"] = new JsonArray { (JsonNode)"result" },
             },
         };
         return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);

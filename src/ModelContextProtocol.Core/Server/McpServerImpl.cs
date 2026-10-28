@@ -1545,14 +1545,16 @@ internal sealed partial class McpServerImpl : McpServer
                     foreach (var t in tools)
                     {
                         McpServerTool innerTool = t;
+                        bool hasCustomInvocation = false;
                         while (!useNaturalSchemas && innerTool is DelegatingMcpServerTool delegatingTool)
                         {
+                            hasCustomInvocation |= delegatingTool.HasCustomInvocation;
                             innerTool = delegatingTool.InnerTool;
                         }
 
                         Tool wireTool = useNaturalSchemas || innerTool is not AIFunctionMcpServerTool aiFunctionTool
                             ? t.ProtocolTool
-                            : aiFunctionTool.BuildLegacyWireProtocolTool(t.ProtocolTool);
+                            : aiFunctionTool.BuildLegacyWireProtocolTool(t.ProtocolTool, hasCustomInvocation);
                         result.Tools.Add(wireTool);
                     }
                 }

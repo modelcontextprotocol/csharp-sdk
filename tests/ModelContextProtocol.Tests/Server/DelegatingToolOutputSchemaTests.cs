@@ -589,6 +589,235 @@ public partial class DelegatingToolOutputSchemaTests
         });
     }
 
+    [Theory]
+    [MemberData(nameof(NullableExplicitResultCases))]
+    public async Task ListTools_NullableExplicitResult_MatchesBothRuntimePaths(string protocolVersion, string returnKind)
+    {
+        JsonElement naturalSchema = ParseJson(
+            """{"anyOf":[{"type":"object","properties":{"name":{"type":"string","minLength":1}},"required":["name"]},{"type":"null"}]}""");
+        CallToolResult response = new() { StructuredContent = ParseJson("""{"name":"test"}""") };
+        Delegate callback = returnKind switch
+        {
+            "sync" or "method" or "factory" or "supplied" =>
+                new Func<bool, CallToolResult?>(returnNull => returnNull ? null : response),
+            "task" => new Func<bool, Task<CallToolResult?>>(returnNull => Task.FromResult(returnNull ? null : response)),
+            "valueTask" => new Func<bool, ValueTask<CallToolResult?>>(returnNull => new(returnNull ? null : response)),
+            "broad" => new Func<bool, object?>(returnNull => returnNull ? null : response),
+            "ordinary" => new Func<bool, JsonElement?>(returnNull => returnNull ? null : response.StructuredContent),
+            _ => throw new ArgumentOutOfRangeException(nameof(returnKind)),
+        };
+        McpServerToolCreateOptions options = new()
+        {
+            Name = "nullable_result",
+            UseStructuredContent = true,
+            OutputSchema = naturalSchema,
+        };
+        McpServerTool inner = returnKind switch
+        {
+            "method" => McpServerTool.Create(callback.Method, callback.Target, options),
+            "factory" => McpServerTool.Create(callback.Method, _ => callback.Target!, options),
+            "supplied" => McpServerTool.Create(CreateIdentityFunction(callback), options),
+            _ => McpServerTool.Create(callback, options),
+        };
+        await WithClientAsync(new DelegatingTool(inner), protocolVersion, async client =>
+        {
+            var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            JsonElement schema = listed.ProtocolTool.OutputSchema!.Value;
+            JsonSchema advertisedSchema = ParseSchema(schema);
+            bool legacy = protocolVersion != "2026-07-28";
+            if (!legacy)
+            {
+                Assert.Equal(naturalSchema.GetRawText(), schema.GetRawText());
+            }
+
+            foreach (bool returnNull in new[] { false, true })
+            {
+                var result = await client.CallToolAsync(listed.Name, new Dictionary<string, object?>
+                {
+                    ["returnNull"] = returnNull,
+                }, cancellationToken: TestContext.Current.CancellationToken);
+                if (returnNull && !legacy)
+                {
+                    Assert.Null(result.StructuredContent);
+                    Assert.Empty(result.Content);
+                    continue;
+                }
+
+                JsonElement content = result.StructuredContent!.Value;
+                Assert.True(advertisedSchema.Evaluate(content).IsValid);
+                if (returnNull || (legacy && returnKind == "ordinary"))
+                {
+                    content = content.GetProperty("result");
+                }
+
+                if (returnNull)
+                {
+                    Assert.Equal(JsonValueKind.Null, content.ValueKind);
+                    Assert.Empty(result.Content);
+                }
+                else
+                {
+                    Assert.Equal("test", content.GetProperty("name").GetString());
+                }
+            }
+
+            Assert.False(advertisedSchema.Evaluate(ParseJson("""{"name":""}""")).IsValid);
+            if (returnKind is not ("ordinary" or "supplied" or "broad"))
+            {
+                Assert.False(advertisedSchema.Evaluate(ParseJson("""{"result":{"name":"test"}}""")).IsValid);
+            }
+        });
+
+        Assert.Equal(naturalSchema.GetRawText(), inner.ProtocolTool.OutputSchema!.Value.GetRawText());
+        Assert.Equal("""{"name":"test"}""", response.StructuredContent!.Value.GetRawText());
+    }
+
+    public static IEnumerable<object[]> NullableExplicitResultCases()
+    {
+        foreach (string protocolVersion in new[] { "2025-06-18", "2025-11-25", "2026-07-28" })
+        {
+            foreach (string returnKind in new[] { "sync", "task", "valueTask", "method", "factory", "supplied", "broad", "ordinary" })
+            {
+                yield return [protocolVersion, returnKind];
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(NullableRecursiveSchemaCases))]
+    public async Task ListTools_NullableRecursiveSchema_PreservesDescendantConstraints(
+        string protocolVersion, string returnKind, string schemaKind)
+    {
+        string refKeyword = schemaKind == "dynamic" ? "$dynamicRef" : "$ref";
+        string reference = schemaKind is "anchor" or "dynamic" ? "#node" : "#";
+        string identity = schemaKind switch
+        {
+            "resource" => $"\"$id\":\"urn:recursive:{protocolVersion}:{returnKind}\",",
+            "anchor" => "\"$anchor\":\"node\",",
+            "dynamic" => "\"$dynamicAnchor\":\"node\",",
+            _ => "",
+        };
+        string objectMembers = $$$$"""
+            "properties":{"name":{"type":"string","minLength":1},"child":{"{{{{refKeyword}}}}":"{{{{reference}}}}"},"children":{"type":"array","items":{"{{{{refKeyword}}}}":"{{{{reference}}}}"}}},"required":["name"],"additionalProperties":false
+            """;
+        string schemaJson = schemaKind == "nullableArray"
+            ? $$"""{"type":["object","null"],{{objectMembers}}}"""
+            : $$"""{"anyOf":[{"type":"null"},{"type":"object",{{objectMembers}}}]}""";
+        JsonElement naturalSchema = ParseJson(schemaJson.Insert(1, identity));
+        JsonElement expectedContent = ParseJson(
+            """{"name":"root","child":{"name":"child","child":null},"children":[null,{"name":"leaf","child":null}]}""");
+        Assert.True(ParseSchema(naturalSchema).Evaluate(expectedContent).IsValid);
+        CallToolResult response = new() { StructuredContent = expectedContent };
+        McpServerToolCreateOptions options = new()
+        {
+            Name = "recursive_result",
+            UseStructuredContent = true,
+            OutputSchema = schemaKind == "wrapper" ? ParseJson("""{"type":"object"}""") : naturalSchema,
+        };
+        McpServerTool inner = returnKind switch
+        {
+            "explicit" => McpServerTool.Create(() => response, options),
+            "supplied" => McpServerTool.Create(CreateIdentityFunction(() => response), options),
+            "ordinary" => McpServerTool.Create(() => expectedContent, options),
+            _ => throw new ArgumentOutOfRangeException(nameof(returnKind)),
+        };
+        McpServerTool tool = new SchemaOverrideTool(new DelegatingTool(inner), naturalSchema);
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+            JsonElement schema = listed.ProtocolTool.OutputSchema!.Value;
+            JsonElement content = result.StructuredContent!.Value;
+            JsonSchema advertisedSchema = ParseSchema(schema);
+            Assert.True(advertisedSchema.Evaluate(content).IsValid);
+            Assert.False(advertisedSchema.Evaluate(ParseJson(content.GetRawText().Replace("\"child\":null", "\"child\":42"))).IsValid);
+            Assert.False(advertisedSchema.Evaluate(ParseJson(content.GetRawText().Replace("\"root\"", "\"\""))).IsValid);
+            if (protocolVersion == "2026-07-28")
+            {
+                Assert.Equal(naturalSchema.GetRawText(), schema.GetRawText());
+            }
+            else
+            {
+                Assert.Equal("object", schema.GetProperty("type").GetString());
+                Assert.False(advertisedSchema.Evaluate(ParseJson("null")).IsValid);
+                if (returnKind == "ordinary" && schemaKind is not ("nullableArray" or "wrapper"))
+                {
+                    content = content.GetProperty("result");
+                }
+            }
+
+            Assert.Equal(expectedContent.GetRawText(), content.GetRawText());
+        });
+
+        Assert.Equal(naturalSchema.GetRawText(), tool.ProtocolTool.OutputSchema!.Value.GetRawText());
+        Assert.Equal(options.OutputSchema!.Value.GetRawText(), inner.ProtocolTool.OutputSchema!.Value.GetRawText());
+        Assert.Equal(expectedContent.GetRawText(), response.StructuredContent!.Value.GetRawText());
+    }
+
+    public static IEnumerable<object[]> NullableRecursiveSchemaCases()
+    {
+        foreach (string protocolVersion in new[] { "2025-06-18", "2025-11-25", "2026-07-28" })
+        {
+            foreach (string returnKind in new[] { "explicit", "supplied", "ordinary" })
+            {
+                foreach (string schemaKind in new[] { "composed", "nullableArray", "wrapper", "resource", "anchor", "dynamic" })
+                {
+                    yield return [protocolVersion, returnKind, schemaKind];
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
+    public async Task ListTools_CustomDelegatingInvocation_MatchesBothRuntimePaths(string protocolVersion)
+    {
+        JsonElement objectSchema = ParseJson(
+            """{"type":"object","properties":{"name":{"type":"string","minLength":1}},"required":["name"]}""");
+        JsonElement composedSchema = ParseJson($$"""{"allOf":[{{objectSchema.GetRawText()}}]}""");
+        CallToolResult response = new() { StructuredContent = ParseJson("""{"name":"test"}""") };
+        McpServerTool inner = McpServerTool.Create((bool returnExplicit) => ParseJson("""{"name":"test"}"""), new()
+        {
+            Name = "custom_invocation",
+            UseStructuredContent = true,
+            OutputSchema = composedSchema,
+        });
+        McpServerTool tool = new SchemaOverrideTool(new DelegatingTool(new AlternateInvocationTool(inner, response)), objectSchema);
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            JsonElement schema = listed.ProtocolTool.OutputSchema!.Value;
+            JsonSchema advertisedSchema = ParseSchema(schema);
+            foreach (bool returnExplicit in new[] { false, true })
+            {
+                var result = await client.CallToolAsync(listed.Name, new Dictionary<string, object?>
+                {
+                    ["returnExplicit"] = returnExplicit,
+                }, cancellationToken: TestContext.Current.CancellationToken);
+                JsonElement content = result.StructuredContent!.Value;
+                Assert.True(advertisedSchema.Evaluate(content).IsValid);
+                if (!returnExplicit && protocolVersion != "2026-07-28")
+                {
+                    content = content.GetProperty("result");
+                }
+
+                Assert.Equal("test", content.GetProperty("name").GetString());
+            }
+
+            Assert.False(advertisedSchema.Evaluate(ParseJson("""{"name":""}""")).IsValid);
+            Assert.False(advertisedSchema.Evaluate(ParseJson("""{"result":{"name":""}}""")).IsValid);
+            if (protocolVersion == "2026-07-28")
+            {
+                Assert.Equal(objectSchema.GetRawText(), schema.GetRawText());
+            }
+        });
+
+        Assert.Equal(objectSchema.GetRawText(), tool.ProtocolTool.OutputSchema!.Value.GetRawText());
+        Assert.Equal(composedSchema.GetRawText(), inner.ProtocolTool.OutputSchema!.Value.GetRawText());
+    }
+
     [JsonSerializable(typeof(Result))]
     [JsonSerializable(typeof(object))]
     private sealed partial class ResultJsonContext : JsonSerializerContext;
@@ -601,6 +830,13 @@ public partial class DelegatingToolOutputSchemaTests
         {
             SerializerOptions = McpJsonUtilities.DefaultOptions,
             MarshalResult = static (result, _, _) => new ValueTask<object?>(result),
+        });
+
+    private static JsonSchema ParseSchema(JsonElement schema) =>
+        JsonSchema.FromText(schema.GetRawText(), new BuildOptions
+        {
+            Dialect = Dialect.Draft202012,
+            SchemaRegistry = new(),
         });
 
     private static JsonElement ParseJson(string json)
@@ -636,6 +872,20 @@ public partial class DelegatingToolOutputSchemaTests
     }
 
     private sealed class DelegatingTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
+
+    private sealed class AlternateInvocationTool(McpServerTool inner, CallToolResult response) : DelegatingMcpServerTool(inner)
+    {
+        public override ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        {
+            if (request.Params?.Arguments?.TryGetValue("returnExplicit", out JsonElement returnExplicit) is true && returnExplicit.GetBoolean())
+            {
+                return new(response);
+            }
+
+            return base.InvokeAsync(request, cancellationToken);
+        }
+    }
 
     private sealed class MethodlessFunction(AIFunction inner) : DelegatingAIFunction(inner)
     {

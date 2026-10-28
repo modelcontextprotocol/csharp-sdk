@@ -18,10 +18,14 @@ public abstract class DelegatingMcpServerTool : McpServerTool
     {
         Throw.IfNull(innerTool);
         _innerTool = innerTool;
+        HasCustomInvocation = ((Func<RequestContext<CallToolRequestParams>, CancellationToken, ValueTask<CallToolResult>>)InvokeAsync)
+            .Method.DeclaringType != typeof(DelegatingMcpServerTool);
     }
 
     /// <summary>Gets the tool wrapped by this delegating tool.</summary>
     internal McpServerTool InnerTool => _innerTool;
+
+    internal bool HasCustomInvocation { get; }
 
     /// <inheritdoc />
     public override Tool ProtocolTool => _innerTool.ProtocolTool;
