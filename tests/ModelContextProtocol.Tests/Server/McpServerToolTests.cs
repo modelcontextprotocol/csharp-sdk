@@ -1166,6 +1166,45 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverThroughFilteredExtensionCollision()
+    {
+        DefaultJsonTypeInfoResolver resolver = new();
+        resolver.Modifiers.Add(typeInfo =>
+        {
+            if (typeInfo.Type == typeof(FilteredExtensionCollision))
+            {
+                typeInfo.Properties.Single(property => property.Name == "child").ShouldSerialize = (_, _) => false;
+            }
+        });
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = resolver,
+        };
+        McpServerTool tool = CreateStructuredOutputTestTool(new FilteredExtensionCollision(), """
+            {"properties":{"child":{"required":["count"]}}}
+            """, options);
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        Assert.False(result.GetProperty("child").TryGetProperty("count", out _));
+    }
+
+    private sealed class FilteredExtensionCollision
+    {
+        public FilteredExtensionChild Child { get; } = new();
+
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement> Extension { get; } = new()
+        {
+            ["child"] = JsonDocument.Parse("{}").RootElement,
+        };
+    }
+
+    private sealed class FilteredExtensionChild
+    {
+        public int Count { get; } = 42;
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRestoreCallerFilteredProperty()
     {
         JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"secret":{"type":"string"}},"required":["secret"]}""").RootElement;
@@ -1831,6 +1870,74 @@ public partial class McpServerToolTests
             Assert.Equal(JsonValueKind.Null, item.GetProperty("note" + tag).ValueKind);
             Assert.False(item.TryGetProperty(tag == "0" ? "note1" : "note0", out _));
         }
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DistinguishesUnevaluatedSchemaFragments()
+    {
+        var output = new { Child = new { X = (string?)null, Y = (string?)null } };
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """
+            {"allOf":[
+              {"properties":{"child":true},"unevaluatedProperties":{"required":["x"]}},
+              {"unevaluatedProperties":{"required":["y"]}}
+            ]}
+            """);
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        JsonElement child = result.GetProperty("child");
+        Assert.Equal(JsonValueKind.Null, child.GetProperty("y").ValueKind);
+        Assert.False(child.TryGetProperty("x", out _));
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RecoversSourceGeneratedIterator()
+    {
+        static IEnumerable<ExplicitSchemaOutput> Items()
+        {
+            yield return new ExplicitSchemaOutput { Id = "42" };
+        }
+
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(JsonContext2.Default, McpJsonUtilities.DefaultOptions.TypeInfoResolver),
+        };
+        McpServerTool tool = CreateStructuredOutputTestTool(Items(), """
+            {"type":"array","items":{"required":["note"],"properties":{"note":{"type":"null"}}}}
+            """, options);
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        Assert.Equal(JsonValueKind.Null, result[0].GetProperty("note").ValueKind);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RespectsEnclosingAssertionsForRepeatedBranches()
+    {
+        var output = Enumerable.Range(0, 129).Select(_ => new { A = (string?)null, B = (string?)null }).ToArray();
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """
+            {"type":"array","items":{"properties":{"a":true},"additionalProperties":false,"anyOf":[{"required":["a"]},{"required":["b"]}]}}
+            """);
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        foreach (JsonElement item in result.EnumerateArray())
+        {
+            Assert.Equal(JsonValueKind.Null, item.GetProperty("a").ValueKind);
+            Assert.False(item.TryGetProperty("b", out _));
+        }
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DistinguishesRequiredPathsContainingNull()
+    {
+        Dictionary<string, object> output = new()
+        {
+            ["a"] = new { },
+            ["a\0b"] = new { c = (string?)null },
+        };
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """
+            {"anyOf":[{"properties":{"a":{"required":["b\u0000c"]}}},{"properties":{"a\u0000b":{"required":["c"]}}}]}
+            """);
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("a\0b").GetProperty("c").ValueKind);
     }
 
     [Fact]
@@ -3890,6 +3997,7 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(WeatherRequest))]
     [JsonSerializable(typeof(ExplicitlyIncludedReadOnlyOutput))]
     [JsonSerializable(typeof(RecoveryConditionalOutput))]
+    [JsonSerializable(typeof(IEnumerable<ExplicitSchemaOutput>))]
     partial class JsonContext2 : JsonSerializerContext;
 
     // ===== x-mcp-header tests =====

@@ -119,10 +119,19 @@ McpServerTool ancestorTool = McpServerTool.Create(
             }
             """).RootElement,
     });
+McpServerTool iteratorTool = McpServerTool.Create(
+    AotTools.Iterator,
+    new()
+    {
+        Name = "Iterator",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = JsonDocument.Parse("""{"type":"array","items":{"required":["count"]}}""").RootElement,
+    });
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool])
+    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool])
     .WithTools(
     [
         new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
@@ -211,6 +220,12 @@ foreach (string name in new[] { "ForwardingEcho", "OverridingEcho" })
     }
 }
 
+var iteratorResult = await client.CallToolAsync("Iterator");
+if (iteratorResult.StructuredContent is not { } iterator || iterator[0].GetProperty("count").GetInt32() != 0)
+{
+    throw new Exception($"Unexpected iterator output: {iteratorResult.StructuredContent}");
+}
+
 var ancestorResult = await client.CallToolAsync("AncestorCycles");
 JsonElement ancestor = ancestorResult.StructuredContent!.Value;
 foreach (JsonElement node in ancestor.GetProperty("items").EnumerateArray()
@@ -266,6 +281,11 @@ Console.WriteLine("Success!");
 [McpServerToolType]
 internal sealed class AotTools
 {
+    internal static IEnumerable<AotStructuredChild> Iterator()
+    {
+        yield return default;
+    }
+
     [McpServerTool(Name = "Echo", UseStructuredContent = true)]
     [McpAppUi(ResourceUri = "ui://aot/echo")]
     public static string Echo(string arg) => $"Echo: {arg}";
@@ -519,6 +539,7 @@ internal sealed class AotCachingResolver(IJsonTypeInfoResolver inner) : IJsonTyp
 [JsonSerializable(typeof(Dictionary<AotDictionaryKey, AotStructuredChild>))]
 [JsonSerializable(typeof(Hashtable))]
 [JsonSerializable(typeof(AotAncestorRoot))]
+[JsonSerializable(typeof(IEnumerable<AotStructuredChild>))]
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);

@@ -835,16 +835,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return elementResult;
         }
 
-        JsonNode? resultNode = JsonSerializer.SerializeToNode(result, McpJsonUtilities.JsonContext.Default.JsonElement);
         OutputSchemaCache cachedSchema = GetOutputSchema(outputSchema);
         JsonNode? schemaNode = cachedSchema.Node;
         JsonSchema? schema = cachedSchema.Schema;
-        if (resultNode is null || schemaNode is null || schema is null)
+        if (schemaNode is null || schema is null || IsSchemaValid(schema, result) || HasDuplicatePropertyNames(result))
         {
             return elementResult;
         }
 
-        if (IsSchemaValid(schema, resultNode) || HasDuplicatePropertyNames(result))
+        JsonNode? resultNode = JsonSerializer.SerializeToNode(result, McpJsonUtilities.JsonContext.Default.JsonElement);
+        if (resultNode is null)
         {
             return elementResult;
         }
@@ -854,12 +854,30 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             schemaNode,
             schema,
             originalResult is null ? null : new SourceRecoveryContext(
-                originalResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
+                originalResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object)),
+                fallbackType: GetDeclaredReturnType(originalResult)),
             AIFunction.JsonSerializerOptions);
 
         return repairedResult is null
             ? elementResult
             : JsonSerializer.SerializeToElement(repairedResult, McpJsonUtilities.JsonContext.Default.JsonNode);
+    }
+
+    private Type? GetDeclaredReturnType(object result)
+    {
+        Type? returnType = AIFunction.UnderlyingMethod?.ReturnType;
+        if (returnType is { IsGenericType: true } &&
+            (returnType.GetGenericTypeDefinition() == typeof(Task<>) || returnType.GetGenericTypeDefinition() == typeof(ValueTask<>)))
+        {
+            returnType = returnType.GetGenericArguments()[0];
+        }
+
+        if (returnType is null || returnType == typeof(object) || !returnType.IsInstanceOfType(result))
+        {
+            return null;
+        }
+
+        return returnType;
     }
 
     /// <summary>
@@ -903,9 +921,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         Dictionary<string, RepairCandidate> unevaluatedCandidates = new(StringComparer.Ordinal);
         SchemaReferenceResolver? evaluationReferences = null;
 
-        HashSet<(string Path, Uri Schema)> GetUnevaluatedApplications(JsonNode instance)
+        HashSet<(string Path, string Schema)> GetUnevaluatedApplications(JsonNode instance)
         {
-            HashSet<(string, Uri)> applications = [];
+            HashSet<(string, string)> applications = [];
             try
             {
                 evaluationReferences ??= new(
@@ -923,7 +941,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         path.EndsWith("/unevaluatedItems", StringComparison.Ordinal)) &&
                         evaluationReferences.TryResolveEvaluationPath(path, out Uri? application))
                     {
-                        applications.Add((evaluation.InstanceLocation.ToString(), application!));
+                        applications.Add((evaluation.InstanceLocation.ToString(), application!.AbsoluteUri));
                     }
 
                     if (evaluation.Details is { } details)
@@ -950,12 +968,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 return instance;
             }
 
-            HashSet<(string Path, Uri Schema)> applications = GetUnevaluatedApplications(instance);
+            HashSet<(string Path, string Schema)> applications = GetUnevaluatedApplications(instance);
             HashSet<string> checkedKeys = new(StringComparer.Ordinal);
             foreach (RepairCandidateGroup group in unevaluatedGroups)
             {
                 if (group.Unevaluated is not { } origin ||
-                    applications.Contains((origin.InstancePath, references.GetSchemaUri(origin.Schema))))
+                    applications.Contains((origin.InstancePath, references.GetSchemaUri(origin.Schema).AbsoluteUri)))
                 {
                     continue;
                 }
@@ -1060,11 +1078,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             Dictionary<string, SchemaObjectContext> contexts = new(StringComparer.Ordinal);
             List<RepairCandidateGroup> groups = [];
-            HashSet<(string Path, Uri Schema)>? applications = null;
+            HashSet<(string Path, string Schema)>? applications = null;
             CollectSchemaContexts(
                 instance, schemaNode, references.GetResourceRoot(schemaNode), string.Empty, contexts,
                 new SchemaTraversal(traversalBudget, (subschema, path) =>
-                    (applications ??= GetUnevaluatedApplications(instance)).Contains((path, references.GetSchemaUri(subschema))),
+                    (applications ??= GetUnevaluatedApplications(instance)).Contains((path, references.GetSchemaUri(subschema).AbsoluteUri)),
                     (subschema, value, scope) => GetBranchSchema(subschema, scope) is { } compiled && IsSchemaValid(compiled, value)),
                 groups, references, dynamicScope);
             unevaluatedGroups.AddRange(groups.Where(static group => group.Unevaluated is not null));
@@ -1442,6 +1460,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
     }
 
+    private static bool IsSchemaValid(JsonSchema schema, JsonElement instance)
+    {
+        try
+        {
+            return schema.Evaluate(instance).IsValid;
+        }
+        catch (Exception ex) when (ex is JsonException or JsonSchemaException or RefResolutionException or InvalidOperationException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
     private static List<RepairCandidate> CreateRepairCandidates(
         JsonNode resultNode,
         SourceRecoveryContext? originalResult,
@@ -1465,7 +1495,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                     continue;
                 }
 
-                string candidateKey = contextEntry.Key + "\u0000" + propertyName;
+                string candidateKey = AppendJsonPointer(contextEntry.Key, propertyName);
                 if (!seen.Add(candidateKey))
                 {
                     continue;
@@ -1502,7 +1532,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private sealed record RepairCandidate(string ParentPath, string PropertyName, JsonNode? Value)
     {
-        internal string Key => ParentPath + "\u0000" + PropertyName;
+        internal string Key => AppendJsonPointer(ParentPath, PropertyName);
     }
 
     private sealed record RepairAttempt(JsonNode Result, List<RepairCandidate> Candidates, int Depth);
@@ -1990,7 +2020,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             GetOrCreateSchemaContext(contexts, entry.Key).Required.UnionWith(entry.Value.Required);
             foreach (string property in entry.Value.Required)
             {
-                group.Add(entry.Key + "\u0000" + property);
+                group.Add(AppendJsonPointer(entry.Key, property));
             }
         }
 
@@ -2214,7 +2244,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private sealed class SourceRecoveryContext(
         object? value, JsonTypeInfo contract, JsonPropertyInfo? property = null,
-        object? owner = null, JsonTypeInfo? ownerContract = null, SourceRecoveryContext? parent = null)
+        object? owner = null, JsonTypeInfo? ownerContract = null, SourceRecoveryContext? parent = null,
+        Type? fallbackType = null)
     {
         private readonly Dictionary<string, SourceRecoveryContext?> _children = new(StringComparer.Ordinal);
         private Dictionary<JsonTypeInfo<object>, JsonTypeInfo<object>>? _scopeContracts;
@@ -2479,7 +2510,21 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             if (Contract.Type == typeof(object) && Contract.Converter.GetType().Assembly == typeof(JsonSerializer).Assembly)
             {
-                return options.GetTypeInfo(runtimeType);
+                try
+                {
+                    return options.GetTypeInfo(runtimeType);
+                }
+                catch (NotSupportedException) when (runtimeType.IsDefined(typeof(CompilerGeneratedAttribute), false) &&
+                    typeof(IEnumerable).IsAssignableFrom(runtimeType) && fallbackType is not null)
+                {
+                    JsonTypeInfo fallbackContract = options.GetTypeInfo(fallbackType);
+                    if (fallbackContract.Kind != JsonTypeInfoKind.Enumerable)
+                    {
+                        throw;
+                    }
+
+                    return fallbackContract;
+                }
             }
 
             if (Nullable.GetUnderlyingType(Contract.Type) is { } underlyingType &&
