@@ -2250,7 +2250,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         private readonly Dictionary<string, SourceRecoveryContext?> _children = new(StringComparer.Ordinal);
         private Dictionary<JsonTypeInfo<object>, JsonTypeInfo<object>>? _scopeContracts;
         private JsonTypeInfo? _activeContract;
-        private List<object?>? _items;
         private bool _dictionaryRead;
         private bool _extensionDataRead;
         private object? _extensionData;
@@ -2342,42 +2341,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             if (typeInfo.Kind == JsonTypeInfoKind.Enumerable && serializedParent is JsonArray serializedArray &&
                 int.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out int index) &&
-                index >= 0 && index < serializedArray.Count && Value is IEnumerable enumerable)
+                index >= 0 && index < serializedArray.Count && Value is IList list)
             {
-                object? item;
-                if (Value is IList list)
+                if (index >= list.Count)
                 {
-                    if (index >= list.Count)
-                    {
-                        return null;
-                    }
-
-                    item = list[index];
-                }
-                else
-                {
-                    if (_items is null)
-                    {
-                        _items = [];
-                        foreach (object? element in enumerable)
-                        {
-                            _items.Add(element);
-                            if (_items.Count >= serializedArray.Count)
-                            {
-                                break;
-                            }
-                        }
-                    }
-
-                    if (index >= _items.Count)
-                    {
-                        return null;
-                    }
-
-                    item = _items[index];
+                    return null;
                 }
 
-                return new(item, options.GetTypeInfo(typeInfo.ElementType!), parent: this);
+                return new(list[index], options.GetTypeInfo(typeInfo.ElementType!), parent: this);
             }
 
             if (typeInfo.Kind != JsonTypeInfoKind.Object)

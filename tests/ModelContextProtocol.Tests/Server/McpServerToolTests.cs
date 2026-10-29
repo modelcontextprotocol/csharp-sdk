@@ -1890,7 +1890,7 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_RecoversSourceGeneratedIterator()
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverSourceGeneratedIterator()
     {
         static IEnumerable<ExplicitSchemaOutput> Items()
         {
@@ -1906,7 +1906,7 @@ public partial class McpServerToolTests
             {"type":"array","items":{"required":["note"],"properties":{"note":{"type":"null"}}}}
             """, options);
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
-        Assert.Equal(JsonValueKind.Null, result[0].GetProperty("note").ValueKind);
+        Assert.False(result[0].TryGetProperty("note", out _));
     }
 
     [Fact]
@@ -2434,6 +2434,23 @@ public partial class McpServerToolTests
         Assert.True(source.EnumeratedItems <= count * 4, $"Enumerated {source.EnumeratedItems} source items.");
     }
 
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverReorderedEnumerable()
+    {
+        ReorderedRecoveryEnumerable source = new();
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        McpServerTool tool = CreateStructuredOutputTestTool(source,
+            """{"items":{"required":["count"]}}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal("a", result[0].GetProperty("id").GetString());
+        Assert.False(result[0].TryGetProperty("count", out _));
+        Assert.Equal("b", result[1].GetProperty("id").GetString());
+        Assert.Equal(5, result[1].GetProperty("count").GetInt32());
+        Assert.Equal(2, source.EnumerationCount);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -2732,6 +2749,21 @@ public partial class McpServerToolTests
             writer.WriteString("id", "visible");
             writer.WriteEndObject();
         }
+    }
+
+    private sealed class ReorderedRecoveryEnumerable : IEnumerable<ExplicitSchemaOutputWithDefaultValue>
+    {
+        public int EnumerationCount { get; private set; }
+
+        public IEnumerator<ExplicitSchemaOutputWithDefaultValue> GetEnumerator()
+        {
+            EnumerationCount++;
+            var first = new ExplicitSchemaOutputWithDefaultValue { Id = "a", Count = 0 };
+            var second = new ExplicitSchemaOutputWithDefaultValue { Id = "b", Count = 5 };
+            return (EnumerationCount == 1 ? new[] { first, second } : new[] { second, first }).AsEnumerable().GetEnumerator();
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     private class RecoveryCountingCollection(int count) : IReadOnlyList<NestedDefaultedStructuredChild>
