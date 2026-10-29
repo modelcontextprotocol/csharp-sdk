@@ -221,7 +221,11 @@ foreach (string name in new[] { "ForwardingEcho", "OverridingEcho" })
 }
 
 var iteratorResult = await client.CallToolAsync("Iterator");
-if (iteratorResult.StructuredContent is not { } iterator || iterator[0].GetProperty("count").GetInt32() != 0)
+if (iteratorResult.StructuredContent is not { } iterator ||
+    iterator.ValueKind != JsonValueKind.Array ||
+    iterator.GetArrayLength() != 1 ||
+    iterator[0].ValueKind != JsonValueKind.Object ||
+    iterator[0].TryGetProperty("count", out _))
 {
     throw new Exception($"Unexpected iterator output: {iteratorResult.StructuredContent}");
 }
