@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Globalization;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -2341,14 +2342,17 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
             if (typeInfo.Kind == JsonTypeInfoKind.Enumerable && serializedParent is JsonArray serializedArray &&
                 int.TryParse(name, NumberStyles.None, CultureInfo.InvariantCulture, out int index) &&
-                index >= 0 && index < serializedArray.Count && Value is IList list)
+                index >= 0 && index < serializedArray.Count)
             {
-                if (index >= list.Count)
+                if (Value is IList list)
                 {
-                    return null;
+                    return index < list.Count ? new(list[index], options.GetTypeInfo(typeInfo.ElementType!), parent: this) : null;
                 }
 
-                return new(list[index], options.GetTypeInfo(typeInfo.ElementType!), parent: this);
+                if (TryGetGenericListElement(Value, typeInfo.ElementType!, index, out object? element))
+                {
+                    return new(element, options.GetTypeInfo(typeInfo.ElementType!), parent: this);
+                }
             }
 
             if (typeInfo.Kind != JsonTypeInfoKind.Object)
@@ -2420,6 +2424,43 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             return null;
+        }
+
+#if !NETSTANDARD2_0
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(IReadOnlyList<>))]
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicProperties, typeof(IList<>))]
+#endif
+        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "The indexed interface properties are preserved by DynamicDependency.")]
+        private static bool TryGetGenericListElement(object value, Type elementType, int index, out object? element)
+        {
+            element = null;
+            foreach (Type contract in value.GetType().GetInterfaces())
+            {
+                if (!contract.IsGenericType || contract.GetGenericArguments()[0] != elementType)
+                {
+                    continue;
+                }
+
+                Type definition = contract.GetGenericTypeDefinition();
+                if (definition == typeof(IList<>) || definition == typeof(IReadOnlyList<>))
+                {
+                    PropertyInfo? item = contract.GetProperty("Item");
+                    if (item is not null)
+                    {
+                        try
+                        {
+                            element = item.GetValue(value, [index]);
+                            return true;
+                        }
+                        catch (TargetInvocationException ex) when (ex.InnerException is ArgumentOutOfRangeException or IndexOutOfRangeException)
+                        {
+                            return false;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
 
         private object? GetExtensionData(JsonPropertyInfo property)

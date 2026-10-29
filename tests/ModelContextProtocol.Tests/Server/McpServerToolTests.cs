@@ -2431,7 +2431,51 @@ public partial class McpServerToolTests
             source, """{"items":{"required":["note"]}}""");
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
         AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.Equal(count, result.GetArrayLength());
+        Assert.All(result.EnumerateArray(), item => Assert.Equal(JsonValueKind.Null, item.GetProperty("note").ValueKind));
         Assert.True(source.EnumeratedItems <= count * 4, $"Enumerated {source.EnumeratedItems} source items.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RecoversGenericListElements(bool mutable)
+    {
+        IEnumerable<ExplicitSchemaOutputWithDefaultValue> source = mutable ? new GenericMutableRecoveryList() : new GenericRecoveryList();
+        McpServerTool tool = CreateStructuredOutputTestTool(source,
+            """{"items":{"required":["count"]}}""", CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault));
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        Assert.Equal(0, result[0].GetProperty("count").GetInt32());
+        Assert.Equal(5, result[1].GetProperty("count").GetInt32());
+    }
+
+    private sealed class GenericMutableRecoveryList : IList<ExplicitSchemaOutputWithDefaultValue>
+    {
+        private readonly List<ExplicitSchemaOutputWithDefaultValue> _items =
+        [new() { Id = "a", Count = 0 }, new() { Id = "b", Count = 5 }];
+        ExplicitSchemaOutputWithDefaultValue IList<ExplicitSchemaOutputWithDefaultValue>.this[int index] { get => _items[index]; set => throw new NotSupportedException(); }
+        public int Count => _items.Count;
+        public bool IsReadOnly => true;
+        public IEnumerator<ExplicitSchemaOutputWithDefaultValue> GetEnumerator() => _items.GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        public int IndexOf(ExplicitSchemaOutputWithDefaultValue item) => _items.IndexOf(item);
+        public bool Contains(ExplicitSchemaOutputWithDefaultValue item) => _items.Contains(item);
+        public void CopyTo(ExplicitSchemaOutputWithDefaultValue[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
+        public void Add(ExplicitSchemaOutputWithDefaultValue item) => throw new NotSupportedException();
+        public void Clear() => throw new NotSupportedException();
+        public void Insert(int index, ExplicitSchemaOutputWithDefaultValue item) => throw new NotSupportedException();
+        public bool Remove(ExplicitSchemaOutputWithDefaultValue item) => throw new NotSupportedException();
+        public void RemoveAt(int index) => throw new NotSupportedException();
+    }
+
+    private sealed class GenericRecoveryList : IReadOnlyList<ExplicitSchemaOutputWithDefaultValue>
+    {
+        private readonly ExplicitSchemaOutputWithDefaultValue[] _items =
+        [new() { Id = "a", Count = 0 }, new() { Id = "b", Count = 5 }];
+        public int Count => _items.Length;
+        public ExplicitSchemaOutputWithDefaultValue this[int index] => _items[index];
+        public IEnumerator<ExplicitSchemaOutputWithDefaultValue> GetEnumerator() => ((IEnumerable<ExplicitSchemaOutputWithDefaultValue>)_items).GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
     [Fact]

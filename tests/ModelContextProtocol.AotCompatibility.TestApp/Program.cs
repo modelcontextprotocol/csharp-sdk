@@ -128,10 +128,28 @@ McpServerTool iteratorTool = McpServerTool.Create(
         SerializerOptions = structuredOptions,
         OutputSchema = JsonDocument.Parse("""{"type":"array","items":{"required":["count"]}}""").RootElement,
     });
+McpServerTool genericListTool = McpServerTool.Create(
+    () => new AotGenericList(),
+    new()
+    {
+        Name = "GenericList",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = JsonDocument.Parse("""{"type":"array","items":{"required":["count"]}}""").RootElement,
+    });
+McpServerTool genericMutableListTool = McpServerTool.Create(
+    () => new AotGenericMutableList(),
+    new()
+    {
+        Name = "GenericMutableList",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = genericListTool.ProtocolTool.OutputSchema,
+    });
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool])
+    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool])
     .WithTools(
     [
         new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
@@ -228,6 +246,16 @@ if (iteratorResult.StructuredContent is not { } iterator ||
     iterator[0].TryGetProperty("count", out _))
 {
     throw new Exception($"Unexpected iterator output: {iteratorResult.StructuredContent}");
+}
+
+foreach (string name in new[] { "GenericList", "GenericMutableList" })
+{
+    var genericListResult = await client.CallToolAsync(name);
+    if (genericListResult.StructuredContent is not { } genericList ||
+        genericList[0].GetProperty("count").GetInt32() != 0)
+    {
+        throw new Exception($"Unexpected generic list output: {genericListResult.StructuredContent}");
+    }
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");
@@ -338,6 +366,32 @@ internal sealed class AotStructuredOutput
         ((IDictionary<string, object?>)items)["entry"] = default(AotStructuredChild);
         return items;
     }
+}
+
+internal sealed class AotGenericList : IReadOnlyList<AotStructuredChild>
+{
+    public int Count => 1;
+    public AotStructuredChild this[int index] => index == 0 ? default : throw new ArgumentOutOfRangeException(nameof(index));
+    public IEnumerator<AotStructuredChild> GetEnumerator() => ((IEnumerable<AotStructuredChild>)new AotStructuredChild[1]).GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+}
+
+internal sealed class AotGenericMutableList : IList<AotStructuredChild>
+{
+    private readonly List<AotStructuredChild> _items = [default];
+    public AotStructuredChild this[int index] { get => _items[index]; set => throw new NotSupportedException(); }
+    public int Count => _items.Count;
+    public bool IsReadOnly => true;
+    public IEnumerator<AotStructuredChild> GetEnumerator() => _items.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    public int IndexOf(AotStructuredChild item) => _items.IndexOf(item);
+    public bool Contains(AotStructuredChild item) => _items.Contains(item);
+    public void CopyTo(AotStructuredChild[] array, int arrayIndex) => _items.CopyTo(array, arrayIndex);
+    public void Add(AotStructuredChild item) => throw new NotSupportedException();
+    public void Clear() => throw new NotSupportedException();
+    public void Insert(int index, AotStructuredChild item) => throw new NotSupportedException();
+    public bool Remove(AotStructuredChild item) => throw new NotSupportedException();
+    public void RemoveAt(int index) => throw new NotSupportedException();
 }
 
 [JsonNumberHandling(JsonNumberHandling.WriteAsString)]
@@ -544,6 +598,8 @@ internal sealed class AotCachingResolver(IJsonTypeInfoResolver inner) : IJsonTyp
 [JsonSerializable(typeof(Hashtable))]
 [JsonSerializable(typeof(AotAncestorRoot))]
 [JsonSerializable(typeof(IEnumerable<AotStructuredChild>))]
+[JsonSerializable(typeof(AotGenericList))]
+[JsonSerializable(typeof(AotGenericMutableList))]
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
