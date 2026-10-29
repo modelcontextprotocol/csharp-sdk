@@ -161,10 +161,28 @@ McpServerTool boundedRecoveryTool = McpServerTool.Create(
         SerializerOptions = structuredOptions,
         OutputSchema = JsonDocument.Parse(new JsonObject { ["anyOf"] = recoveryAlternatives }.ToJsonString()).RootElement,
     });
+McpServerTool annotationRecoveryTool = McpServerTool.Create(
+    () => new AotNullableChild { Real = "kept" },
+    new()
+    {
+        Name = "AnnotationRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = JsonDocument.Parse("""{"anyOf":[true,{"required":["note"],"properties":{"real":true,"note":true}}],"unevaluatedProperties":false}""").RootElement,
+    });
+McpServerTool regexRecoveryTool = McpServerTool.Create(
+    () => new AotNullableChild { Real = new string('a', 26) + "!" },
+    new()
+    {
+        Name = "RegexRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = JsonDocument.Parse("""{"anyOf":[{"properties":{"real":{"pattern":"^(a+)+$"}}},{"required":["note"]}]}""").RootElement,
+    });
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool])
+    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool, annotationRecoveryTool, regexRecoveryTool])
     .WithTools(
     [
         new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
@@ -278,6 +296,22 @@ if (boundedRecoveryResult.StructuredContent is not { } boundedRecovery ||
     boundedRecovery.GetRawText() != "{}")
 {
     throw new Exception($"Unexpected bounded recovery output: {boundedRecoveryResult.StructuredContent}");
+}
+
+var annotationRecoveryResult = await client.CallToolAsync("AnnotationRecovery");
+if (annotationRecoveryResult.StructuredContent is not { } annotationRecovery ||
+    annotationRecovery.GetProperty("note").ValueKind != JsonValueKind.Null ||
+    annotationRecovery.GetProperty("real").GetString() != "kept")
+{
+    throw new Exception($"Unexpected annotation recovery output: {annotationRecoveryResult.StructuredContent}");
+}
+
+var regexRecoveryResult = await client.CallToolAsync("RegexRecovery");
+if (regexRecoveryResult.StructuredContent is not { } regexRecovery ||
+    regexRecovery.TryGetProperty("note", out _) ||
+    regexRecovery.GetProperty("real").GetString() != new string('a', 26) + "!")
+{
+    throw new Exception($"Unexpected regex recovery output: {regexRecoveryResult.StructuredContent}");
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");

@@ -21,6 +21,42 @@ public partial class DelegatingToolOutputSchemaTests
     [InlineData("2025-11-25", true)]
     [InlineData("2026-07-28", false)]
     [InlineData("2026-07-28", true)]
+    public async Task ListTools_TransformingDelegator_RecoversAgainstInnerSchema(string protocolVersion, bool overrideInnerSchema)
+    {
+        JsonElement required = ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""");
+        McpServerTool inner = McpServerTool.Create(() => new { Note = (string?)null }, new()
+        {
+            Name = "transformed_note",
+            UseStructuredContent = true,
+            OutputSchema = overrideInnerSchema ? ParseJson("""{"type":"object"}""") : required,
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        if (overrideInnerSchema)
+        {
+            inner = new SchemaOverrideTool(inner, required);
+        }
+        McpServerTool tool = new DelegatingTool(new PayloadTool(inner));
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(ParseSchema(listed.ProtocolTool.OutputSchema!.Value).Evaluate(result.StructuredContent!.Value).IsValid);
+            Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("payload").GetProperty("note").ValueKind);
+        });
+    }
+
+    [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
     public async Task ListTools_DelegatingTool_RecoversAgainstEffectiveSchema(string protocolVersion, bool outerRequiresNull)
     {
         JsonElement requiredSchema = ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""");
@@ -950,6 +986,24 @@ public partial class DelegatingToolOutputSchemaTests
     }
 
     private sealed class DelegatingTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
+
+    private sealed class PayloadTool(McpServerTool inner) : DelegatingMcpServerTool(inner)
+    {
+        public override Tool ProtocolTool { get; } = new()
+        {
+            Name = inner.ProtocolTool.Name,
+            InputSchema = inner.ProtocolTool.InputSchema,
+            OutputSchema = ParseJson($$$$"""{"type":"object","required":["payload"],"properties":{"payload":{{{{inner.ProtocolTool.OutputSchema!.Value.GetRawText()}}}}}}"""),
+        };
+
+        public override async ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        {
+            CallToolResult result = await base.InvokeAsync(request, cancellationToken);
+            result.StructuredContent = ParseJson($$"""{"payload":{{result.StructuredContent!.Value.GetRawText()}}}""");
+            return result;
+        }
+    }
 
     private sealed class AlternateInvocationTool(McpServerTool inner, CallToolResult response) : DelegatingMcpServerTool(inner)
     {

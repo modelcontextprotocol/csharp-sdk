@@ -3,12 +3,154 @@ using System.Text.Json.Nodes;
 using Json.Schema;
 using ModelContextProtocol.Tests.Utils;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Protocol;
+using Moq;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerToolTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_Search_BoundsFiniteRecursiveAnnotationEvaluation(bool dynamicReference)
+    {
+        string reference = dynamicReference ? "\"$dynamicRef\":\"#node\"" : "\"$ref\":\"#\"";
+        string schema = $$$$"""{"$schema":"https://json-schema.org/draft/2020-12/schema","$dynamicAnchor":"node","required":["note"],"properties":{"child":{ {{{{reference}}}} }},"unevaluatedProperties":true}""";
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new { Note = (string?)null, Child = new { Note = (string?)null, Child = new { Note = (string?)null } } }, schema);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("note").ValueKind);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("child").GetProperty("note").ValueKind);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("child").GetProperty("child").GetProperty("note").ValueKind);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_Search_RetainsAnnotationChangingAlternatives(bool array, bool exclusive)
+    {
+        string first = exclusive
+            ? """{"not":{"properties":{"child":{"required":["note"]}}}}"""
+            : "true";
+        string choice = $$$$"""{"{{{{(exclusive ? "oneOf" : "anyOf")}}}}":[{{{{first}}}},{"properties":{"child":{"required":["note"]}}}],"unevaluatedProperties":false}""";
+        string schema = array ? $$"""{"items":{{choice}}}""" : choice;
+        object output = array
+            ? new[] { new { Child = new { Note = (string?)null } } }
+            : new { Child = new { Note = (string?)null } };
+        McpServerTool tool = CreateStructuredOutputTestTool(output, schema);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.Equal(JsonValueKind.Null, (array ? result[0] : result).GetProperty("child").GetProperty("note").ValueKind);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_Search_StopsAfterRegexTimeout(bool propertyPattern)
+    {
+        string input = new string('a', 26) + "!";
+        object output = propertyPattern
+            ? new { Note = (string?)null, Items = new Dictionary<string, object> { [input] = new { Value = 1 } } }
+            : new { Note = (string?)null, Value = input };
+        string schema = propertyPattern
+            ? """{"required":["note"],"properties":{"items":{"patternProperties":{"^(a+)+$":false}}}}"""
+            : """{"anyOf":[{"properties":{"value":{"pattern":"^(a+)+$"}}},{"required":["note"]}]}""";
+        McpServerTool tool = CreateStructuredOutputTestTool(output, schema);
+
+        JsonElement result = await Task.Run(
+            () => InvokeStructuredOutputTestTool(tool), TestContext.Current.CancellationToken)
+            .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        Assert.False(result.TryGetProperty("note", out _));
+        if (propertyPattern)
+        {
+            Assert.Equal(1, result.GetProperty("items").GetProperty(input).GetProperty("value").GetInt32());
+        }
+        else
+        {
+            Assert.Equal(input, result.GetProperty("value").GetString());
+        }
+    }
+
 #if NET
+    [Fact]
+    public async Task StructuredOutput_Search_BoundsLegacyRecursiveDiagnosticExpansion()
+    {
+        JsonNode output = new JsonObject { ["kept"] = 1 };
+        for (int i = 0; i < 18; i++)
+        {
+            output = new JsonObject { ["child"] = output };
+        }
+        using JsonDocument document = JsonDocument.Parse(output.ToJsonString());
+        const string schema = """
+            {
+              "$schema":"https://json-schema.org/draft/2019-09/schema",
+              "$id":"https://example.test/legacy/root","$recursiveAnchor":true,
+              "properties":{"child":{"$ref":"b"}},"unevaluatedProperties":true,
+              "$defs":{
+                "b":{"$id":"b","properties":{"child":{"$ref":"c"}}},
+                "c":{"$id":"c","$recursiveAnchor":true,"allOf":[
+                  {"properties":{"child":{"$recursiveRef":"#"}}},
+                  {"properties":{"child":{"$recursiveRef":"#"}}}
+                ]}
+              }
+            }
+            """;
+        McpServerTool tool = CreateStructuredOutputTestTool(document.RootElement, schema);
+
+        await Task.Run(() =>
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            JsonElement result = InvokeStructuredOutputTestTool(tool).GetAwaiter().GetResult();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.Equal(document.RootElement.GetRawText(), result.GetRawText());
+            Assert.True(allocated < 32 * 1024 * 1024, $"Legacy recursive diagnostics allocated {allocated:N0} bytes.");
+        }, TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData(4, true)]
+    [InlineData(14, false)]
+    public async Task StructuredOutput_Search_BoundsUnevaluatedDagDiagnostics(int depth, bool recoverable)
+    {
+        JsonObject definitions = new() { ["s0"] = JsonNode.Parse("""{"properties":{"kept":true}}""") };
+        for (int i = 1; i <= depth; i++)
+        {
+            definitions[$"s{i}"] = JsonNode.Parse($$"""{"allOf":[{"$ref":"#/$defs/s{{i - 1}}"},{"$ref":"#/$defs/s{{i - 1}}"}]}""");
+        }
+        McpServerTool tool = CreateStructuredOutputTestTool(new { Kept = 1, Child = new { Note = (string?)null } },
+            new JsonObject
+            {
+                ["$ref"] = $"#/$defs/s{depth}",
+                ["$defs"] = definitions,
+                ["unevaluatedProperties"] = JsonNode.Parse("""{"required":["note"]}"""),
+            }.ToJsonString());
+
+        await Task.Run(() =>
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            JsonElement result = InvokeStructuredOutputTestTool(tool).GetAwaiter().GetResult();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            TestContext.Current.TestOutputHelper?.WriteLine($"Allocated {allocated:N0} bytes for diagnostic DAG depth {depth}.");
+
+            Assert.Equal(1, result.GetProperty("kept").GetInt32());
+            Assert.Equal(recoverable, result.GetProperty("child").TryGetProperty("note", out _));
+            Assert.True(allocated < 32 * 1024 * 1024, $"Diagnostic evaluation allocated {allocated:N0} bytes.");
+        }, TestContext.Current.CancellationToken);
+    }
+
     [Theory]
     [InlineData(8, true)]
     [InlineData(64, false)]
@@ -315,6 +457,53 @@ public partial class McpServerToolTests
         else
         {
             Assert.False(result.TryGetProperty("absent", out _));
+        }
+    }
+
+    [Collection(nameof(DisableParallelization))]
+    public class RecoverySchemaRegistryTests
+    {
+        [Fact]
+        public async Task StructuredOutput_Search_DoesNotMutateBorrowedSchemaRegexes()
+        {
+            Uri uri = new($"https://example.test/recovery/{Guid.NewGuid():N}");
+            JsonSchema external = JsonSchema.FromText(
+                """{"required":["note"],"properties":{"value":{"pattern":"^safe$"}}}""",
+                new BuildOptions { SchemaRegistry = new() }, uri);
+            KeywordData pattern = external.Root.Keywords.Single(keyword => keyword.Handler.Name == "properties")
+                .Subschemas.Single().Keywords.Single(keyword => keyword.Handler.Name == "pattern");
+            Regex original = Assert.IsType<Regex>(pattern.Value);
+            var fetch = SchemaRegistry.Global.Fetch;
+            try
+            {
+                SchemaRegistry.Global.Fetch = (requested, registry) => requested == uri ? external : fetch(requested, registry);
+                McpServerTool tool = McpServerTool.Create(() => new { Note = (string?)null, Value = "safe" }, new()
+                {
+                    Name = "tool",
+                    UseStructuredContent = true,
+                    OutputSchema = JsonDocument.Parse($$"""{"$ref":"{{uri}}"}""").RootElement,
+                    SerializerOptions = new(JsonSerializerDefaults.Web)
+                    {
+                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                    },
+                });
+                Mock<McpServer> server = new();
+                server.SetupGet(instance => instance.NegotiatedProtocolVersion).Returns("2026-07-28");
+                RequestContext<CallToolRequestParams> request = new(server.Object,
+                    new JsonRpcRequest { Id = new RequestId("test"), Method = "tools/call" },
+                    new CallToolRequestParams { Name = "tool" });
+
+                CallToolResult result = await tool.InvokeAsync(request, TestContext.Current.CancellationToken);
+
+                Assert.NotEqual(true, result.IsError);
+                Assert.Equal("""{"value":"safe"}""", result.StructuredContent!.Value.GetRawText());
+                Assert.Same(original, pattern.Value);
+            }
+            finally
+            {
+                SchemaRegistry.Global.Fetch = fetch;
+            }
         }
     }
 }
