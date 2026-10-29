@@ -78,6 +78,7 @@ public partial class McpServerToolTests
     [InlineData("""{"properties":{"tag":{"const":1}}}""")]
     [InlineData("""{"type":"object","properties":{"tag":{"const":1}},"required":["marker","items"]}""")]
     [InlineData("""{"properties":{"tag":{"const":1}},"minProperties":3}""")]
+    [InlineData("""{"properties":{"tag":{"const":1}},"maxProperties":3}""")]
     public async Task StructuredOutput_ConditionalRepair_ValidatesAncestorGuardWithoutLosingRequiredProperties(string guard)
     {
         McpServerTool tool = CreateStructuredOutputTestTool(

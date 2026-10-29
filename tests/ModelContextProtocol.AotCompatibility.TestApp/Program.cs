@@ -146,10 +146,25 @@ McpServerTool genericMutableListTool = McpServerTool.Create(
         SerializerOptions = structuredOptions,
         OutputSchema = genericListTool.ProtocolTool.OutputSchema,
     });
+JsonArray recoveryAlternatives = [];
+for (int i = 0; i < 128; i++)
+{
+    recoveryAlternatives.Add((JsonNode)new JsonObject { ["required"] = new JsonArray($"missing{i}_" + new string('x', 512)) });
+}
+recoveryAlternatives.Add((JsonNode)new JsonObject { ["required"] = new JsonArray("note") });
+McpServerTool boundedRecoveryTool = McpServerTool.Create(
+    () => new AotNullableChild(),
+    new()
+    {
+        Name = "BoundedRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = JsonDocument.Parse(new JsonObject { ["anyOf"] = recoveryAlternatives }.ToJsonString()).RootElement,
+    });
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool])
+    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool])
     .WithTools(
     [
         new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
@@ -256,6 +271,13 @@ foreach (string name in new[] { "GenericList", "GenericMutableList" })
     {
         throw new Exception($"Unexpected generic list output: {genericListResult.StructuredContent}");
     }
+}
+
+var boundedRecoveryResult = await client.CallToolAsync("BoundedRecovery");
+if (boundedRecoveryResult.StructuredContent is not { } boundedRecovery ||
+    boundedRecovery.GetRawText() != "{}")
+{
+    throw new Exception($"Unexpected bounded recovery output: {boundedRecoveryResult.StructuredContent}");
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");

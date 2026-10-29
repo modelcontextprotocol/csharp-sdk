@@ -8,6 +8,50 @@ namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerToolTests
 {
+#if NET
+    [Theory]
+    [InlineData(8, true)]
+    [InlineData(64, false)]
+    [InlineData(128, false)]
+    [InlineData(128, true)]
+    public async Task StructuredOutput_Search_BoundsWideSchemaAllocations(int width, bool recoverable)
+    {
+        JsonArray alternatives = [];
+        for (int i = 0; i < width; i++)
+        {
+            alternatives.Add((JsonNode)new JsonObject
+            {
+                ["required"] = new JsonArray($"missing{i}_" + new string('x', 512)),
+            });
+        }
+        if (recoverable)
+        {
+            alternatives.Add((JsonNode)new JsonObject { ["required"] = new JsonArray("note") });
+        }
+
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new { Value = "kept", Note = (string?)null }, new JsonObject { ["anyOf"] = alternatives }.ToJsonString());
+
+        await Task.Run(() =>
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            Task<JsonElement> invocation = InvokeStructuredOutputTestTool(tool);
+            Assert.True(invocation.IsCompleted);
+            JsonElement result = invocation.GetAwaiter().GetResult();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            TestContext.Current.TestOutputHelper?.WriteLine($"Allocated {allocated:N0} bytes for {width} branches.");
+
+            Assert.Equal("kept", result.GetProperty("value").GetString());
+            Assert.Equal(recoverable && width == 8, result.TryGetProperty("note", out _));
+            if (width != 8)
+            {
+                Assert.Equal("""{"value":"kept"}""", result.GetRawText());
+            }
+            Assert.True(allocated < 32 * 1024 * 1024, $"Recovery allocated {allocated:N0} bytes for {width} branches.");
+        }, TestContext.Current.CancellationToken);
+    }
+#endif
+
     [Theory]
     [InlineData("anyOf")]
     [InlineData("oneOf")]
