@@ -27,6 +27,11 @@ services.AddScoped<AotCatalogDependency>();
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
+    .WithTools(
+    [
+        new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
+        new OverridingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "OverridingEcho", UseStructuredContent = true })),
+    ])
     .WithMcpApps()
     .WithSkills<AotSkillCatalog>()
     .WithResources(authoredSkill.Resources);
@@ -57,6 +62,15 @@ var result = await echo.InvokeAsync(new() { ["arg"] = "Hello World" });
 if (result is null || !result.ToString()!.Contains("Echo: Hello World"))
 {
     throw new Exception($"Unexpected result: {result}");
+}
+
+foreach (string name in new[] { "ForwardingEcho", "OverridingEcho" })
+{
+    var delegatedResult = await client.CallToolAsync(name, new Dictionary<string, object?> { ["arg"] = "Hello World" });
+    if (delegatedResult.StructuredContent?.GetString() != "Echo: Hello World")
+    {
+        throw new Exception($"Unexpected delegated result for {name}.");
+    }
 }
 
 // List, get, and verify a skill.
@@ -107,7 +121,7 @@ Console.WriteLine("Success!");
 [McpServerToolType]
 internal sealed class AotTools
 {
-    [McpServerTool(Name = "Echo")]
+    [McpServerTool(Name = "Echo", UseStructuredContent = true)]
     [McpAppUi(ResourceUri = "ui://aot/echo")]
     public static string Echo(string arg) => $"Echo: {arg}";
 }
@@ -157,4 +171,13 @@ internal sealed class AotSkillCatalog(InMemoryMcpSkillCatalog catalog, AotCatalo
             throw new Exception("The catalog did not receive request-scoped services.");
         }
     }
+}
+
+internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
+
+internal sealed class OverridingAotTool(McpServerTool inner) : ForwardingAotTool(inner)
+{
+    public override ValueTask<CallToolResult> InvokeAsync(
+        RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default) =>
+        base.InvokeAsync(request, cancellationToken);
 }

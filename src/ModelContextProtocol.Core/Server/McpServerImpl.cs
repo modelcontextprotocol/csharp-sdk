@@ -1538,15 +1538,23 @@ internal sealed partial class McpServerImpl : McpServer
                     // to "object", any other non-object schema wrapped in
                     // {"type":"object","properties":{"result":<schema>}}). Clients on
                     // 2026-07-28+ receive the natural JSON Schema 2020-12 document stored
-                    // on Tool.OutputSchema. Only AIFunctionMcpServerTool tools go through
-                    // reshaping; custom McpServerTool subclasses build their Tool directly
-                    // and pass through unchanged at every protocol version.
+                    // on Tool.OutputSchema. AIFunctionMcpServerTool tools, including those
+                    // behind delegating tools, go through reshaping; custom tools build their
+                    // Tool directly and pass through unchanged at every protocol version.
                     bool useNaturalSchemas = McpSessionHandler.SupportsNaturalOutputSchemas(request.Server.NegotiatedProtocolVersion);
                     foreach (var t in tools)
                     {
-                        Tool wireTool = useNaturalSchemas || t is not AIFunctionMcpServerTool aiFunctionTool
+                        McpServerTool innerTool = t;
+                        bool hasCustomInvocation = false;
+                        while (!useNaturalSchemas && innerTool is DelegatingMcpServerTool delegatingTool)
+                        {
+                            hasCustomInvocation |= delegatingTool.HasCustomInvocation;
+                            innerTool = delegatingTool.InnerTool;
+                        }
+
+                        Tool wireTool = useNaturalSchemas || innerTool is not AIFunctionMcpServerTool aiFunctionTool
                             ? t.ProtocolTool
-                            : aiFunctionTool.BuildLegacyWireProtocolTool();
+                            : aiFunctionTool.BuildLegacyWireProtocolTool(t.ProtocolTool, hasCustomInvocation);
                         result.Tools.Add(wireTool);
                     }
                 }

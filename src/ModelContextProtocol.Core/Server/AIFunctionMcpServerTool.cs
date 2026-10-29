@@ -14,6 +14,7 @@ namespace ModelContextProtocol.Server;
 internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
+    private readonly bool? _returnsCallToolResult;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -41,9 +42,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         options = DeriveOptions(method, options);
 
-        return Create(
+        return CreateCore(
             AIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
-            options);
+            options,
+            returnsCallToolResult: ReturnsCallToolResult(method));
     }
 
     /// <summary>
@@ -59,13 +61,27 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         options = DeriveOptions(method, options);
 
-        return Create(
+        return CreateCore(
             AIFunctionFactory.Create(method, args =>
             {
                 Debug.Assert(args.Services is RequestServiceProvider<CallToolRequestParams>, $"The service provider should be a {nameof(RequestServiceProvider<>)} for this method to work correctly.");
                 return createTargetFunc(((RequestServiceProvider<CallToolRequestParams>)args.Services!).Request);
             }, CreateAIFunctionFactoryOptions(method, options)),
-            options);
+            options,
+            returnsCallToolResult: ReturnsCallToolResult(method));
+    }
+
+    private static bool? ReturnsCallToolResult(MethodInfo method)
+    {
+        Type returnType = method.ReturnType;
+        if (returnType.IsGenericType &&
+            (returnType.GetGenericTypeDefinition() == typeof(Task<>) || returnType.GetGenericTypeDefinition() == typeof(ValueTask<>)))
+        {
+            returnType = returnType.GetGenericArguments()[0];
+        }
+
+        return returnType == typeof(CallToolResult) ? true :
+            returnType.IsAssignableFrom(typeof(CallToolResult)) ? null : false;
     }
 
     private static AIFunctionFactoryOptions CreateAIFunctionFactoryOptions(
@@ -110,7 +126,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         };
 
     /// <summary>Creates an <see cref="McpServerTool"/> that wraps the specified <see cref="AIFunction"/>.</summary>
-    public static new AIFunctionMcpServerTool Create(AIFunction function, McpServerToolCreateOptions? options)
+    public static new AIFunctionMcpServerTool Create(AIFunction function, McpServerToolCreateOptions? options) =>
+        CreateCore(function, options, returnsCallToolResult: null);
+
+    private static AIFunctionMcpServerTool CreateCore(AIFunction function, McpServerToolCreateOptions? options, bool? returnsCallToolResult)
     {
         Throw.IfNull(function);
 
@@ -155,7 +174,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 options.Meta;
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? []);
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? [], returnsCallToolResult);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -217,7 +236,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     internal AIFunction AIFunction { get; }
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
-    private AIFunctionMcpServerTool(AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata)
+    private AIFunctionMcpServerTool(
+        AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata, bool? returnsCallToolResult)
     {
         ValidateToolName(tool.Name);
 
@@ -225,6 +245,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         ProtocolTool = tool;
 
         _metadata = metadata;
+        _returnsCallToolResult = returnsCallToolResult;
     }
 
     /// <inheritdoc />
@@ -238,32 +259,37 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// into the wire shape required by clients on protocol versions older than
     /// <c>"2026-07-28"</c>. Those versions require <c>outputSchema.type == "object"</c>;
     /// SEP-2106 (negotiated at <c>"2026-07-28"</c> and later) widens that to any JSON
-    /// Schema 2020-12 document. To stay compatible, non-object schemas are wrapped in
-    /// <c>{"type":"object","properties":{"result":&lt;schema&gt;}}</c> and the
-    /// <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>
-    /// before emission. Returns <see cref="ProtocolTool"/> unchanged when there is no
+    /// Schema 2020-12 document. The supplied schema is wrapped in
+    /// <c>{"type":"object","properties":{"result":&lt;schema&gt;}}</c> only when this
+    /// SDK tool wraps its structured content; otherwise its root type is normalized to
+    /// <c>"object"</c>. When marshalling can return either ordinary values or explicit tool
+    /// results, the schema accepts both shapes. Returns <paramref name="protocolTool"/> unchanged when there is no
     /// output schema. Callers must gate the call on the negotiated version — this method
     /// is unconditional; the gate lives at the emission site.
     /// </summary>
-    internal Tool BuildLegacyWireProtocolTool()
+    internal Tool BuildLegacyWireProtocolTool(Tool protocolTool, bool hasCustomInvocation)
     {
-        if (ProtocolTool.OutputSchema is not { } natural)
+        if (protocolTool.OutputSchema is not { } natural)
         {
-            return ProtocolTool;
+            return protocolTool;
         }
 
-        JsonElement legacyOutputSchema = TransformOutputSchemaForLegacyWire(natural);
+        bool wrapValue = ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema ?? natural);
+        bool? returnsCallToolResult = hasCustomInvocation ? null : _returnsCallToolResult;
+        JsonElement legacyOutputSchema = wrapValue && returnsCallToolResult is not false
+            ? TransformOutputSchemaForPossibleToolResult(natural, nullEnvelopeOnly: returnsCallToolResult is true)
+            : TransformOutputSchemaForLegacyWire(natural, wrapValue);
 
         return new Tool
         {
-            Name = ProtocolTool.Name,
-            Title = ProtocolTool.Title,
-            Description = ProtocolTool.Description,
-            InputSchema = ProtocolTool.InputSchema,
+            Name = protocolTool.Name,
+            Title = protocolTool.Title,
+            Description = protocolTool.Description,
+            InputSchema = protocolTool.InputSchema,
             OutputSchema = legacyOutputSchema,
-            Annotations = ProtocolTool.Annotations,
-            Icons = ProtocolTool.Icons,
-            Meta = ProtocolTool.Meta,
+            Annotations = protocolTool.Annotations,
+            Icons = protocolTool.Icons,
+            Meta = protocolTool.Meta,
         };
     }
 
@@ -287,6 +313,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         object? result;
         result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
+
+        if (result is CallToolResult callToolResult)
+        {
+            return callToolResult;
+        }
 
         JsonElement? structuredContent = CreateStructuredResponse(result, request.Server.NegotiatedProtocolVersion);
         return result switch
@@ -323,8 +354,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 Content = [.. contents],
                 StructuredContent = structuredContent,
             },
-
-            CallToolResult callToolResponse => callToolResponse,
 
             _ => new()
             {
@@ -564,102 +593,171 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     /// <summary>
-    /// Transforms <paramref name="naturalSchema"/> into the wire shape required by clients
-    /// on protocol versions older than <c>"2026-07-28"</c>: non-object schemas are wrapped
-    /// in <c>{"type":"object","properties":{"result":&lt;schema&gt;},"required":["result"]}</c>,
-    /// the <c>type:["object","null"]</c> array form is normalized to plain <c>"object"</c>,
-    /// and plain object-typed schemas pass through unchanged. SEP-2106 clients
+    /// Transforms <paramref name="naturalSchema"/> into an object-typed schema for clients
+    /// on protocol versions older than <c>"2026-07-28"</c>, adding a required
+    /// <c>result</c> envelope only when <paramref name="wrapValue"/> is true. SEP-2106 clients
     /// (<c>"2026-07-28"</c>+) see the natural schema and never need this transform.
-    /// Dispatches on <see cref="ShouldWrapValueForLegacyWire"/> so the wrap decision lives
-    /// in one place.
+    /// The envelope decision follows the underlying SDK tool's schema so it matches invocation,
+    /// even when a delegating wrapper expresses its schema differently.
     /// </summary>
     /// <param name="naturalSchema">The natural JSON Schema 2020-12 document.</param>
-    internal static JsonElement TransformOutputSchemaForLegacyWire(JsonElement naturalSchema)
+    /// <param name="wrapValue">Whether invocation wraps structured content in a result envelope.</param>
+    internal static JsonElement TransformOutputSchemaForLegacyWire(JsonElement naturalSchema, bool wrapValue)
     {
-        if (naturalSchema.ValueKind is not JsonValueKind.Object ||
-            !naturalSchema.TryGetProperty("type", out JsonElement typeProperty) ||
-            typeProperty.ValueKind is not JsonValueKind.String ||
-            typeProperty.GetString() is not "object")
+        if (!wrapValue &&
+            naturalSchema.ValueKind is JsonValueKind.Object &&
+            naturalSchema.TryGetProperty("type", out JsonElement typeProperty) &&
+            typeProperty.ValueKind is JsonValueKind.String &&
+            typeProperty.GetString() is "object")
         {
-            JsonNode? schemaNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
-
-            if (schemaNode is JsonObject objSchema &&
-                objSchema.TryGetPropertyValue("type", out JsonNode? typeNode) &&
-                typeNode is JsonArray { Count: 2 } typeArray &&
-                typeArray.Any(type => (string?)type is "object") &&
-                typeArray.Any(type => (string?)type is "null"))
-            {
-                // type:["object","null"] → normalize to plain "object". No envelope.
-                objSchema["type"] = "object";
-            }
-            else
-            {
-                // Anything else (string, integer, array, boolean schemas, missing type,
-                // compositions). Wrap in the {"result": <schema>} envelope.
-                schemaNode = new JsonObject
-                {
-                    ["type"] = "object",
-                    ["properties"] = new JsonObject
-                    {
-                        ["result"] = schemaNode
-                    },
-                    ["required"] = new JsonArray { (JsonNode)"result" }
-                };
-
-                // After wrapping, any internal $ref pointers that used absolute JSON Pointer
-                // paths (e.g., "#/items/..." or "#") are now invalid because the original schema
-                // has moved under "#/properties/result". Rewrite them to account for the new location.
-                RewriteRefPointers(schemaNode["properties"]!["result"]);
-            }
-
-            return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+            return naturalSchema;
         }
 
-        return naturalSchema;
+        JsonNode? schemaNode;
+        if (!wrapValue)
+        {
+            JsonObject objSchema = CreateObjectWireSchema(naturalSchema);
+            objSchema["$ref"] = "#/$defs/output";
+            schemaNode = objSchema;
+        }
+        else
+        {
+            JsonNode? naturalNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+            schemaNode = new JsonObject
+            {
+                ["type"] = "object",
+                ["properties"] = new JsonObject
+                {
+                    ["result"] = naturalNode
+                },
+                ["required"] = new JsonArray { (JsonNode)"result" }
+            };
+
+            // After wrapping, any internal $ref pointers that used absolute JSON Pointer
+            // paths (e.g., "#/items/..." or "#") are now invalid because the original schema
+            // has moved under "#/properties/result". Rewrite them to account for the new location.
+            RewriteRefPointers(schemaNode["properties"]!["result"]);
+        }
+
+        return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
+    }
+
+    private static JsonObject CreateObjectWireSchema(JsonElement naturalSchema)
+    {
+        JsonNode? naturalNode = JsonSerializer.SerializeToNode(naturalSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
+        RewriteRefPointers(naturalNode, "/$defs/output");
+        return new JsonObject
+        {
+            ["type"] = "object",
+            ["$defs"] = new JsonObject { ["output"] = naturalNode },
+        };
+    }
+
+    private static JsonElement TransformOutputSchemaForPossibleToolResult(JsonElement naturalSchema, bool nullEnvelopeOnly)
+    {
+        const string outputReference = "#/$defs/output";
+        JsonObject resultSchema = new() { ["$ref"] = outputReference };
+        if (nullEnvelopeOnly)
+        {
+            // A null CallToolResult follows the ordinary result path.
+            resultSchema["type"] = "null";
+        }
+
+        JsonObject schemaNode = CreateObjectWireSchema(naturalSchema);
+        schemaNode["anyOf"] = new JsonArray
+        {
+            (JsonNode)new JsonObject { ["$ref"] = outputReference },
+            (JsonNode)new JsonObject
+            {
+                ["properties"] = new JsonObject
+                {
+                    ["result"] = resultSchema,
+                },
+                ["required"] = new JsonArray { (JsonNode)"result" },
+            },
+        };
+        return JsonSerializer.Deserialize(schemaNode, McpJsonUtilities.JsonContext.Default.JsonElement);
     }
 
     /// <summary>
-    /// Recursively rewrites all <c>$ref</c> JSON Pointer values in the given node
-    /// to account for the schema having been wrapped under <c>properties.result</c>.
+    /// Rebases root-relative schema references when moving a schema, without changing literal
+    /// instance data or references inside resources that declare their own identifier.
     /// </summary>
-    /// <remarks>
-    /// <c>System.Text.Json</c>'s <see cref="System.Text.Json.Schema.JsonSchemaExporter"/> uses absolute
-    /// JSON Pointer paths (e.g., <c>#/items/properties/foo</c>) to deduplicate types that appear at
-    /// multiple locations in the schema. When the original schema is moved under
-    /// <c>#/properties/result</c> by the wrapping logic above, these pointers become unresolvable.
-    /// This method prepends <c>/properties/result</c> to every <c>$ref</c> that starts with <c>#/</c>,
-    /// and rewrites bare <c>#</c> (root self-references from recursive types) to <c>#/properties/result</c>,
-    /// so the pointers remain valid after wrapping.
-    /// </remarks>
-    private static void RewriteRefPointers(JsonNode? node)
+    private static void RewriteRefPointers(JsonNode? node, string prefix = "/properties/result")
     {
-        if (node is JsonObject obj)
+        if (node is JsonArray array)
         {
-            if (obj.TryGetPropertyValue("$ref", out JsonNode? refNode) &&
-                refNode?.GetValue<string>() is string refValue)
+            foreach (JsonNode? item in array)
             {
-                if (refValue == "#")
-                {
-                    obj["$ref"] = "#/properties/result";
-                }
-                else if (refValue.StartsWith("#/", StringComparison.Ordinal))
-                {
-                    obj["$ref"] = "#/properties/result" + refValue.Substring(1);
-                }
+                RewriteRefPointers(item, prefix);
             }
 
-            // Safe to iterate without snapshot: the $ref assignment above completes before
-            // this enumerator is created, and recursive calls only mutate descendant objects.
+            return;
+        }
+
+        if (node is JsonObject obj)
+        {
+            if (obj["$id"] is JsonValue idNode &&
+                idNode.TryGetValue<string>(out string? id) && !string.IsNullOrEmpty(id))
+            {
+                return;
+            }
+
+            RewriteRefProperty(obj, "$ref", prefix);
+            RewriteRefProperty(obj, "$dynamicRef", prefix);
+
             foreach (var property in obj)
             {
-                RewriteRefPointers(property.Value);
+                switch (property.Key)
+                {
+                    case "$defs":
+                    case "definitions":
+                    case "properties":
+                    case "patternProperties":
+                    case "dependentSchemas":
+                        if (property.Value is JsonObject schemas)
+                        {
+                            foreach (var schema in schemas)
+                            {
+                                RewriteRefPointers(schema.Value, prefix);
+                            }
+                        }
+                        break;
+
+                    case "allOf":
+                    case "anyOf":
+                    case "oneOf":
+                    case "prefixItems":
+                    case "items":
+                    case "additionalProperties":
+                    case "unevaluatedProperties":
+                    case "unevaluatedItems":
+                    case "propertyNames":
+                    case "contains":
+                    case "not":
+                    case "if":
+                    case "then":
+                    case "else":
+                    case "contentSchema":
+                        RewriteRefPointers(property.Value, prefix);
+                        break;
+                }
             }
         }
-        else if (node is JsonArray arr)
+    }
+
+    private static void RewriteRefProperty(JsonObject schema, string keyword, string prefix)
+    {
+        if (schema[keyword] is JsonValue refNode && refNode.TryGetValue<string>(out string? reference))
         {
-            foreach (var item in arr)
+            if (reference is "" or "#")
             {
-                RewriteRefPointers(item);
+                schema[keyword] = "#" + prefix;
+            }
+            else if (reference?.StartsWith("#", StringComparison.Ordinal) is true &&
+                Uri.UnescapeDataString(reference.Substring(1)).StartsWith("/", StringComparison.Ordinal))
+            {
+                schema[keyword] = "#" + prefix + reference.Substring(1);
             }
         }
     }
