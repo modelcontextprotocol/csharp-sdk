@@ -124,8 +124,16 @@ public sealed class McpServerToolCreateOptions
     /// The default is <see langword="false"/>.
     /// </value>
     /// <remarks>
+    /// <para>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
+    /// </para>
+    /// <para>
+    /// Recovery of required members omitted by null or default-value serialization policies is best effort.
+    /// Recovery does not re-enumerate non-indexable collections, such as sets, queues, or linked lists.
+    /// Materialize these collections into arrays or lists when their elements need this recovery.
+    /// If safe recovery cannot produce a schema-valid result, the original serialized content is retained.
+    /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
 

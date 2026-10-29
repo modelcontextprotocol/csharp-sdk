@@ -2855,23 +2855,29 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private static bool IsExcludedReadOnlyMember(JsonPropertyInfo propertyInfo, JsonSerializerOptions serializerOptions)
     {
-        if (propertyInfo.ShouldSerialize is not null || GetIgnoreAttribute(propertyInfo) is not null || propertyInfo.Set is not null)
+        if (propertyInfo.Set is not null ||
+            (!serializerOptions.IgnoreReadOnlyProperties && !serializerOptions.IgnoreReadOnlyFields))
         {
             return false;
         }
 
-        if (propertyInfo.AttributeProvider is FieldInfo)
-        {
-            return serializerOptions.IgnoreReadOnlyFields;
-        }
+        // AttributeProvider is optional and does not control serialization. Use the configured
+        // capability to retain readonly-member, converter, and explicitly set ShouldSerialize rules.
+        return !SourceMemberCapabilities.CanSerialize(propertyInfo);
+    }
 
-        if (propertyInfo.AttributeProvider is not PropertyInfo && serializerOptions.IgnoreReadOnlyFields)
-        {
-            return true;
-        }
+    private static class SourceMemberCapabilities
+    {
+        internal static readonly Func<JsonPropertyInfo, bool> CanSerialize = CreateCanSerialize();
 
-        return serializerOptions.IgnoreReadOnlyProperties &&
-            serializerOptions.GetTypeInfo(propertyInfo.PropertyType).Kind is not (JsonTypeInfoKind.Enumerable or JsonTypeInfoKind.Dictionary);
+#if !NETSTANDARD2_0
+        [DynamicDependency("get_CanSerialize", typeof(JsonPropertyInfo))]
+#endif
+        private static Func<JsonPropertyInfo, bool> CreateCanSerialize() =>
+            typeof(JsonPropertyInfo).GetProperty("CanSerialize", BindingFlags.Instance | BindingFlags.NonPublic)
+                ?.GetMethod?.CreateDelegate(typeof(Func<JsonPropertyInfo, bool>)) is Func<JsonPropertyInfo, bool> canSerialize
+                    ? canSerialize
+                    : static _ => false;
     }
 
     // System.Text.Json uses this generated delegate for JsonIgnore conditions; evaluate those from metadata instead.

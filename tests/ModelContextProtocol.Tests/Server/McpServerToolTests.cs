@@ -1836,6 +1836,119 @@ public partial class McpServerToolTests
         Assert.False(result.TryGetProperty("count", out _));
     }
 
+    public static IEnumerable<object[]> ReadOnlyRecoveryInputs =>
+        Enumerable.Range(0, 32).Select(bits => new object[]
+        {
+            (bits & 1) != 0, (bits & 2) != 0, (bits & 4) != 0,
+            (bits & 8) != 0, (bits & 16) != 0,
+        });
+
+    [Theory]
+    [MemberData(nameof(ReadOnlyRecoveryInputs))]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_PreservesReadOnlyMemberKindWithoutAttributes(
+        bool sourceGenerated, bool isField, bool ignoreProperties, bool ignoreFields, bool ignoreDefault)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(
+            ignoreDefault ? JsonIgnoreCondition.WhenWritingDefault : JsonIgnoreCondition.WhenWritingNull);
+        options.IncludeFields = true;
+        options.IgnoreReadOnlyProperties = ignoreProperties;
+        options.IgnoreReadOnlyFields = ignoreFields;
+        IJsonTypeInfoResolver resolver = sourceGenerated ? ReadOnlyRecoveryJsonContext.Default : new DefaultJsonTypeInfoResolver();
+        bool excluded = isField ? ignoreFields : ignoreProperties;
+        options.TypeInfoResolver = resolver.WithAddedModifier(typeInfo =>
+        {
+            foreach (JsonPropertyInfo property in typeInfo.Properties)
+            {
+                property.AttributeProvider = null;
+                property.Name = "renamed_" + property.Name;
+                if (excluded && property.Get is not null)
+                {
+                    property.Get = static _ => throw new InvalidOperationException("Excluded getter was invoked.");
+                }
+            }
+        });
+
+        object output = isField ? new ReadOnlyRecoveryField() : new ReadOnlyRecoveryProperty();
+        string schema = ignoreDefault
+            ? """{"required":["renamed_note","renamed_count"]}"""
+            : """{"required":["renamed_note"]}""";
+        McpServerTool tool = CreateStructuredOutputTestTool(output, schema, options);
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        if (excluded)
+        {
+            Assert.Empty(result.EnumerateObject());
+        }
+        else
+        {
+            AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+            Assert.Equal(JsonValueKind.Null, result.GetProperty("renamed_note").ValueKind);
+            Assert.Equal(0, result.GetProperty("renamed_count").GetInt32());
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotReadExcludedConvertedCollection(
+        bool sourceGenerated, bool removeAttributes)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions();
+        options.IgnoreReadOnlyProperties = true;
+        IJsonTypeInfoResolver resolver = sourceGenerated ? ReadOnlyRecoveryJsonContext.Default : new DefaultJsonTypeInfoResolver();
+        options.TypeInfoResolver = resolver.WithAddedModifier(typeInfo =>
+        {
+            if (removeAttributes)
+            {
+                foreach (JsonPropertyInfo property in typeInfo.Properties)
+                {
+                    property.AttributeProvider = null;
+                }
+            }
+        });
+        McpServerTool tool = CreateStructuredOutputTestTool(new ReadOnlyConvertedCollectionOutput(),
+            """{"anyOf":[{"required":["values"]},{"required":["note"]}]}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("note").ValueKind);
+        Assert.False(result.TryGetProperty("values", out _));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_RecoversWithinIncludedReadOnlyCollections(
+        bool sourceGenerated, bool isField)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions();
+        options.IncludeFields = true;
+        options.IgnoreReadOnlyProperties = true;
+        options.IgnoreReadOnlyFields = true;
+        IJsonTypeInfoResolver resolver = sourceGenerated ? ReadOnlyRecoveryJsonContext.Default : new DefaultJsonTypeInfoResolver();
+        options.TypeInfoResolver = resolver.WithAddedModifier(typeInfo =>
+        {
+            foreach (JsonPropertyInfo property in typeInfo.Properties)
+            {
+                property.AttributeProvider = null;
+            }
+        });
+        object output = isField ? new ReadOnlyRecoveryCollectionField() : new ReadOnlyRecoveryCollectionProperty();
+        McpServerTool tool = CreateStructuredOutputTestTool(output,
+            """{"required":["children"],"properties":{"children":{"items":{"required":["id","note"]}}}}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.Equal("42", result.GetProperty("children")[0].GetProperty("id").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("children")[0].GetProperty("note").ValueKind);
+    }
+
     [Theory]
     [InlineData(5, false, false)]
     [InlineData(24, false, true)]
@@ -2447,6 +2560,38 @@ public partial class McpServerToolTests
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
         Assert.Equal(0, result[0].GetProperty("count").GetInt32());
         Assert.Equal(5, result[1].GetProperty("count").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("linked", false)]
+    [InlineData("linked", true)]
+    [InlineData("queue", false)]
+    [InlineData("queue", true)]
+    [InlineData("set", false)]
+    [InlineData("set", true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_NonIndexedCollectionsRequireMaterialization(
+        string shape, bool materialize)
+    {
+        ExplicitSchemaOutput[] items = [new() { Id = "42" }];
+        IEnumerable<ExplicitSchemaOutput> collection = shape switch
+        {
+            "linked" => new LinkedList<ExplicitSchemaOutput>(items),
+            "queue" => new Queue<ExplicitSchemaOutput>(items),
+            _ => new HashSet<ExplicitSchemaOutput>(items),
+        };
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            materialize ? collection.ToArray() : collection,
+            """{"type":"array","items":{"required":["id","note"]}}""");
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal("42", result[0].GetProperty("id").GetString());
+        Assert.Equal(materialize, result[0].TryGetProperty("note", out JsonElement note));
+        if (materialize)
+        {
+            Assert.Equal(JsonValueKind.Null, note.ValueKind);
+            AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        }
     }
 
     private sealed class GenericMutableRecoveryList : IList<ExplicitSchemaOutputWithDefaultValue>
@@ -3589,6 +3734,52 @@ public partial class McpServerToolTests
     {
         public readonly int Count = 0;
     }
+
+    private sealed class ReadOnlyRecoveryProperty
+    {
+        public string? Note => null;
+        public int Count => 0;
+    }
+
+    private sealed class ReadOnlyRecoveryField
+    {
+        public readonly string? Note = null;
+        public readonly int Count = 0;
+    }
+
+    private sealed class ReadOnlyConvertedCollectionOutput
+    {
+        [JsonConverter(typeof(ReadOnlyRecoveryListConverter))]
+        public List<string> Values => throw new InvalidOperationException("Excluded getter was invoked.");
+        public string? Note { get; set; }
+    }
+
+    private sealed class ReadOnlyRecoveryCollectionProperty
+    {
+        public List<ExplicitSchemaOutput> Children { get; } = [new() { Id = "42" }];
+    }
+
+    private sealed class ReadOnlyRecoveryCollectionField
+    {
+        public readonly List<ExplicitSchemaOutput> Children = [new() { Id = "42" }];
+    }
+
+    private sealed class ReadOnlyRecoveryListConverter : JsonConverter<List<string>>
+    {
+        public override List<string> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, List<string> value, JsonSerializerOptions options) =>
+            throw new InvalidOperationException("Excluded converter was invoked.");
+    }
+
+    [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, IncludeFields = true)]
+    [JsonSerializable(typeof(ReadOnlyRecoveryProperty))]
+    [JsonSerializable(typeof(ReadOnlyRecoveryField))]
+    [JsonSerializable(typeof(ReadOnlyConvertedCollectionOutput))]
+    [JsonSerializable(typeof(ReadOnlyRecoveryCollectionProperty))]
+    [JsonSerializable(typeof(ReadOnlyRecoveryCollectionField))]
+    private partial class ReadOnlyRecoveryJsonContext : JsonSerializerContext;
 
     private sealed class ManyNestedDefaultOutputs
     {

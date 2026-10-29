@@ -179,10 +179,38 @@ McpServerTool regexRecoveryTool = McpServerTool.Create(
         SerializerOptions = structuredOptions,
         OutputSchema = JsonDocument.Parse("""{"anyOf":[{"properties":{"real":{"pattern":"^(a+)+$"}}},{"required":["note"]}]}""").RootElement,
     });
+List<McpServerTool> readOnlyRecoveryTools = [];
+foreach (bool field in new[] { false, true })
+{
+    JsonSerializerOptions readOnlyOptions = new(structuredOptions)
+    {
+        IgnoreReadOnlyProperties = field,
+        IgnoreReadOnlyFields = !field,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        TypeInfoResolver = JsonTypeInfoResolver.Combine(AotJsonContext.Default, McpJsonUtilities.DefaultOptions.TypeInfoResolver)
+            .WithAddedModifier(typeInfo =>
+            {
+                foreach (JsonPropertyInfo property in typeInfo.Properties)
+                {
+                    property.AttributeProvider = null;
+                }
+            }),
+    };
+    readOnlyRecoveryTools.Add(McpServerTool.Create(() => new AotReadOnlyOutput(), new()
+    {
+        Name = field ? "ReadOnlyFieldRecovery" : "ReadOnlyPropertyRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = readOnlyOptions,
+        OutputSchema = JsonDocument.Parse(field
+            ? """{"required":["fieldNote"],"not":{"required":["note"]}}"""
+            : """{"required":["note"],"not":{"required":["fieldNote"]}}""").RootElement,
+    }));
+}
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
     .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool, annotationRecoveryTool, regexRecoveryTool])
+    .WithTools(readOnlyRecoveryTools)
     .WithTools(
     [
         new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
@@ -312,6 +340,18 @@ if (regexRecoveryResult.StructuredContent is not { } regexRecovery ||
     regexRecovery.GetProperty("real").GetString() != new string('a', 26) + "!")
 {
     throw new Exception($"Unexpected regex recovery output: {regexRecoveryResult.StructuredContent}");
+}
+
+foreach (bool field in new[] { false, true })
+{
+    var readOnlyResult = await client.CallToolAsync(field ? "ReadOnlyFieldRecovery" : "ReadOnlyPropertyRecovery");
+    if (readOnlyResult.StructuredContent is not { } readOnly ||
+        !readOnly.TryGetProperty(field ? "fieldNote" : "note", out JsonElement note) ||
+        note.ValueKind != JsonValueKind.Null ||
+        readOnly.TryGetProperty(field ? "note" : "fieldNote", out _))
+    {
+        throw new Exception($"Unexpected readonly recovery output: {readOnlyResult.StructuredContent}");
+    }
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");
@@ -648,6 +688,13 @@ internal sealed class AotCachingResolver(IJsonTypeInfoResolver inner) : IJsonTyp
         _contracts.GetOrAdd((type, options), key => inner.GetTypeInfo(key.Item1, key.Item2)!);
 }
 
+internal sealed class AotReadOnlyOutput
+{
+    public string? Note => null;
+    [JsonInclude]
+    public readonly string? FieldNote = null;
+}
+
 [JsonSerializable(typeof(AotStructuredOutput))]
 [JsonSerializable(typeof(AotDerivedOutput))]
 [JsonSerializable(typeof(Dictionary<AotDictionaryKey, AotStructuredChild>))]
@@ -656,6 +703,7 @@ internal sealed class AotCachingResolver(IJsonTypeInfoResolver inner) : IJsonTyp
 [JsonSerializable(typeof(IEnumerable<AotStructuredChild>))]
 [JsonSerializable(typeof(AotGenericList))]
 [JsonSerializable(typeof(AotGenericMutableList))]
+[JsonSerializable(typeof(AotReadOnlyOutput))]
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
