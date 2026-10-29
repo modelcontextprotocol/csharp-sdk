@@ -15,7 +15,7 @@ methods for discovering skills and obtaining a verifiable manifest of their file
 - `skills/get` returns the entry for a single skill by the URI of its `SKILL.md`.
 
 Skills are provided by the `ModelContextProtocol.Extensions.Skills` package. The implementation follows the
-[Skills extension specification](https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx)
+[Skills extension specification](https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/beta/skills.mdx)
 (SEP-2640, extension id `io.modelcontextprotocol/skills`).
 
 ### Overview
