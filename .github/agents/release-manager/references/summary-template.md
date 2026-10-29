@@ -1,8 +1,8 @@
 # Release Wrap-Up Summary
 
 Present this summary when the release is complete: the GitHub release is published, both the release
-and docs workflows have succeeded, the packages are listed on NuGet.org, and the docs site reflects
-the release.
+and docs workflows have succeeded, the exact released package version is listed on NuGet.org, and
+the docs site reflects the release.
 
 The tone is short and celebratory. It is a chat message to the user -- **do not commit it, do not
 post it to GitHub, and do not write it to a file** unless the user explicitly asks.
@@ -27,6 +27,7 @@ Build the timing sections from the `release_stages`, `release_interactions`, `re
 | Release | {release URL} |
 | Release workflow | {run URL} — {conclusion} |
 | Docs workflow | {run URL} — {conclusion} |
+| Docs provenance | Orchestration: `main` at `{HEAD-SHA}`; selected source: `{release-tags or latest-branches}`; content: `{ref}` at `{SHA}` for each published major |
 | NuGet | {listed package versions, or the package listing URL} |
 | Docs | https://csharp.sdk.modelcontextprotocol.io/{version-slug}/ — live |
 
