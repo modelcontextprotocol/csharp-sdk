@@ -837,17 +837,17 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return elementResult;
         }
 
-        OutputSchemaCache cachedSchema = GetOutputSchema(outputSchema);
-        JsonNode? schemaNode = cachedSchema.Node;
-        JsonSchema? schema = cachedSchema.Schema;
-        if (schemaNode is null || schema is null)
-        {
-            return elementResult;
-        }
-
-        RepairTraversalBudget budget = new();
         try
         {
+            OutputSchemaCache cachedSchema = GetOutputSchema(outputSchema);
+            JsonNode? schemaNode = cachedSchema.Node;
+            JsonSchema? schema = cachedSchema.Schema;
+            if (schemaNode is null || schema is null)
+            {
+                return elementResult;
+            }
+
+            RepairTraversalBudget budget = new();
             if (IsSchemaValid(schema, result, budget) || HasDuplicatePropertyNames(result))
             {
                 return elementResult;
@@ -877,9 +877,44 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             budget.SpendCopy(repairedResult);
             return JsonSerializer.SerializeToElement(repairedResult, McpJsonUtilities.JsonContext.Default.JsonNode);
         }
-        catch (Exception exception) when (exception is RecoveryBudgetExceededException or RegexMatchTimeoutException)
+        catch (TargetInvocationException exception) when (
+            exception.InnerException is { } inner && !IsNonFatalRecoveryFailure(inner))
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException!).Throw();
+            throw;
+        }
+        catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
         {
             return elementResult;
+        }
+    }
+
+    private static bool IsNonFatalRecoveryFailure(Exception exception)
+    {
+        int remaining = 128;
+        return Inspect(exception, ref remaining);
+
+        static bool Inspect(Exception exception, ref int remaining)
+        {
+            if (remaining-- <= 0 ||
+                exception is OperationCanceledException or OutOfMemoryException or StackOverflowException or AccessViolationException)
+            {
+                return false;
+            }
+
+            if (exception is AggregateException aggregate)
+            {
+                foreach (Exception inner in aggregate.InnerExceptions)
+                {
+                    if (!Inspect(inner, ref remaining))
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            return exception.InnerException is null || Inspect(exception.InnerException, ref remaining);
         }
     }
 
@@ -2962,7 +2997,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             {
                 child = GetChildCore(name, serializedParent);
             }
-            catch (NotSupportedException)
+            catch (NotSupportedException exception) when (IsNonFatalRecoveryFailure(exception))
             {
                 // Missing metadata and opaque converter contracts cannot authorize recovery.
                 child = null;
@@ -3429,13 +3464,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             name = document.RootElement.EnumerateObject().Single().Name;
             return true;
         }
-        catch (TargetInvocationException exception) when (exception.InnerException is
-            OperationCanceledException or OutOfMemoryException or StackOverflowException or AccessViolationException)
+        catch (TargetInvocationException exception) when (
+            exception.InnerException is { } inner && !IsNonFatalRecoveryFailure(inner))
         {
             System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException!).Throw();
             throw;
         }
-        catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException or AccessViolationException))
+        catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
         {
             return false;
         }
@@ -3495,7 +3530,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             serializedValue = JsonSerializer.SerializeToNode(element, McpJsonUtilities.JsonContext.Default.JsonElement);
             return true;
         }
-        catch (Exception exception) when (exception is not (OperationCanceledException or OutOfMemoryException or StackOverflowException or AccessViolationException))
+        catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
         {
             return false;
         }

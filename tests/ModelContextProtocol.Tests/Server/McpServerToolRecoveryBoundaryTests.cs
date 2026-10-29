@@ -625,6 +625,133 @@ public partial class McpServerToolTests
         Assert.Equal(2, output.GetterCalls);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_RecoveryBoundary_RetainsOriginalWhenCallbackStateGetterFails(
+        bool sourceGenerated, bool predicate)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions();
+        IJsonTypeInfoResolver resolver = sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver();
+        options.TypeInfoResolver = resolver.WithAddedModifier(typeInfo =>
+        {
+            if (predicate && typeInfo.Type == typeof(RecoveryBoundaryStatefulOutput))
+            {
+                JsonPropertyInfo note = typeInfo.Properties.Single(property => property.Name == "note");
+                note.Get = static _ => null;
+                note.ShouldSerialize = static (owner, _) =>
+                    owner is RecoveryBoundaryStatefulOutput output && output.SerializingCalls > output.SerializedCalls
+                        ? false
+                        : throw new InvalidOperationException("Predicate requires serialization callback state.");
+            }
+        });
+        var output = new RecoveryBoundaryStatefulOutput();
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """{"required":["note"]}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal("""{"kept":"kept"}""", result.GetRawText());
+        Assert.Equal(2, output.SerializingCalls);
+        Assert.Equal(2, output.SerializedCalls);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_RecoveryBoundary_RetainsOriginalWhenReflectedIndexerFails()
+    {
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new RecoveryBoundaryThrowingList(new InvalidOperationException("Indexer failed.")),
+            """{"items":{"required":["note"]}}""");
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal("[{}]", result.GetRawText());
+    }
+
+    [Fact]
+    public async Task StructuredOutput_RecoveryBoundary_RetainsOriginalForNestedAggregateFailure()
+    {
+        Exception failure = new InvalidOperationException("Recovery failed.");
+        for (int i = 0; i < 32; i++)
+        {
+            failure = new AggregateException(failure);
+        }
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new RecoveryBoundaryStatefulOutput { Failure = failure }, """{"required":["note"]}""");
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal("""{"kept":"kept"}""", result.GetRawText());
+    }
+
+    [Fact]
+    public async Task StructuredOutput_RecoveryBoundary_PropagatesUnboundedExceptionGraphs()
+    {
+        Exception failure = new InvalidOperationException("Recovery failed.");
+        for (int i = 0; i < 20; i++)
+        {
+            failure = new AggregateException(failure, failure);
+        }
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new RecoveryBoundaryStatefulOutput { Failure = failure }, """{"required":["note"]}""");
+
+        Assert.Same(failure, await Record.ExceptionAsync(() => InvokeStructuredOutputTestTool(tool)));
+    }
+
+    [Theory]
+    [InlineData("cancel", false)]
+    [InlineData("cancel", true)]
+    [InlineData("memory", false)]
+    [InlineData("memory", true)]
+    [InlineData("stack", false)]
+    [InlineData("stack", true)]
+    [InlineData("access", false)]
+    [InlineData("access", true)]
+    [InlineData("aggregate", false)]
+    [InlineData("aggregate", true)]
+    [InlineData("wrapped-memory", false)]
+    [InlineData("wrapped-memory", true)]
+    public async Task StructuredOutput_RecoveryBoundary_DoesNotSuppressCancellationOrFatalGetterFailures(string kind, bool indexed)
+    {
+        Exception failure = kind switch
+        {
+            "cancel" => new OperationCanceledException(),
+            "memory" => new OutOfMemoryException(),
+            "stack" => new StackOverflowException(),
+            "access" => new AccessViolationException(),
+            "wrapped-memory" => new NotSupportedException("Wrapped fatal failure.", new OutOfMemoryException()),
+            _ => new AggregateException(new InvalidOperationException(), new OperationCanceledException()),
+        };
+        object output = indexed
+            ? new RecoveryBoundaryThrowingList(failure)
+            : new RecoveryBoundaryStatefulOutput { Failure = failure };
+        McpServerTool tool = CreateStructuredOutputTestTool(output,
+            indexed ? """{"items":{"required":["note"]}}""" : """{"required":["note"]}""");
+
+        Exception? actual = await Record.ExceptionAsync(() => InvokeStructuredOutputTestTool(tool));
+
+        Assert.Same(failure, actual);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_RecoveryBoundary_DoesNotSuppressOriginalSerializationFailure(bool sourceGenerated)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions();
+        if (sourceGenerated)
+        {
+            options.TypeInfoResolver = RecoveryBoundaryJsonContext.Default;
+        }
+        var failure = new InvalidOperationException("Initial serialization failed.");
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new RecoveryBoundaryStatefulOutput { FailDuringSerialization = true, Failure = failure },
+            """{"required":["note"]}""", options);
+
+        Assert.Same(failure, await Record.ExceptionAsync(() => InvokeStructuredOutputTestTool(tool)));
+    }
+
     [Fact]
     public async Task StructuredOutput_RecoveryBoundary_PreservesCompatibleSourceGeneratedContracts()
     {
@@ -880,6 +1007,34 @@ public partial class McpServerToolTests
         public void OnSerialized() => SerializedCalls++;
     }
 
+    private sealed class RecoveryBoundaryStatefulOutput : IJsonOnSerializing, IJsonOnSerialized
+    {
+        private bool _serializing;
+        public string Kept { get; set; } = "kept";
+        public string? Note => _serializing && !FailDuringSerialization ? null : throw Failure;
+        [JsonIgnore]
+        public Exception Failure { get; set; } = new InvalidOperationException("Getter requires serialization callback state.");
+        [JsonIgnore]
+        public bool FailDuringSerialization { get; set; }
+        [JsonIgnore]
+        public int SerializingCalls { get; private set; }
+        [JsonIgnore]
+        public int SerializedCalls { get; private set; }
+        public void OnSerializing() { _serializing = true; SerializingCalls++; }
+        public void OnSerialized() { _serializing = false; SerializedCalls++; }
+    }
+
+    private sealed class RecoveryBoundaryThrowingList(Exception failure) : IReadOnlyList<RecoveryBoundaryNullableOutput>
+    {
+        public int Count => 1;
+        public RecoveryBoundaryNullableOutput this[int index] => throw failure;
+        public IEnumerator<RecoveryBoundaryNullableOutput> GetEnumerator()
+        {
+            yield return new();
+        }
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
     private static McpServerTool CreateRecoveryBoundaryTool(object value, string schema, JsonSerializerOptions options) =>
         McpServerTool.Create(new RecoveryBoundaryFunction(value, options), new()
         {
@@ -900,6 +1055,7 @@ public partial class McpServerToolTests
     [JsonSerializable(typeof(RecoveryBoundaryConvertedOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryReadonlyOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryCallbackOutput))]
+    [JsonSerializable(typeof(RecoveryBoundaryStatefulOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryAttributedOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryNullableOutput))]
     [JsonSerializable(typeof(RecoveryBoundaryNullableRecord))]

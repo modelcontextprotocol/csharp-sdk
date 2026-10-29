@@ -179,6 +179,15 @@ McpServerTool regexRecoveryTool = McpServerTool.Create(
         SerializerOptions = structuredOptions,
         OutputSchema = JsonDocument.Parse("""{"anyOf":[{"properties":{"real":{"pattern":"^(a+)+$"}}},{"required":["note"]}]}""").RootElement,
     });
+McpServerTool callbackRecoveryTool = McpServerTool.Create(
+    () => new AotCallbackOutput(),
+    new()
+    {
+        Name = "CallbackRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = JsonDocument.Parse("""{"required":["note"]}""").RootElement,
+    });
 List<McpServerTool> readOnlyRecoveryTools = [];
 foreach (bool field in new[] { false, true })
 {
@@ -209,7 +218,7 @@ foreach (bool field in new[] { false, true })
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool, annotationRecoveryTool, regexRecoveryTool])
+    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool, annotationRecoveryTool, regexRecoveryTool, callbackRecoveryTool])
     .WithTools(readOnlyRecoveryTools)
     .WithTools(
     [
@@ -352,6 +361,13 @@ foreach (bool field in new[] { false, true })
     {
         throw new Exception($"Unexpected readonly recovery output: {readOnlyResult.StructuredContent}");
     }
+}
+
+var callbackRecoveryResult = await client.CallToolAsync("CallbackRecovery");
+if (callbackRecoveryResult.IsError == true ||
+    callbackRecoveryResult.StructuredContent?.GetRawText() != """{"kept":"kept"}""")
+{
+    throw new Exception($"Unexpected callback recovery output: {callbackRecoveryResult.StructuredContent}");
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");
@@ -695,6 +711,16 @@ internal sealed class AotReadOnlyOutput
     public readonly string? FieldNote = null;
 }
 
+internal sealed class AotCallbackOutput : IJsonOnSerializing, IJsonOnSerialized
+{
+    private bool _serializing;
+    public string Kept { get; set; } = "kept";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Note => _serializing ? null : throw new InvalidOperationException("Getter requires callback state.");
+    public void OnSerializing() => _serializing = true;
+    public void OnSerialized() => _serializing = false;
+}
+
 [JsonSerializable(typeof(AotStructuredOutput))]
 [JsonSerializable(typeof(AotDerivedOutput))]
 [JsonSerializable(typeof(Dictionary<AotDictionaryKey, AotStructuredChild>))]
@@ -704,6 +730,7 @@ internal sealed class AotReadOnlyOutput
 [JsonSerializable(typeof(AotGenericList))]
 [JsonSerializable(typeof(AotGenericMutableList))]
 [JsonSerializable(typeof(AotReadOnlyOutput))]
+[JsonSerializable(typeof(AotCallbackOutput))]
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
