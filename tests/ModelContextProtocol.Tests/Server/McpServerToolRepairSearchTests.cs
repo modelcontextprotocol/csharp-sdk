@@ -8,11 +8,69 @@ using Moq;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
+using System.IO.Pipelines;
+using ModelContextProtocol.Client;
 
 namespace ModelContextProtocol.Tests.Server;
 
 public partial class McpServerToolTests
 {
+    [Theory]
+    [InlineData("element")]
+    [InlineData("node")]
+    [InlineData("document")]
+    public async Task StructuredOutput_Search_RecoversClrParentWithSerializedJsonChild(string kind)
+    {
+        const string json = """{"value":42,"explicit":null}""";
+        using JsonDocument document = JsonDocument.Parse(json);
+        object child = kind switch
+        {
+            "element" => document.RootElement,
+            "node" => JsonNode.Parse(json)!,
+            _ => document,
+        };
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new { Note = (string?)null, Child = child }, """{"required":["note"]}""");
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("note").ValueKind);
+        Assert.Equal(json, result.GetProperty("child").GetRawText());
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Search_PreservesJsonDocumentObjectContractRecovery()
+    {
+        using JsonDocument document = JsonDocument.Parse("""{"value":42}""");
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions();
+        options.TypeInfoResolver = new JsonDocumentObjectContractResolver();
+        McpServerTool tool = CreateStructuredOutputTestTool(document, """{"required":["note"]}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.Equal("""{"note":null}""", result.GetRawText());
+    }
+
+    private sealed class JsonDocumentObjectContractResolver : DefaultJsonTypeInfoResolver
+    {
+        public override JsonTypeInfo GetTypeInfo(Type type, JsonSerializerOptions options)
+        {
+            if (type != typeof(JsonDocument))
+            {
+                return base.GetTypeInfo(type, options);
+            }
+
+            JsonTypeInfo info = JsonMetadataServices.CreateObjectInfo<JsonDocument>(options, new()
+            {
+                PropertyMetadataInitializer = static _ => [],
+            });
+            JsonPropertyInfo note = info.CreateJsonPropertyInfo(typeof(string), "note");
+            note.Get = static _ => null;
+            info.Properties.Add(note);
+            return info;
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -87,12 +145,12 @@ public partial class McpServerToolTests
     [Fact]
     public async Task StructuredOutput_Search_BoundsLegacyRecursiveDiagnosticExpansion()
     {
-        JsonNode output = new JsonObject { ["kept"] = 1 };
+        object output = new Dictionary<string, object> { ["kept"] = 1 };
         for (int i = 0; i < 18; i++)
         {
-            output = new JsonObject { ["child"] = output };
+            output = new Dictionary<string, object> { ["child"] = output };
         }
-        using JsonDocument document = JsonDocument.Parse(output.ToJsonString());
+        JsonElement expected = JsonSerializer.SerializeToElement(output, CreateStructuredOutputTestOptions());
         const string schema = """
             {
               "$schema":"https://json-schema.org/draft/2019-09/schema",
@@ -107,7 +165,7 @@ public partial class McpServerToolTests
               }
             }
             """;
-        McpServerTool tool = CreateStructuredOutputTestTool(document.RootElement, schema);
+        McpServerTool tool = CreateStructuredOutputTestTool(output, schema);
 
         await Task.Run(() =>
         {
@@ -115,7 +173,7 @@ public partial class McpServerToolTests
             JsonElement result = InvokeStructuredOutputTestTool(tool).GetAwaiter().GetResult();
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.Equal(document.RootElement.GetRawText(), result.GetRawText());
+            Assert.Equal(expected.GetRawText(), result.GetRawText());
             Assert.True(allocated < 32 * 1024 * 1024, $"Legacy recursive diagnostics allocated {allocated:N0} bytes.");
         }, TestContext.Current.CancellationToken);
     }
@@ -463,6 +521,125 @@ public partial class McpServerToolTests
     [Collection(nameof(DisableParallelization))]
     public class RecoverySchemaRegistryTests
     {
+        [Theory]
+        [InlineData("element", false)]
+        [InlineData("element", true)]
+        [InlineData("node", false)]
+        [InlineData("node", true)]
+        [InlineData("document", false)]
+        [InlineData("document", true)]
+        [InlineData("clr", false)]
+        [InlineData("clr", true)]
+        public async Task StructuredOutput_Search_DoesNotLoadSchemasForSerializedJson(string kind, bool forwarding)
+        {
+            foreach (string protocolVersion in new[] { "2025-06-18", "2025-11-25", "2026-07-28" })
+            {
+                foreach (bool array in new[] { false, true })
+                {
+                    Uri uri = new($"https://example.test/recovery/{Guid.NewGuid():N}");
+                    JsonSchema external = JsonSchema.FromText(
+                        array ? """{"items":{"required":["note"]}}""" : """{"required":["note"]}""",
+                        new BuildOptions { SchemaRegistry = new() }, uri);
+                    int fetches = 0;
+                    var fetch = SchemaRegistry.Global.Fetch;
+                    try
+                    {
+                        SchemaRegistry.Global.Fetch = (requested, registry) =>
+                        {
+                            if (requested != uri)
+                            {
+                                return fetch(requested, registry);
+                            }
+                            Interlocked.Increment(ref fetches);
+                            return external;
+                        };
+                        string json = array ? """[{"value":42,"explicit":null}]""" : """{"value":42,"explicit":null}""";
+                        using JsonDocument document = JsonDocument.Parse(json);
+                        var clr = new { Note = "present", Child = JsonNode.Parse(json) };
+                        object source = kind switch
+                        {
+                            "element" => document.RootElement,
+                            "node" => JsonNode.Parse(json)!,
+                            "document" => document,
+                            _ => array ? new[] { clr } : (object)clr,
+                        };
+                        McpServerTool inner = McpServerTool.Create(() => source, new()
+                        {
+                            Name = "serialized_json",
+                            UseStructuredContent = true,
+                            SerializerOptions = CreateStructuredOutputTestOptions(),
+                            OutputSchema = JsonDocument.Parse($$"""{"type":"{{(array ? "array" : "object")}}","$ref":"{{uri}}"}""").RootElement,
+                        });
+                        McpServerTool tool = forwarding
+                            ? new ForwardingSchemaTool(inner, JsonDocument.Parse($$"""{"type":"{{(array ? "array" : "object")}}","allOf":[{"$ref":"{{uri}}"}]}""").RootElement)
+                            : inner;
+
+                        CallToolResult result = await InvokeRegisteredToolAsync(tool, protocolVersion);
+
+                        Assert.NotEqual(true, result.IsError);
+                        JsonElement content = result.StructuredContent!.Value;
+                        if (array && protocolVersion != "2026-07-28")
+                        {
+                            content = content.GetProperty("result");
+                        }
+                        Assert.Equal(kind is "clr" or "document", fetches > 0);
+                        if (kind == "clr")
+                        {
+                            Assert.Equal("present", (array ? content[0] : content).GetProperty("note").GetString());
+                        }
+                        else
+                        {
+                            Assert.Equal(json, content.GetRawText());
+                        }
+                    }
+                    finally
+                    {
+                        SchemaRegistry.Global.Fetch = fetch;
+                    }
+                }
+            }
+        }
+
+        private static async Task<CallToolResult> InvokeRegisteredToolAsync(McpServerTool tool, string protocolVersion)
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            cts.CancelAfter(TestConstants.DefaultTimeout);
+            var clientToServer = new Pipe();
+            var serverToClient = new Pipe();
+            await using var server = McpServer.Create(
+                new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream()),
+                new McpServerOptions { ToolCollection = new() { tool } });
+            Task serverTask = server.RunAsync(cts.Token);
+            try
+            {
+                var options = TestMcpClient.CreateOptions();
+                options.ProtocolVersion = protocolVersion;
+                await using var client = await TestMcpClient.CreateAsync(
+                    new StreamClientTransport(clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream()),
+                    options, cancellationToken: cts.Token);
+                return await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: cts.Token);
+            }
+            finally
+            {
+                await cts.CancelAsync();
+                await serverTask;
+            }
+        }
+
+        private sealed class ForwardingSchemaTool(McpServerTool inner, JsonElement schema) : DelegatingMcpServerTool(inner)
+        {
+            public override Tool ProtocolTool { get; } = new()
+            {
+                Name = inner.ProtocolTool.Name,
+                InputSchema = inner.ProtocolTool.InputSchema,
+                OutputSchema = schema,
+            };
+
+            public override ValueTask<CallToolResult> InvokeAsync(
+                RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default) =>
+                base.InvokeAsync(request, cancellationToken);
+        }
+
         [Fact]
         public async Task StructuredOutput_Search_DoesNotMutateBorrowedSchemaRegexes()
         {

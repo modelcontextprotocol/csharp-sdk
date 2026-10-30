@@ -334,8 +334,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return callToolResult;
         }
 
-        JsonElement? recoverySchema = GetRecoverySchema(request.MatchedPrimitive as McpServerTool);
-        JsonElement? effectiveSchema = request.SupportsDeferredStructuredContentRecovery
+        // These results bypass user serialization contracts in CreateStructuredResponse.
+        bool isSerializedJson = result is JsonElement or JsonNode;
+        JsonElement? recoverySchema = isSerializedJson ? null : GetRecoverySchema(request.MatchedPrimitive as McpServerTool);
+        JsonElement? effectiveSchema = !isSerializedJson && request.SupportsDeferredStructuredContentRecovery
             ? (request.MatchedPrimitive as McpServerTool)?.ProtocolTool.OutputSchema
             : null;
         bool deferOuterRecovery = effectiveSchema is not null && !Nullable.Equals(recoverySchema, effectiveSchema);
