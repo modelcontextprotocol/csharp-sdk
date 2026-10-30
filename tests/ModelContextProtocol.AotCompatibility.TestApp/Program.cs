@@ -215,11 +215,26 @@ foreach (bool field in new[] { false, true })
             : """{"required":["note"],"not":{"required":["fieldNote"]}}""").RootElement,
     }));
 }
+List<McpServerTool> forwardingRecoveryTools = [];
+foreach (bool required in new[] { false, true })
+{
+    JsonElement requiredSchema = JsonDocument.Parse("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""").RootElement;
+    JsonElement optionalSchema = JsonDocument.Parse("""{"type":"object","properties":{"note":{"type":"string"}}}""").RootElement;
+    McpServerTool inner = McpServerTool.Create(() => new AotNullableChild(), new()
+    {
+        Name = required ? "ForwardingRequiredNote" : "ForwardingOptionalNote",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = required ? optionalSchema : requiredSchema,
+    });
+    forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(inner, required ? requiredSchema : optionalSchema));
+}
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
     .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool, annotationRecoveryTool, regexRecoveryTool, callbackRecoveryTool])
     .WithTools(readOnlyRecoveryTools)
+    .WithTools(forwardingRecoveryTools)
     .WithTools(
     [
         new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
@@ -368,6 +383,18 @@ if (callbackRecoveryResult.IsError == true ||
     callbackRecoveryResult.StructuredContent?.GetRawText() != """{"kept":"kept"}""")
 {
     throw new Exception($"Unexpected callback recovery output: {callbackRecoveryResult.StructuredContent}");
+}
+
+foreach (bool required in new[] { false, true })
+{
+    var forwardingResult = await client.CallToolAsync(required ? "ForwardingRequiredNote" : "ForwardingOptionalNote");
+    if (forwardingResult.IsError == true ||
+        forwardingResult.StructuredContent is not { } forwarded ||
+        forwarded.TryGetProperty("note", out JsonElement note) != required ||
+        (required && note.ValueKind != JsonValueKind.Null))
+    {
+        throw new Exception($"Unexpected forwarding recovery output: {forwardingResult.StructuredContent}");
+    }
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");
@@ -734,6 +761,24 @@ internal sealed class AotCallbackOutput : IJsonOnSerializing, IJsonOnSerialized
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
+
+internal sealed class ForwardingSchemaAotTool(McpServerTool inner, JsonElement schema) : DelegatingMcpServerTool(inner)
+{
+    public override Tool ProtocolTool { get; } = new()
+    {
+        Name = inner.ProtocolTool.Name,
+        InputSchema = inner.ProtocolTool.InputSchema,
+        OutputSchema = schema,
+    };
+
+    public override async ValueTask<CallToolResult> InvokeAsync(
+        RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+    {
+        CallToolResult result = await base.InvokeAsync(request, cancellationToken);
+        await base.InvokeAsync(request, cancellationToken);
+        return result;
+    }
+}
 
 internal sealed class OverridingAotTool(McpServerTool inner) : ForwardingAotTool(inner)
 {

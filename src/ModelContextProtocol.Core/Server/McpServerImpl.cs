@@ -1603,7 +1603,7 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     if (request.MatchedPrimitive is McpServerTool tool)
                     {
-                        return tool.InvokeAsync(request, cancellationToken);
+                        return InvokeToolAsync(tool, request, cancellationToken);
                     }
 
                     return originalHandler(request, cancellationToken);
@@ -1636,7 +1636,35 @@ internal sealed partial class McpServerImpl : McpServer
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken)
     {
-        return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+        return await InvokeToolAsync(tool, request, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static ValueTask<CallToolResult> InvokeToolAsync(
+        McpServerTool tool,
+        RequestContext<CallToolRequestParams> request,
+        CancellationToken cancellationToken) =>
+        tool is DelegatingMcpServerTool
+            ? InvokeDelegatingToolAsync(tool, request, cancellationToken)
+            : tool.InvokeAsync(request, cancellationToken);
+
+    private static async ValueTask<CallToolResult> InvokeDelegatingToolAsync(
+        McpServerTool tool,
+        RequestContext<CallToolRequestParams> request,
+        CancellationToken cancellationToken)
+    {
+        request.ClearStructuredContentRecovery();
+        request.SupportsDeferredStructuredContentRecovery = true;
+        try
+        {
+            CallToolResult result = await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+            request.RecoverStructuredContent(result);
+            return result;
+        }
+        finally
+        {
+            request.SupportsDeferredStructuredContentRecovery = false;
+            request.ClearStructuredContentRecovery();
+        }
     }
 
     private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildComposedCallToolHandler(

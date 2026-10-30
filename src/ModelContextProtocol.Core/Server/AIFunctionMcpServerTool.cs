@@ -24,6 +24,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     private readonly IReadOnlyList<object> _metadata;
     private readonly bool? _returnsCallToolResult;
     private OutputSchemaCache? _outputSchema;
+    private OutputSchemaCache? _alternateOutputSchema;
     private static readonly ConditionalWeakTable<JsonTypeInfo, SourceObjectContract> s_sourceContracts = new();
     private static readonly ConditionalWeakTable<JsonSchema, SchemaEvaluationCost> s_schemaEvaluationCosts = new();
     private static readonly TimeSpan s_recoveryRegexTimeout = TimeSpan.FromMilliseconds(100);
@@ -334,8 +335,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         JsonElement? recoverySchema = GetRecoverySchema(request.MatchedPrimitive as McpServerTool);
-        JsonElement? structuredContent = CreateStructuredResponse(result, request.Server.NegotiatedProtocolVersion, recoverySchema);
-        return result switch
+        JsonElement? effectiveSchema = request.SupportsDeferredStructuredContentRecovery
+            ? (request.MatchedPrimitive as McpServerTool)?.ProtocolTool.OutputSchema
+            : null;
+        bool deferOuterRecovery = effectiveSchema is not null && !Nullable.Equals(recoverySchema, effectiveSchema);
+        RepairTraversalBudget? sharedBudget = deferOuterRecovery ? new() : null;
+        string? protocolVersion = request.Server.NegotiatedProtocolVersion;
+        JsonElement? structuredContent = CreateStructuredResponse(
+            result, protocolVersion, recoverySchema, out JsonElement? originalContent,
+            out JsonElement? naturalContent, sharedBudget);
+        CallToolResult response = result switch
         {
             AIContent aiContent => new()
             {
@@ -376,7 +385,38 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 StructuredContent = structuredContent,
             },
         };
+
+        if (deferOuterRecovery && originalContent is not null && structuredContent is not null)
+        {
+            Action<CallToolResult> recovery = CreateStructuredContentRecovery(
+                result, originalContent, naturalContent, structuredContent, effectiveSchema, protocolVersion, sharedBudget);
+            request.StructuredContentRecovery += recovery;
+            if (!request.SupportsDeferredStructuredContentRecovery)
+            {
+                request.StructuredContentRecovery -= recovery;
+            }
+        }
+
+        return response;
     }
+
+    private Action<CallToolResult> CreateStructuredContentRecovery(
+        object? originalResult, JsonElement? originalContent, JsonElement? naturalContent,
+        JsonElement? structuredContent, JsonElement? effectiveSchema, string? protocolVersion,
+        RepairTraversalBudget? sharedBudget) =>
+        finalResult =>
+        {
+            // Only unchanged JSON elements prove that the wrapper retained the inner projection.
+            if (finalResult.IsError != true && Nullable.Equals(finalResult.StructuredContent, structuredContent))
+            {
+                JsonElement? recovered = AddMissingRequiredNullableProperties(
+                    originalContent, originalResult, effectiveSchema, sharedBudget);
+                if (!Nullable.Equals(recovered, naturalContent))
+                {
+                    finalResult.StructuredContent = ShapeStructuredResponse(recovered, protocolVersion);
+                }
+            }
+        };
 
     /// <summary>Creates a name to use based on the supplied method and naming policy.</summary>
     internal static string DeriveName(MethodInfo method, JsonNamingPolicy? policy = null)
@@ -778,8 +818,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     private JsonElement? CreateStructuredResponse(
-        object? aiFunctionResult, string? negotiatedProtocolVersion, JsonElement? recoverySchema)
+        object? aiFunctionResult, string? negotiatedProtocolVersion, JsonElement? recoverySchema,
+        out JsonElement? originalContent, out JsonElement? naturalContent, RepairTraversalBudget? sharedBudget)
     {
+        originalContent = null;
+        naturalContent = null;
         if (ProtocolTool.OutputSchema is null)
         {
             // Only provide structured responses if the tool has an output schema defined.
@@ -805,13 +848,19 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 break;
         }
 
-        elementResult = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult, recoverySchema);
+        originalContent = elementResult;
+        naturalContent = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult, recoverySchema, sharedBudget);
+        return ShapeStructuredResponse(naturalContent, negotiatedProtocolVersion);
+    }
 
+    private JsonElement? ShapeStructuredResponse(JsonElement? elementResult, string? negotiatedProtocolVersion)
+    {
         // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
         // schemas. SEP-2106 clients see the natural shape. The classification is decided
         // fresh per request from the stored natural schema.
         if (!McpSessionHandler.SupportsNaturalOutputSchemas(negotiatedProtocolVersion) &&
-            ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema.Value))
+            ProtocolTool.OutputSchema is { } outputSchema &&
+            ShouldWrapValueForLegacyWire(outputSchema))
         {
             JsonNode? resultNode = elementResult is { } v
                 ? JsonSerializer.SerializeToNode(v, McpJsonUtilities.JsonContext.Default.JsonElement)
@@ -828,9 +877,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     private JsonElement? AddMissingRequiredNullableProperties(
         JsonElement? elementResult,
         object? originalResult,
-        JsonElement? recoverySchema)
+        JsonElement? recoverySchema,
+        RepairTraversalBudget? sharedBudget = null)
     {
-        if (elementResult is not { } result ||
+        if (sharedBudget?.IsRecoveryStopped == true ||
+            elementResult is not { } result ||
             recoverySchema is not { } outputSchema ||
             result.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
         {
@@ -847,7 +898,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 return elementResult;
             }
 
-            RepairTraversalBudget budget = new();
+            RepairTraversalBudget budget = sharedBudget ?? new();
             if (IsSchemaValid(schema, result, budget) || HasDuplicatePropertyNames(result))
             {
                 return elementResult;
@@ -885,6 +936,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
         catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
         {
+            if (sharedBudget is not null)
+            {
+                sharedBudget.IsRecoveryStopped = true;
+            }
             return elementResult;
         }
     }
@@ -1653,6 +1708,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return cachedSchema;
         }
 
+        OutputSchemaCache? alternateSchema = Volatile.Read(ref _alternateOutputSchema);
+        if (alternateSchema is not null && alternateSchema.Source.Equals(outputSchema))
+        {
+            return alternateSchema;
+        }
+
         JsonNode? schemaNode = JsonSerializer.SerializeToNode(outputSchema, McpJsonUtilities.JsonContext.Default.JsonElement);
         JsonSchema? schema = null;
         if (schemaNode is not null)
@@ -1660,6 +1721,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             TryBuildJsonSchema(schemaNode, out schema);
         }
 
+        Volatile.Write(ref _alternateOutputSchema, cachedSchema);
         cachedSchema = new(outputSchema, schemaNode, schema);
         Volatile.Write(ref _outputSchema, cachedSchema);
         return cachedSchema;
@@ -1925,6 +1987,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private sealed class RepairTraversalBudget
     {
+        internal bool IsRecoveryStopped { get; set; }
+
         internal const int MaxEvaluationWork = 65_536;
         // Shared by document attempts and recursive branch repairs, including cached merges.
         // Costs include copied entries, JSON nodes, and 16-character text units.

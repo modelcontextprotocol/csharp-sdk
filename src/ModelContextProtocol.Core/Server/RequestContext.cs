@@ -47,6 +47,13 @@ public sealed class RequestContext<TParams> : MessageContext
     /// </summary>
     public IMcpServerPrimitive? MatchedPrimitive { get; set; }
 
+    internal bool SupportsDeferredStructuredContentRecovery { get; set; }
+    internal event Action<CallToolResult>? StructuredContentRecovery;
+
+    internal void RecoverStructuredContent(CallToolResult result) => StructuredContentRecovery?.Invoke(result);
+
+    internal void ClearStructuredContentRecovery() => StructuredContentRecovery = null;
+
     /// <summary>
     /// Gets the JSON-RPC request associated with this context.
     /// </summary>
