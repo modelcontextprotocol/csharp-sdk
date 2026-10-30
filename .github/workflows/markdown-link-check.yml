@@ -26,7 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Resolve main-branch links against the proposed checkout
+      - name: Prepare checkout links and alert markers for mlc
         run: |
           python3 -m unittest discover -s .github/scripts -p test_prepare_markdown_links.py
           python3 .github/scripts/prepare_markdown_links.py .
@@ -38,10 +38,12 @@ jobs:
           # Ignore DocFX snippet inclusion links.
           # Do not warn for learn.microsoft.com locale redirects.
           # Do not warn for modelcontextprotocol.io homepage/spec redirects.
+          # Keep the agentskills.io root link while permitting same-domain redirects.
           args: >-
             --root-dir .
             --ignore-links "xref:*"
             --ignore-links "*samples/*?name=snippet_*"
             --do-not-warn-for-redirect-to "https://learn.microsoft.com/en-us/*"
             --do-not-warn-for-redirect-to "https://modelcontextprotocol.io/*"
+            --do-not-warn-for-redirect-to "https://agentskills.io/*"
             ./docs
