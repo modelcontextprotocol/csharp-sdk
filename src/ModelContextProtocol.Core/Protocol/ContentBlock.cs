@@ -3,10 +3,12 @@ using System.Buffers.Text;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace ModelContextProtocol.Protocol;
 
@@ -22,6 +24,13 @@ namespace ModelContextProtocol.Protocol;
 /// <para>
 /// This class is used throughout the MCP for representing content in messages, tool responses,
 /// and other communication between clients and servers.
+/// </para>
+/// <para>
+/// When customizing nested <see cref="Icon"/> or <see cref="Protocol.Annotations"/> contracts through a
+/// caller-supplied source-generated resolver, configure the context for any enclosing type, such as
+/// <see cref="CallToolResult"/>, with <see cref="JsonSourceGenerationMode.Metadata"/>.
+/// Optimized serialization handlers can use their context's own options instead of the caller's modified
+/// nested contracts. Metadata-mode source generation preserves those customizations without requiring reflection.
 /// </para>
 /// <para>
 /// See the <see href="https://github.com/modelcontextprotocol/specification/blob/main/schema/">schema</see> for more details.
@@ -76,6 +85,28 @@ public abstract class ContentBlock
     [EditorBrowsable(EditorBrowsableState.Never)]
     public sealed class Converter : JsonConverter<ContentBlock>
     {
+        private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> s_nestedOptions = new();
+
+        private static JsonTypeInfo<T> GetNestedTypeInfo<T>(JsonSerializerOptions options)
+        {
+            // JsonSerializer freezes options, but direct converter callers may still change them.
+            JsonSerializerOptions nestedOptions = options.IsReadOnly
+                ? s_nestedOptions.GetValue(options, CreateNestedOptions)
+                : CreateNestedOptions(options);
+            return nestedOptions.GetTypeInfo<T>();
+        }
+
+        private static JsonSerializerOptions CreateNestedOptions(JsonSerializerOptions callerOptions)
+        {
+            // A caller context may register ContentBlock without discovering the types used by
+            // this custom converter. Keep caller contracts first, then supply the SDK metadata
+            // (including nested collection types) using the same settings and converters.
+            JsonSerializerOptions nestedOptions = new(callerOptions);
+            nestedOptions.TypeInfoResolverChain.Add(McpJsonUtilities.JsonContext.Default);
+            nestedOptions.MakeReadOnly();
+            return nestedOptions;
+        }
+
         /// <inheritdoc/>
         public override ContentBlock? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -172,7 +203,7 @@ public abstract class ContentBlock
                             icons = [];
                             while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
                             {
-                                icons.Add(JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.Icon) ??
+                                icons.Add(JsonSerializer.Deserialize(ref reader, GetNestedTypeInfo<Icon>(options)) ??
                                     throw new JsonException("Unexpected null item in icons array."));
                             }
                         }
@@ -183,7 +214,7 @@ public abstract class ContentBlock
                         break;
 
                     case "annotations":
-                        annotations = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.JsonContext.Default.Annotations);
+                        annotations = JsonSerializer.Deserialize(ref reader, GetNestedTypeInfo<Annotations>(options));
                         break;
 
                     case "_meta":
@@ -357,7 +388,7 @@ public abstract class ContentBlock
                         writer.WriteStartArray();
                         foreach (var icon in resourceLink.Icons)
                         {
-                            JsonSerializer.Serialize(writer, icon, McpJsonUtilities.JsonContext.Default.Icon);
+                            JsonSerializer.Serialize(writer, icon, GetNestedTypeInfo<Icon>(options));
                         }
                         writer.WriteEndArray();
                     }
@@ -394,7 +425,7 @@ public abstract class ContentBlock
             if (value.Annotations is { } annotations)
             {
                 writer.WritePropertyName("annotations");
-                JsonSerializer.Serialize(writer, annotations, McpJsonUtilities.JsonContext.Default.Annotations);
+                JsonSerializer.Serialize(writer, annotations, GetNestedTypeInfo<Annotations>(options));
             }
 
             if (value.Meta is not null)
