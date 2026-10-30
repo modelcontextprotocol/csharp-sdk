@@ -213,6 +213,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         int inFlightCount = 1;
         var allHandlersCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // subscriptions/listen handlers only complete when cancelled. Once the transport stops delivering messages,
+        // no notifications/cancelled can arrive, so their requests are linked to this source and cancelled in the
+        // finally below. Other requests are left to run to completion.
+        using var subscriptionsCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         try
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -247,7 +252,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         // for an in-flight request that happens to have the same ID.
                         if (messageWithId is not null)
                         {
-                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                                message is JsonRpcRequest { Method: RequestMethods.SubscriptionsListen }
+                                    ? subscriptionsCts.Token
+                                    : cancellationToken);
                             if (message is JsonRpcRequest { Method: not RequestMethods.Initialize })
                             {
                                 _handlingRequests[messageWithId.Id] = combinedCts;
@@ -362,6 +370,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // Decrement our own count. If all handlers have already completed, this will signal completion.
             if (Interlocked.Decrement(ref inFlightCount) != 0)
             {
+                await subscriptionsCts.CancelAsync().ConfigureAwait(false);
                 await allHandlersCompleted.Task.ConfigureAwait(false);
             }
 
