@@ -16,6 +16,8 @@ The SDK packages are:
 
 - **[ModelContextProtocol.Extensions.Apps](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.Extensions.Apps.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Apps) - MCP Apps extension for building interactive UI applications that render inside MCP hosts.
 
+- **[ModelContextProtocol.Extensions.Skills](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Skills)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.Extensions.Skills.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Skills) - MCP Skills extension for serving and consuming Agent Skills with verifiable file manifests.
+
 - **[ModelContextProtocol.Extensions.Tasks](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Tasks)** [![NuGet version](https://img.shields.io/nuget/v/ModelContextProtocol.Extensions.Tasks.svg)](https://www.nuget.org/packages/ModelContextProtocol.Extensions.Tasks) - MCP Tasks extension for running long-running tool invocations asynchronously with status polling and input requests.
 
 ## Getting Started

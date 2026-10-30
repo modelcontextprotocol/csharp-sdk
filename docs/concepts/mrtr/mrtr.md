@@ -387,7 +387,9 @@ The SDK supports `InputRequiredException` across protocol eras and effective req
 
 ### Why `ElicitAsync` / `SampleAsync` / `RequestRootsAsync` throw on stateless servers
 
-`ElicitAsync` / `SampleAsync` / `RequestRootsAsync` issue a JSON-RPC request to the client and wait for the response on the same session. Stateless servers don't have a persistent session to wait on, so the SDK fails fast with `InvalidOperationException("X is not supported in stateless mode.")` (the check is `McpServer.ClientCapabilities is null`, which is the SDK's proxy for stateless).
+`ElicitAsync` / `SampleAsync` / `RequestRootsAsync` issue a JSON-RPC request to the client and wait for the response on the same session. Without an outgoing-request interceptor providing a return path, stateless servers don't support these direct requests, so the SDK fails fast with `InvalidOperationException("X is not supported in stateless mode.")`. The SDK checks transport support separately from the client's declared capabilities.
+
+For `2026-07-28` requests, request-scoped `McpServer.ClientCapabilities` can be populated even on stateless servers. A non-null capability declaration does not mean the transport can deliver a direct server-to-client request. Use `InputRequiredException` for native MRTR instead of using non-null capabilities as a proxy for a stateful session.
 
 Under `2025-11-25` and earlier, stdio and stateful Streamable HTTP keep `ClientCapabilities` populated, so the legacy methods work normally and remain the recommended way to do one-shot client interactions. Under `2026-07-28`, the spec removes those request methods from Streamable HTTP entirely; the SDK still allows the legacy methods on `2026-07-28` stdio sessions because stdio is implicitly single-process / stateful and the client handler is wired up regardless of negotiated revision. `InputRequiredException` is the way to write tools that work on every supported configuration.
 

@@ -191,9 +191,9 @@ public class McpTaskStoreTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer();
         var ct = TestContext.Current.CancellationToken;
 
-        // Create a slow task that won't complete on its own
+        // Create a task that won't complete on its own
         var augmented = await client.CallToolAsTaskAsync(
-            new CallToolRequestParams { Name = "slow-tool" }, ct);
+            new CallToolRequestParams { Name = "long-running-tool" }, ct);
 
         var taskId = augmented.TaskCreated!.TaskId;
 
@@ -699,6 +699,13 @@ public class McpTaskStoreTests : ClientServerTestBase
         {
             await Task.Delay(200, cancellationToken);
             return "slow result";
+        }
+
+        [McpServerTool(Name = "long-running-tool"), System.ComponentModel.Description("A tool that runs until cancelled")]
+        public static async Task<string> LongRunningTool(CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return "completed";
         }
 
         [McpServerTool(Name = "fast-tool"), System.ComponentModel.Description("A fast tool")]
