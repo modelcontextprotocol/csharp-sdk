@@ -25,9 +25,11 @@ jobs:
           # Ignore DocFX snippet inclusion links.
           # Do not warn for learn.microsoft.com locale redirects.
           # Do not warn for modelcontextprotocol.io homepage/spec redirects.
+          # Keep the agentskills.io root link while permitting same-domain redirects.
           args: >-
             --ignore-links "xref:*"
             --ignore-links "*samples/*?name=snippet_*"
             --do-not-warn-for-redirect-to "https://learn.microsoft.com/en-us/*"
             --do-not-warn-for-redirect-to "https://modelcontextprotocol.io/*"
+            --do-not-warn-for-redirect-to "https://agentskills.io/*"
             ./docs
