@@ -17,7 +17,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// resources serve, so the two cannot disagree.
 /// </para>
 /// <para>
-/// Overloads without explicit metadata read the frontmatter with the SDK's built-in reader and reject unsupported
+/// Overloads without explicit frontmatter read the frontmatter with the SDK's built-in reader and reject unsupported
 /// or malformed input rather than publish guessed metadata. The reader handles a bounded subset of YAML: block
 /// mappings and sequences, plain, quoted and block scalars, single-line flow collections, and comments. Overloads
 /// accepting a <see cref="JsonObject"/> exist for YAML the reader does not support; see

@@ -225,7 +225,7 @@ builder.Services
     });
 ```
 
-The complete, tested [database-style example](../../../samples/SkillsServer/DatabaseStyleHandlers.cs) supplies
+The complete, tested [database-style example](https://github.com/modelcontextprotocol/csharp-sdk/blob/main/samples/SkillsServer/DatabaseStyleHandlers.cs) supplies
 `ExampleSkillRepository` and an illustrative **in-memory** `ExampleSkillStore`, not a real database implementation.
 The repository queries only rows from the authenticated caller's tenant with the required permission, then
 applies the listing predicate, URI cursor, ordering, and page limit. Its lookup and file-read methods deliberately
