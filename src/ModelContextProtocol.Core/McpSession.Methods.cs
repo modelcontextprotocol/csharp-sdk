@@ -38,7 +38,7 @@ public abstract partial class McpSession : IAsyncDisposable
             serializerOptions.GetTypeInfo<TParameters>(),
             serializerOptions.GetTypeInfo<TResult>(),
             requestId,
-            cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     /// <summary>
@@ -51,6 +51,7 @@ public abstract partial class McpSession : IAsyncDisposable
     /// <param name="parametersTypeInfo">The type information for request parameter serialization.</param>
     /// <param name="resultTypeInfo">The type information for result deserialization.</param>
     /// <param name="requestId">The request ID for the request.</param>
+    /// <param name="context">Non-serialized runtime context for the request.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests. The default is <see cref="CancellationToken.None"/>.</param>
     /// <returns>A task that represents the asynchronous operation. The task result contains the deserialized result.</returns>
     internal async ValueTask<TResult> SendRequestAsync<TParameters, TResult>(
@@ -59,6 +60,7 @@ public abstract partial class McpSession : IAsyncDisposable
         JsonTypeInfo<TParameters> parametersTypeInfo,
         JsonTypeInfo<TResult> resultTypeInfo,
         RequestId requestId = default,
+        JsonRpcMessageContext? context = null,
         CancellationToken cancellationToken = default)
         where TResult : notnull
     {
@@ -71,6 +73,7 @@ public abstract partial class McpSession : IAsyncDisposable
             Id = requestId,
             Method = method,
             Params = JsonSerializer.SerializeToNode(parameters, parametersTypeInfo),
+            Context = context,
         };
 
         JsonRpcResponse response = await SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);

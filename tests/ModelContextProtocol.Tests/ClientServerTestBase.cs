@@ -62,7 +62,7 @@ public abstract class ClientServerTestBase : LoggedTest, IAsyncDisposable
         return Server;
     }
 
-    public async ValueTask DisposeAsync()
+    public virtual async ValueTask DisposeAsync()
     {
         await _cts.CancelAsync();
 

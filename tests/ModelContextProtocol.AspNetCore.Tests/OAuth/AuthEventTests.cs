@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.AspNetCore.Authentication;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Tests.Utils;
 using System.Net;
 using System.Net.Http.Json;
 
@@ -55,7 +56,7 @@ public class AuthEventTests : OAuthTestBase
             LoggerFactory
         );
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken
@@ -94,7 +95,7 @@ public class AuthEventTests : OAuthTestBase
             LoggerFactory
         );
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken

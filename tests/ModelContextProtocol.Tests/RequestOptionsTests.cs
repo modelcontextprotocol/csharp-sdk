@@ -141,6 +141,21 @@ public static class RequestOptionsTests
     }
 
     [Fact]
+    public static void GetMetaForRequest_LongProgressToken_IsWrittenAsJsonNumber()
+    {
+        RequestOptions options = new() { ProgressToken = new ProgressToken(42L) };
+
+        var actual = options.GetMetaForRequest();
+
+        Assert.NotNull(actual);
+        Assert.Equal(JsonValueKind.Number, actual["progressToken"]!.GetValueKind());
+
+        // The token the peer reads back must be the token the caller asked for.
+        RequestParams request = new CallToolRequestParams { Name = "tool", Meta = actual };
+        Assert.Equal(new ProgressToken(42L), request.ProgressToken);
+    }
+
+    [Fact]
     public static void GetMetaForRequest_BothSet_ReturnsCloneWithProgressToken()
     {
         JsonObject meta = new() { ["custom"] = "data" };

@@ -65,7 +65,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     }
 
     private Task<McpClient> ConnectMcpClientAsync(McpClientOptions? clientOptions = null)
-        => McpClient.CreateAsync(
+        => TestMcpClient.CreateAsync(
             new HttpClientTransport(DefaultTransportOptions, HttpClient, LoggerFactory),
             clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
 
@@ -107,7 +107,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions();
+        var mcpClientOptions = TestMcpClient.CreateOptions();
         mcpClientOptions.Handlers.SamplingHandler = (_, _, _) =>
         {
             throw new UnreachableException();
@@ -125,7 +125,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions();
+        var mcpClientOptions = TestMcpClient.CreateOptions();
         mcpClientOptions.Handlers.RootsHandler = (_, _) =>
         {
             throw new UnreachableException();
@@ -143,7 +143,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     {
         await StartAsync();
 
-        var mcpClientOptions = new McpClientOptions();
+        var mcpClientOptions = TestMcpClient.CreateOptions();
         mcpClientOptions.Handlers.ElicitationHandler = (_, _) =>
         {
             throw new UnreachableException();
@@ -160,7 +160,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     public async Task ClientCapabilities_AreAvailableFromInjectedServer()
     {
         await StartAsync();
-        var clientOptions = new McpClientOptions();
+        var clientOptions = TestMcpClient.CreateOptions();
         clientOptions.Handlers.SamplingHandler = (_, _, _) => throw new UnreachableException();
         clientOptions.Handlers.RootsHandler = (_, _) => throw new UnreachableException();
         clientOptions.Handlers.ElicitationHandler = (_, _) => throw new UnreachableException();
@@ -179,7 +179,7 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     public async Task InterceptedServerToClientRequests_Succeed_InStatelessMode()
     {
         await StartAsync();
-        var clientOptions = new McpClientOptions();
+        var clientOptions = TestMcpClient.CreateOptions();
         clientOptions.Handlers.SamplingHandler = (_, _, _) => throw new UnreachableException();
         clientOptions.Handlers.ElicitationHandler = (_, _) => throw new UnreachableException();
         await using var client = await ConnectMcpClientAsync(clientOptions);

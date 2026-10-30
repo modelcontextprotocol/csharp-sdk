@@ -24,22 +24,23 @@ public abstract partial class McpClient : McpSession
     public abstract ServerCapabilities ServerCapabilities { get; }
 
     /// <summary>
-    /// Gets the implementation information of the connected server.
+    /// Gets the implementation information of the connected server, if provided.
     /// </summary>
     /// <remarks>
     /// <para>
     /// This property provides identification details about the connected server, including its name and version.
     /// It is populated during the initialization handshake or from <c>server/discover</c> result metadata.
+    /// A server using <c>server/discover</c> may omit this optional metadata, in which case the value is <see langword="null"/>.
     /// </para>
     /// <para>
-    /// This information can be useful for logging, debugging, compatibility checks, and displaying server
-    /// information to users.
+    /// This self-reported information can be useful for logging, debugging, and displaying server
+    /// information to users. It should not be used for security decisions.
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">
-    /// The client is not connected, or the server omitted the optional server identity metadata.
+    /// The client is not connected.
     /// </exception>
-    public abstract Implementation ServerInfo { get; }
+    public abstract Implementation? ServerInfo { get; }
 
     /// <summary>
     /// Gets any instructions describing how to use the connected server and its features.
