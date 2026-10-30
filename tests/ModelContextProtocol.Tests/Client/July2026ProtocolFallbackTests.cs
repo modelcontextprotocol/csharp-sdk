@@ -25,6 +25,126 @@ namespace ModelContextProtocol.Tests.Client;
 /// </remarks>
 public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
+    [Theory]
+    [InlineData(McpProtocolVersions.November2025ProtocolVersion, McpProtocolVersions.November2025ProtocolVersion)]
+    [InlineData(McpProtocolVersions.November2025ProtocolVersion, McpProtocolVersions.June2025ProtocolVersion)]
+    [InlineData(McpProtocolVersions.June2025ProtocolVersion, McpProtocolVersions.March2025ProtocolVersion)]
+    public async Task MaximumProtocolVersion_InitializeAcceptsOlderSupportedVersion(string maximum, string negotiated)
+    {
+        await using var transport = new InitializeHandshakeServerTestTransport(negotiated);
+        await using var client = await McpClient.CreateAsync(transport,
+            new McpClientOptions { MaximumProtocolVersion = maximum },
+            LoggerFactory, TestContext.Current.CancellationToken);
+
+        Assert.False(transport.ServerDiscoverProbed);
+        Assert.Equal(maximum, transport.InitializeProtocolVersion);
+        Assert.Equal(negotiated, client.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task MaximumProtocolVersion_ModernVersionUsesDiscover()
+    {
+        await using var transport = new PerRequestMetadataRetryTestTransport();
+        await using var client = await McpClient.CreateAsync(transport,
+            new McpClientOptions { MaximumProtocolVersion = McpProtocolVersions.July2026ProtocolVersion },
+            LoggerFactory, TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, transport.ServerDiscoverRequests);
+        Assert.False(transport.InitializeReceived);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
+    public async Task MaximumProtocolVersion_ModernCeilingAllowsInitializeFallback()
+    {
+        await using var transport = new InitializeHandshakeServerTestTransport(McpProtocolVersions.June2025ProtocolVersion);
+        await using var client = await McpClient.CreateAsync(transport,
+            new McpClientOptions { MaximumProtocolVersion = McpProtocolVersions.July2026ProtocolVersion },
+            LoggerFactory, TestContext.Current.CancellationToken);
+
+        Assert.True(transport.ServerDiscoverProbed);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, transport.InitializeProtocolVersion);
+        Assert.Equal(McpProtocolVersions.June2025ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Theory]
+    [InlineData(McpProtocolVersions.November2025ProtocolVersion)]
+    [InlineData("not-a-protocol-version")]
+    public async Task MaximumProtocolVersion_RejectsNewerOrMalformedInitializeResponse(string serverVersion)
+    {
+        await using var transport = new InitializeHandshakeServerTestTransport(serverVersion);
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport,
+                new McpClientOptions { MaximumProtocolVersion = McpProtocolVersions.June2025ProtocolVersion },
+                LoggerFactory, TestContext.Current.CancellationToken);
+        });
+
+        Assert.False(transport.ServerDiscoverProbed);
+        Assert.Equal(McpProtocolVersions.June2025ProtocolVersion, transport.InitializeProtocolVersion);
+        Assert.Contains(serverVersion, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MaximumProtocolVersion_RejectsDiscoverWithoutMutualVersion()
+    {
+        await using var transport = new PerRequestMetadataRetryTestTransport(["2027-01-01"]);
+
+        var exception = await Assert.ThrowsAsync<McpException>(async () =>
+        {
+            await using var client = await McpClient.CreateAsync(transport,
+                new McpClientOptions { MaximumProtocolVersion = McpProtocolVersions.July2026ProtocolVersion },
+                LoggerFactory, TestContext.Current.CancellationToken);
+        });
+
+        Assert.Equal(1, transport.ServerDiscoverRequests);
+        Assert.False(transport.InitializeReceived);
+        Assert.Contains("No mutually supported", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task MaximumProtocolVersion_RejectsConflictWithExactVersionBeforeConnecting()
+    {
+        await using var transport = new InitializeHandshakeServerTestTransport(McpProtocolVersions.November2025ProtocolVersion);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => McpClient.CreateAsync(transport,
+            new McpClientOptions
+            {
+                ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                MaximumProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
+            }, LoggerFactory, TestContext.Current.CancellationToken));
+
+        Assert.False(transport.ServerDiscoverProbed);
+        Assert.False(transport.InitializeReceived);
+    }
+
+    [Fact]
+    public void MaximumProtocolVersion_RejectsUnsupportedVersion()
+    {
+        Assert.Throws<ArgumentException>(() => new McpClientOptions { MaximumProtocolVersion = "2026-01-01" });
+    }
+
+    [Fact]
+    public async Task MaximumProtocolVersion_RejectsResumeAboveCeiling()
+    {
+        await using var transport = new InitializeHandshakeServerTestTransport(McpProtocolVersions.November2025ProtocolVersion);
+        var resumeOptions = new ResumeClientSessionOptions
+        {
+            ServerCapabilities = new ServerCapabilities(),
+            ServerInfo = new Implementation { Name = "test-server", Version = "1.0" },
+            NegotiatedProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => McpClient.ResumeSessionAsync(transport,
+            resumeOptions,
+            new McpClientOptions { MaximumProtocolVersion = McpProtocolVersions.June2025ProtocolVersion },
+            LoggerFactory, TestContext.Current.CancellationToken));
+
+        Assert.False(transport.ServerDiscoverProbed);
+        Assert.False(transport.InitializeReceived);
+    }
+
     [Fact]
     public async Task Client_OnMethodNotFound_FallsBackTo_Initialize_AcceptsDowngradedVersion()
     {
@@ -761,7 +881,7 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         }
     }
 
-    private sealed class PerRequestMetadataRetryTestTransport : IClientTransport
+    private sealed class PerRequestMetadataRetryTestTransport(IList<string>? supportedVersions = null) : IClientTransport
     {
         private readonly Channel<JsonRpcMessage> _incomingToClient = Channel.CreateUnbounded<JsonRpcMessage>();
 
@@ -827,12 +947,12 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         private Task WriteAsync(JsonRpcMessage message)
             => _incomingToClient.Writer.WriteAsync(message, CancellationToken.None).AsTask();
 
-        private static JsonElement CreateUnsupportedProtocolVersionData()
+        private JsonElement CreateUnsupportedProtocolVersionData()
         {
             var json = JsonSerializer.Serialize(new UnsupportedProtocolVersionErrorData
             {
                 Requested = McpProtocolVersions.July2026ProtocolVersion,
-                Supported = [McpProtocolVersions.July2026ProtocolVersion],
+                Supported = supportedVersions ?? [McpProtocolVersions.July2026ProtocolVersion],
             }, McpJsonUtilities.DefaultOptions);
 
             using var document = JsonDocument.Parse(json);

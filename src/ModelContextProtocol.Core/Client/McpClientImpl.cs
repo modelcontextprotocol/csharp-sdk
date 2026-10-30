@@ -293,17 +293,18 @@ internal sealed partial class McpClientImpl : McpClient
 
             try
             {
+                string? maximumVersion = _options.MaximumProtocolVersion;
+                string preferredVersion = _options.ProtocolVersion ?? maximumVersion ?? McpProtocolVersions.July2026ProtocolVersion;
                 // The 2026-07-28 revision (SEP-2575) is the default: there is no initialize
                 // handshake. Instead, the client calls server/discover to learn the server's
                 // capabilities and then begins sending normal RPCs that carry protocolVersion /
                 // clientInfo / clientCapabilities in their per-request _meta. A null ProtocolVersion
                 // prefers the 2026-07-28 revision and automatically falls back to the initialize
-                // handshake when the server doesn't support it. HTTP+SSE defaults to the initialize handshake,
-                // including when AutoDetect selects it while sending the discovery probe.
-                if (_options.ProtocolVersion is null || McpProtocolVersions.RequiresPerRequestMetadata(_options.ProtocolVersion))
+                // handshake when the server doesn't support it. A legacy maximum skips discovery.
+                // HTTP+SSE defaults to the initialize handshake, including when AutoDetect selects it
+                // while sending the discovery probe.
+                if (McpProtocolVersions.RequiresPerRequestMetadata(preferredVersion))
                 {
-                    string preferredVersion = _options.ProtocolVersion ?? McpProtocolVersions.July2026ProtocolVersion;
-
                     DiscoverResult? discoverResult = null;
                     // Modern-over-SSE is unusual, but honor an explicit version choice instead of forcing initialize.
                     bool fallbackToInitialize = _transport is SseClientSessionTransport && _options.ProtocolVersion is null;
@@ -341,6 +342,7 @@ internal sealed partial class McpClientImpl : McpClient
                         serverSupportedVersions = (IList<string>)ex.Supported;
                         var retryVersion = serverSupportedVersions
                             .Where(McpProtocolVersions.PerRequestMetadataProtocolVersions.Contains)
+                            .Where(v => maximumVersion is null || StringComparer.Ordinal.Compare(v, maximumVersion) <= 0)
                             .OrderByDescending(v => v, StringComparer.Ordinal)
                             .FirstOrDefault();
 
@@ -430,9 +432,20 @@ internal sealed partial class McpClientImpl : McpClient
 
                         string fallbackVersion = serverSupportedVersions?
                             .Where(McpProtocolVersions.InitializeHandshakeProtocolVersions.Contains)
+                            .Where(v => maximumVersion is null || StringComparer.Ordinal.Compare(v, maximumVersion) <= 0)
                             .OrderByDescending(v => v, StringComparer.Ordinal)
                             .FirstOrDefault()
-                            ?? McpProtocolVersions.November2025ProtocolVersion;
+                            ?? (maximumVersion is not null && McpProtocolVersions.SupportsInitializeHandshake(maximumVersion)
+                                ? maximumVersion
+                                : McpProtocolVersions.November2025ProtocolVersion);
+
+                        if (maximumVersion is not null && serverSupportedVersions is not null &&
+                            !serverSupportedVersions.Contains(fallbackVersion))
+                        {
+                            throw new McpException(
+                                $"No mutually supported MCP protocol version at or below '{maximumVersion}'. " +
+                                $"Server-supported versions: {string.Join(", ", serverSupportedVersions)}.");
+                        }
 
                         // A non-null ProtocolVersion is also the minimum: refuse to fall back below the
                         // explicitly requested version. String.Compare is the spec's prescribed ordering
@@ -486,11 +499,9 @@ internal sealed partial class McpClientImpl : McpClient
                 }
                 else
                 {
-                    // initialize handshake. Reached only when the caller explicitly pinned a
-                    // ProtocolVersion that still supports Streamable HTTP sessions (opting out of the default), so
-                    // _options.ProtocolVersion is non-null here.
-                    string requestProtocol = _options.ProtocolVersion ?? McpProtocolVersions.November2025ProtocolVersion;
-                    await PerformInitializeHandshakeAsync(requestProtocol, initializationToken).ConfigureAwait(false);
+                    // initialize handshake. Reached when the caller pinned an initialize-capable version
+                    // or set a legacy maximum, skipping discovery in either case.
+                    await PerformInitializeHandshakeAsync(preferredVersion, initializationToken).ConfigureAwait(false);
                 }
             }
             catch (OperationCanceledException oce) when (initializationToken.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
@@ -573,11 +584,20 @@ internal sealed partial class McpClientImpl : McpClient
         }
         else
         {
-            isResponseProtocolValid = McpProtocolVersions.InitializeHandshakeProtocolVersions.Contains(initializeResponse.ProtocolVersion);
+            isResponseProtocolValid = McpProtocolVersions.InitializeHandshakeProtocolVersions.Contains(initializeResponse.ProtocolVersion) &&
+                (_options.MaximumProtocolVersion is null ||
+                 StringComparer.Ordinal.Compare(initializeResponse.ProtocolVersion, _options.MaximumProtocolVersion) <= 0);
         }
         if (!isResponseProtocolValid)
         {
             LogServerProtocolVersionMismatch(_endpointName, requestProtocol, initializeResponse.ProtocolVersion);
+            if (_options.MaximumProtocolVersion is { } maximumVersion)
+            {
+                throw new McpException(
+                    $"Server protocol version '{initializeResponse.ProtocolVersion}' is not a supported initialize-handshake version " +
+                    $"at or below the configured maximum '{maximumVersion}'.");
+            }
+
             throw new McpException($"Server protocol version mismatch. Expected {requestProtocol}, got {initializeResponse.ProtocolVersion}");
         }
 
@@ -608,7 +628,9 @@ internal sealed partial class McpClientImpl : McpClient
         _serverInstructions = resumeOptions.ServerInstructions;
         _negotiatedProtocolVersion = resumeOptions.NegotiatedProtocolVersion
             ?? _options.ProtocolVersion
-            ?? McpProtocolVersions.November2025ProtocolVersion;
+            ?? (_options.MaximumProtocolVersion is { } maximumVersion && McpProtocolVersions.SupportsInitializeHandshake(maximumVersion)
+                ? maximumVersion
+                : McpProtocolVersions.November2025ProtocolVersion);
 
         // Update session handler with the negotiated protocol version for telemetry
         _sessionHandler.NegotiatedProtocolVersion = _negotiatedProtocolVersion;
