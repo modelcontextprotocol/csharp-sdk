@@ -718,7 +718,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             return null;
         }
 
-        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, refreshToken, cancellationToken).ConfigureAwait(false);
         LogOAuthTokenRefreshCompleted();
         return tokens.AccessToken;
     }
@@ -846,7 +846,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         await httpResponse.EnsureSuccessStatusCodeWithResponseBodyAsync(cancellationToken).ConfigureAwait(false);
 
-        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, cancellationToken).ConfigureAwait(false);
+        var tokens = await HandleSuccessfulTokenResponseAsync(httpResponse, previousRefreshToken: null, cancellationToken).ConfigureAwait(false);
         LogOAuthAuthorizationCompleted();
         return tokens.AccessToken;
     }
@@ -883,7 +883,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return request;
     }
 
-    private async Task<TokenContainer> HandleSuccessfulTokenResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private async Task<TokenContainer> HandleSuccessfulTokenResponseAsync(HttpResponseMessage response, string? previousRefreshToken, CancellationToken cancellationToken)
     {
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         var tokenResponse = await JsonSerializer.DeserializeAsync(stream, McpJsonUtilities.JsonContext.Default.TokenResponse, cancellationToken).ConfigureAwait(false);
@@ -901,7 +901,8 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         TokenContainer tokens = new()
         {
             AccessToken = tokenResponse.AccessToken,
-            RefreshToken = tokenResponse.RefreshToken,
+            // RFC 6749 section 6 allows a refresh response to omit a replacement refresh token.
+            RefreshToken = tokenResponse.RefreshToken ?? previousRefreshToken,
             ExpiresIn = tokenResponse.ExpiresIn,
             TokenType = tokenResponse.TokenType,
             Scope = tokenResponse.Scope,
