@@ -67,8 +67,8 @@ public sealed class McpClientOptions
     /// <see cref="McpException"/> instead of falling back. Setting it to <c>2026-07-28</c> therefore disables
     /// the automatic initialize-handshake server fallback, and setting it to a version that still supports Streamable HTTP
     /// sessions, such as <c>2025-11-25</c>, forces the <c>initialize</c> handshake and fails if the server
-    /// negotiates a different version. To try more than one version, leave this unset for automatic fallback
-    /// or retry the connection with a different value.
+    /// negotiates a different version. To accept older versions while setting an upper bound, use
+    /// <see cref="MaximumProtocolVersion"/> instead.
     /// </para>
     /// <para>
     /// HTTP+SSE connections use the <c>initialize</c> handshake by default.
@@ -76,6 +76,30 @@ public sealed class McpClientOptions
     /// </para>
     /// </remarks>
     public string? ProtocolVersion { get; set; }
+
+    /// <summary>
+    /// Gets or sets the newest protocol version the client is willing to negotiate.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="ProtocolVersion"/>, this is a ceiling rather than an exact version: the server may
+    /// select an older version supported by the SDK. It must be one of the SDK's supported protocol versions
+    /// and cannot be set together with <see cref="ProtocolVersion"/>. When omitted, the latest supported
+    /// version is preferred.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The value is not a supported protocol version.</exception>
+    public string? MaximumProtocolVersion
+    {
+        get;
+        set
+        {
+            if (value is not null && !McpProtocolVersions.IsSupportedProtocolVersion(value))
+            {
+                throw new ArgumentException($"Unsupported MCP protocol version '{value}'.", nameof(value));
+            }
+
+            field = value;
+        }
+    }
 
     /// <summary>
     /// Gets or sets a timeout for the client-server initialization handshake sequence.
@@ -132,7 +156,8 @@ public sealed class McpClientOptions
     /// <remarks>
     /// <para>
     /// This timeout only has an effect when the client prefers the <c>2026-07-28</c> protocol revision, that is,
-    /// when <see cref="ProtocolVersion"/> is <see langword="null"/> (the default) or <c>2026-07-28</c>.
+    /// when <see cref="ProtocolVersion"/> is <c>2026-07-28</c>, or when it is <see langword="null"/>
+    /// and <see cref="MaximumProtocolVersion"/> is unset or <c>2026-07-28</c>.
     /// In that mode the client first probes the server with a
     /// <c>server/discover</c> request. A server that predates the <c>2026-07-28</c> revision may
     /// silently drop the unknown method, so the probe is bounded by this timeout; when it elapses the
