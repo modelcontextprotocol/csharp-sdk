@@ -34,6 +34,10 @@
   <!-- Exclude polyfills inherited from Directory.Build.props; this package only needs a handful of them. -->
   <ItemGroup>
     <Compile Remove="..\Common\Polyfills\**\*.cs" />
+    <Compile Include="..\Common\Polyfills\System\Diagnostics\CodeAnalysis\DynamicallyAccessedMembersAttribute.cs"
+             Link="Polyfills\DynamicallyAccessedMembersAttribute.cs" />
+    <Compile Include="..\Common\Polyfills\System\Diagnostics\CodeAnalysis\DynamicallyAccessedMemberTypes.cs"
+             Link="Polyfills\DynamicallyAccessedMemberTypes.cs" />
     <Compile Include="..\Common\Polyfills\System\Diagnostics\CodeAnalysis\ExperimentalAttribute.cs"
              Link="Polyfills\ExperimentalAttribute.cs" />
     <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\CompilerFeatureRequiredAttribute.cs"

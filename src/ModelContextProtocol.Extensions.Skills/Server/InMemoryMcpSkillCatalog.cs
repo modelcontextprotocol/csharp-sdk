@@ -1,3 +1,4 @@
+using ModelContextProtocol.Server;
 using System.Text;
 
 namespace ModelContextProtocol.Extensions.Skills;
@@ -17,7 +18,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </para>
 /// <para>
 /// Every caller sees the same entries. For a catalog whose contents depend on the caller, implement
-/// <see cref="IMcpSkillCatalog"/> directly and consult <see cref="McpSkillRequestContext.User"/>.
+/// <see cref="IMcpSkillCatalog"/> directly and consult <see cref="ModelContextProtocol.Server.MessageContext.User"/>.
 /// </para>
 /// </remarks>
 public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
@@ -76,12 +77,18 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
     public int Count => _ordered.Length;
 
     /// <inheritdoc />
-    public ValueTask<McpSkillPage> ListAsync(string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken)
+    public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
     {
+#if NET
+        ArgumentNullException.ThrowIfNull(context);
+#else
+        if (context is null) throw new ArgumentNullException(nameof(context));
+#endif
+
         cancellationToken.ThrowIfCancellationRequested();
 
         int start = 0;
-        if (DecodeCursor(cursor) is { } afterUri)
+        if (DecodeCursor(context.Params.Cursor) is { } afterUri)
         {
             int index = Array.BinarySearch(_orderedUris, afterUri, StringComparer.Ordinal);
             start = index >= 0 ? index + 1 : ~index;
@@ -108,17 +115,17 @@ public sealed class InMemoryMcpSkillCatalog : IMcpSkillCatalog
     }
 
     /// <inheritdoc />
-    public ValueTask<Skill?> GetAsync(string uri, McpSkillRequestContext context, CancellationToken cancellationToken)
+    public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
     {
 #if NET
-        ArgumentNullException.ThrowIfNull(uri);
+        ArgumentNullException.ThrowIfNull(context);
 #else
-        if (uri is null) throw new ArgumentNullException(nameof(uri));
+        if (context is null) throw new ArgumentNullException(nameof(context));
 #endif
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        return new ValueTask<Skill?>(_byUri.TryGetValue(uri, out var skill) ? SkillValidation.Snapshot(skill) : null);
+        return new ValueTask<Skill?>(_byUri.TryGetValue(context.Params.Uri, out var skill) ? SkillValidation.Snapshot(skill) : null);
     }
 
     private static string EncodeCursor(string uri) => Convert.ToBase64String(Encoding.UTF8.GetBytes(uri));

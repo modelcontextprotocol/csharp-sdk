@@ -1,5 +1,7 @@
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using Moq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -15,7 +17,11 @@ public class InMemoryMcpSkillCatalogTests
 {
     private static readonly string s_validDigest = "sha256:" + new string('a', 64);
 
-    private McpSkillRequestContext Context => new(new JsonRpcRequest { Method = SkillsProtocol.MethodSkillsList });
+    private RequestContext<ListSkillsRequestParams> CreateListContext(string? cursor = null) =>
+        new(new Mock<McpServer>().Object, new JsonRpcRequest { Method = SkillsProtocol.MethodSkillsList }, new() { Cursor = cursor });
+
+    private RequestContext<GetSkillRequestParams> CreateGetContext(string uri) =>
+        new(new Mock<McpServer>().Object, new JsonRpcRequest { Method = SkillsProtocol.MethodSkillsGet }, new() { Uri = uri });
 
     // Static because the InvalidSkills member data, which xUnit requires to be static, builds its cases with it.
     private static Skill CreateSkill(string name, string? description = "A skill", SkillResources? resources = null)
@@ -41,7 +47,7 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(10, "zebra", "alpha", "middle");
 
-        var page = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
+        var page = await catalog.ListAsync(CreateListContext(), TestContext.Current.CancellationToken);
 
         Assert.Collection(
             page.Skills,
@@ -62,7 +68,7 @@ public class InMemoryMcpSkillCatalogTests
         int pages = 0;
         do
         {
-            var page = await catalog.ListAsync(cursor, Context, TestContext.Current.CancellationToken);
+            var page = await catalog.ListAsync(CreateListContext(cursor), TestContext.Current.CancellationToken);
             seen.AddRange(page.Skills.Select(skill => skill.Uri));
             cursor = page.NextCursor;
             Assert.True(++pages < 20, "Pagination did not terminate.");
@@ -80,8 +86,8 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(2, "a", "b", "c", "d");
 
-        var first = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
-        var second = await catalog.ListAsync(first.NextCursor, Context, TestContext.Current.CancellationToken);
+        var first = await catalog.ListAsync(CreateListContext(), TestContext.Current.CancellationToken);
+        var second = await catalog.ListAsync(CreateListContext(first.NextCursor), TestContext.Current.CancellationToken);
 
         Assert.NotNull(first.NextCursor);
         Assert.Equal(2, second.Skills.Count);
@@ -94,7 +100,7 @@ public class InMemoryMcpSkillCatalogTests
         var catalog = CreateCatalog(10, "a", "c");
         string cursor = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("skill://b/SKILL.md"));
 
-        var page = await catalog.ListAsync(cursor, Context, TestContext.Current.CancellationToken);
+        var page = await catalog.ListAsync(CreateListContext(cursor), TestContext.Current.CancellationToken);
 
         Assert.Single(page.Skills);
         Assert.Equal("skill://c/SKILL.md", page.Skills[0].Uri);
@@ -105,7 +111,7 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(10);
 
-        var page = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
+        var page = await catalog.ListAsync(CreateListContext(), TestContext.Current.CancellationToken);
 
         Assert.Empty(page.Skills);
         Assert.Null(page.NextCursor);
@@ -121,7 +127,7 @@ public class InMemoryMcpSkillCatalogTests
         var catalog = CreateCatalog(10, "a");
 
         var exception = await Assert.ThrowsAsync<McpProtocolException>(
-            async () => await catalog.ListAsync(cursor, Context, TestContext.Current.CancellationToken));
+            async () => await catalog.ListAsync(CreateListContext(cursor), TestContext.Current.CancellationToken));
 
         Assert.Equal(McpErrorCode.InvalidParams, exception.ErrorCode);
     }
@@ -131,7 +137,7 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(10, "alpha");
 
-        var skill = await catalog.GetAsync("skill://alpha/SKILL.md", Context, TestContext.Current.CancellationToken);
+        var skill = await catalog.GetAsync(CreateGetContext("skill://alpha/SKILL.md"), TestContext.Current.CancellationToken);
 
         Assert.NotNull(skill);
         Assert.Equal("alpha", skill.Name);
@@ -145,7 +151,16 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = CreateCatalog(10, "alpha");
 
-        Assert.Null(await catalog.GetAsync(uri, Context, TestContext.Current.CancellationToken));
+        Assert.Null(await catalog.GetAsync(CreateGetContext(uri), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public void Methods_WithNullContext_Throw()
+    {
+        var catalog = CreateCatalog(10, "alpha");
+
+        Assert.Throws<ArgumentNullException>("context", () => catalog.ListAsync(null!, TestContext.Current.CancellationToken));
+        Assert.Throws<ArgumentNullException>("context", () => catalog.GetAsync(null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -158,7 +173,7 @@ public class InMemoryMcpSkillCatalogTests
         source.Resources.Resources![0].Digest = "sha256:" + new string('f', 64);
         source.Uri = "skill://renamed/SKILL.md";
 
-        var served = await catalog.GetAsync("skill://alpha/SKILL.md", Context, TestContext.Current.CancellationToken);
+        var served = await catalog.GetAsync(CreateGetContext("skill://alpha/SKILL.md"), TestContext.Current.CancellationToken);
         Assert.NotNull(served);
         Assert.Equal("A skill", served.Description);
         Assert.Equal(s_validDigest, served.Resources.Resources![0].Digest);
@@ -169,14 +184,14 @@ public class InMemoryMcpSkillCatalogTests
     {
         var catalog = new InMemoryMcpSkillCatalog([CreateSkill("alpha")]);
 
-        var first = await catalog.GetAsync("skill://alpha/SKILL.md", Context, TestContext.Current.CancellationToken);
+        var first = await catalog.GetAsync(CreateGetContext("skill://alpha/SKILL.md"), TestContext.Current.CancellationToken);
         first!.Frontmatter["description"] = "tampered";
         first.Resources.Resources![0].Digest = "sha256:" + new string('f', 64);
 
-        var listed = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
+        var listed = await catalog.ListAsync(CreateListContext(), TestContext.Current.CancellationToken);
         listed.Skills[0].Frontmatter["description"] = "tampered again";
 
-        var again = await catalog.GetAsync("skill://alpha/SKILL.md", Context, TestContext.Current.CancellationToken);
+        var again = await catalog.GetAsync(CreateGetContext("skill://alpha/SKILL.md"), TestContext.Current.CancellationToken);
         Assert.Equal("A skill", again!.Description);
         Assert.Equal(s_validDigest, again.Resources.Resources![0].Digest);
     }
@@ -192,18 +207,18 @@ public class InMemoryMcpSkillCatalogTests
         var catalog = new InMemoryMcpSkillCatalog([source]);
         source.Meta["example.com/extension"]!["items"]![0]!["value"] = "source changed";
 
-        var page = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
+        var page = await catalog.ListAsync(CreateListContext(), TestContext.Current.CancellationToken);
         var listed = Assert.Single(page.Skills);
         Assert.True(JsonNode.DeepEquals(expected, listed.Meta));
         listed.Meta!["example.com/extension"]!["items"]![0]!["value"] = "listed entry changed";
 
-        var fetched = await catalog.GetAsync(source.Uri, Context, TestContext.Current.CancellationToken);
+        var fetched = await catalog.GetAsync(CreateGetContext(source.Uri), TestContext.Current.CancellationToken);
         Assert.NotNull(fetched);
         Assert.True(JsonNode.DeepEquals(expected, fetched.Meta));
         fetched.Meta!["example.com/extension"]!["items"]!.AsArray().Clear();
 
-        var listedAgain = await catalog.ListAsync(null, Context, TestContext.Current.CancellationToken);
-        var fetchedAgain = await catalog.GetAsync(source.Uri, Context, TestContext.Current.CancellationToken);
+        var listedAgain = await catalog.ListAsync(CreateListContext(), TestContext.Current.CancellationToken);
+        var fetchedAgain = await catalog.GetAsync(CreateGetContext(source.Uri), TestContext.Current.CancellationToken);
         Assert.True(JsonNode.DeepEquals(expected, Assert.Single(listedAgain.Skills).Meta));
         Assert.True(JsonNode.DeepEquals(expected, fetchedAgain!.Meta));
     }

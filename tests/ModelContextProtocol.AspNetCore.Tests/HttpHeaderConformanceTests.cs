@@ -123,21 +123,41 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
 
     #region Server-side validation tests
 
-    [Fact]
-    public async Task Server_UsesCustomHandlerRoutingNameMetadata()
+    [Theory]
+    [InlineData("item-42", HttpStatusCode.OK)]
+    [InlineData(null, HttpStatusCode.BadRequest)]
+    [InlineData("other-item", HttpStatusCode.BadRequest)]
+    public async Task Server_UsesCustomHandlerRoutingNameMetadata(string? routingName, HttpStatusCode expectedStatus)
     {
         await StartAsync();
         await ProbeWithJuly2026ProtocolVersionAsync();
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "");
         request.Content = JsonContent(
-            """{"jsonrpc":"2.0","id":2,"method":"extension/get","params":{"itemId":"item-42","_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"TestClient","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}""");
+            """
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "extension/get",
+                "params": {
+                    "itemId": "item-42",
+                    "_meta": {
+                        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                        "io.modelcontextprotocol/clientInfo": { "name": "TestClient", "version": "1.0" },
+                        "io.modelcontextprotocol/clientCapabilities": {}
+                    }
+                }
+            }
+            """);
         request.Headers.Add(McpHttpHeaders.ProtocolVersion, "2026-07-28");
         request.Headers.Add(McpHttpHeaders.Method, "extension/get");
-        request.Headers.Add(McpHttpHeaders.Name, "item-42");
+        if (routingName is not null)
+        {
+            request.Headers.Add(McpHttpHeaders.Name, routingName);
+        }
 
         using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(expectedStatus, response.StatusCode);
     }
 
     [Fact]

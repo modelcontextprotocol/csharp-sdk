@@ -179,12 +179,12 @@ public class SkillsAuthorizationTests(ITestOutputHelper output) : KestrelInMemor
     private sealed class AuthorizedCatalog(IReadOnlyList<Skill> skills, ReadPolicy policy, int pageSize) : IMcpSkillCatalog
     {
         public ValueTask<McpSkillPage> ListAsync(
-            string? cursor, McpSkillRequestContext context, CancellationToken cancellationToken) =>
-            ForUser(context.User).ListAsync(cursor, context, cancellationToken);
+            RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken) =>
+            ForUser(context.User).ListAsync(context, cancellationToken);
 
         public ValueTask<Skill?> GetAsync(
-            string uri, McpSkillRequestContext context, CancellationToken cancellationToken) =>
-            ForUser(context.User).GetAsync(uri, context, cancellationToken);
+            RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken) =>
+            ForUser(context.User).GetAsync(context, cancellationToken);
 
         private InMemoryMcpSkillCatalog ForUser(ClaimsPrincipal? user) =>
             new(skills.Where(skill => policy.CanRead(user, skill.Uri)), pageSize);
