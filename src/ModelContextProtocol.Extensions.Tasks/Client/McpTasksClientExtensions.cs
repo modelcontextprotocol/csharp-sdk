@@ -37,7 +37,7 @@ public static class McpTasksClientExtensions
         JsonRpcRequest jsonRpcRequest = new()
         {
             Method = RequestMethods.ToolsCall,
-            Params = JsonSerializer.SerializeToNode(paramsWithMeta, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolRequestParams>()),
+            Params = JsonSerializer.SerializeToNode(paramsWithMeta, McpJsonUtilities.ProtocolOptions.GetTypeInfo<CallToolRequestParams>()),
         };
 
         JsonRpcResponse response = await client.SendRequestAsync(jsonRpcRequest, cancellationToken).ConfigureAwait(false);
@@ -51,7 +51,7 @@ public static class McpTasksClientExtensions
             return new ResultOrCreatedTask<CallToolResult>(taskCreated);
         }
 
-        var callToolResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>())
+        var callToolResult = JsonSerializer.Deserialize(response.Result, McpJsonUtilities.ProtocolOptions.GetTypeInfo<CallToolResult>())
             ?? throw new JsonException("Failed to deserialize CallToolResult from response.");
         return new ResultOrCreatedTask<CallToolResult>(callToolResult);
     }
@@ -163,7 +163,7 @@ public static class McpTasksClientExtensions
         {
             paramsObj["inputResponses"] = JsonSerializer.SerializeToNode(
                 inputResponses,
-                McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, InputResponse>>());
+                McpJsonUtilities.ProtocolOptions.GetTypeInfo<IDictionary<string, InputResponse>>());
         }
 
         JsonRpcRequest jsonRpcRequest = CreateTaskRequest(
@@ -268,7 +268,7 @@ public static class McpTasksClientExtensions
             switch (taskResult)
             {
                 case CompletedTaskResult completed:
-                    return JsonSerializer.Deserialize(completed.Result, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>())
+                    return JsonSerializer.Deserialize(completed.Result, McpJsonUtilities.ProtocolOptions.GetTypeInfo<CallToolResult>())
                         ?? throw new JsonException("Failed to deserialize CallToolResult from completed task.");
 
                 case FailedTaskResult failed:

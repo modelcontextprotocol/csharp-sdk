@@ -23,10 +23,15 @@ public sealed class IdentityAssertionGrantTests : IDisposable
 
     #region IdentityAssertionGrantProvider Tests
 
-    [Fact]
-    public async Task IdentityAssertionGrantProvider_FullFlow_ReturnsAccessToken()
+    [Theory]
+    [InlineData("https://mcp-server.example.com")]
+    [InlineData("https://mcp-server.example.com/")]
+    [InlineData("https://mcp-server.example.com/mcp")]
+    [InlineData("https://mcp-server.example.com/mcp/")]
+    [InlineData("https://mcp-server.example.com/%6Dcp")]
+    public async Task IdentityAssertionGrantProvider_FullFlow_ReturnsAccessToken(string resource)
     {
-        _mockHandler.Handler = request =>
+        _mockHandler.AsyncHandler = async request =>
         {
             var url = request.RequestUri!.ToString();
 
@@ -43,6 +48,9 @@ public sealed class IdentityAssertionGrantTests : IDisposable
 
             if (url.Contains("idp.example.com/token"))
             {
+                var body = await request.Content!.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                Assert.Contains($"resource={Uri.EscapeDataString(resource)}", body.Split('&'));
+
                 return JsonResponse(HttpStatusCode.OK, new JsonObject
                 {
                     ["access_token"] = "mock-jag-assertion",
@@ -78,7 +86,7 @@ public sealed class IdentityAssertionGrantTests : IDisposable
                 IdpClientId = "idp-client-id",
                 IdTokenCallback = (context, ct) =>
                 {
-                    Assert.Equal(new Uri("https://mcp-server.example.com"), context.ResourceUrl);
+                    Assert.Equal(resource, context.ResourceUrl.OriginalString);
                     Assert.Equal(new Uri("https://auth.mcp-server.example.com"), context.AuthorizationServerUrl);
                     return Task.FromResult("mock-id-token");
                 },
@@ -86,7 +94,7 @@ public sealed class IdentityAssertionGrantTests : IDisposable
             _httpClient);
 
         var tokens = await provider.GetAccessTokenAsync(
-            resourceUrl: new Uri("https://mcp-server.example.com"),
+            resourceUrl: new Uri(resource),
             authorizationServerUrl: new Uri("https://auth.mcp-server.example.com"),
             TestContext.Current.CancellationToken);
 
