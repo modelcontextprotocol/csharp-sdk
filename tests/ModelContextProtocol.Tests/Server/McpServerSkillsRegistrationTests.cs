@@ -3,12 +3,12 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Reflection;
 
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// Tests that a server has one Skills registration, rejected early when repeated through any public method, and
-/// that each Skills file is the only resource at its URI.
+/// Tests additive Skills contributions, one-time wire-handler installation, and static file-resource integrity.
 /// </summary>
 public sealed class McpServerSkillsRegistrationTests : IDisposable
 {
@@ -31,57 +31,24 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("directory-with-hidden-files")]
     [InlineData("collection")]
     [InlineData("handlers")]
-    public void SecondRegistrationOnTheSameBuilder_ThrowsBeforeRegisteringAnything(string method)
+    public async Task ContributionsThroughDifferentBuildersAreAdditive_AndInstallEachWireHandlerOnce(string method)
     {
         var services = new ServiceCollection();
-        var builder = services.AddMcpServer();
-        builder.WithSkills([CreateGitWorkflow()]);
-        int registrationCount = services.Count;
-
-        var exception = Assert.Throws<InvalidOperationException>(() => Register(builder, method));
-
-        Assert.Contains("Skills are already registered", exception.Message);
-        Assert.Equal(registrationCount, services.Count);
-    }
-
-    [Theory]
-    [InlineData("skills")]
-    [InlineData("directory")]
-    [InlineData("directory-with-hidden-files")]
-    [InlineData("collection")]
-    [InlineData("handlers")]
-    public void SecondRegistrationThroughAnotherBuilderForTheSameServices_Throws(string method)
-    {
-        // For example a library and the application each enabling Skills on the same service collection.
-        var services = new ServiceCollection();
+        var alpha = McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", "---\nname: alpha\ndescription: Alpha\n---\n")]);
+        services.AddMcpServer().WithSkills([alpha]);
         Register(services.AddMcpServer(), method);
-        var secondBuilder = services.AddMcpServer();
-        int registrationCount = services.Count;
-
-        var exception = Assert.Throws<InvalidOperationException>(() => secondBuilder.WithSkillsFromDirectory(_root));
-
-        Assert.Contains("Skills are already registered", exception.Message);
-        Assert.Equal(registrationCount, services.Count);
-    }
-
-    [Theory]
-    [InlineData("skills")]
-    [InlineData("directory")]
-    [InlineData("directory-with-hidden-files")]
-    [InlineData("collection")]
-    [InlineData("handlers")]
-    public async Task SingleRegistration_InstallsEachSkillsMethodOnce(string method)
-    {
-        var services = new ServiceCollection();
-        Register(services.AddMcpServer(), method);
+        services.AddMcpServer().WithSkills();
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
-
         var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        var skills = provider.GetRequiredService<IOptions<McpSkillsOptions>>().Value.SkillCollection;
 
 #pragma warning disable MCPEXP002 // RequestHandlers is experimental.
         Assert.Single(options.RequestHandlers!, handler => handler.Method == "skills/list");
         Assert.Single(options.RequestHandlers!, handler => handler.Method == "skills/get");
 #pragma warning restore MCPEXP002
+        Assert.Same(alpha, skills[alpha.Id]);
+        Assert.Equal(method == "handlers" ? 1 : 2, skills.Count);
+        Assert.Equal(skills.Count, options.ResourceCollection!.Count);
     }
 
     [Fact]
@@ -100,21 +67,13 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("duplicate-skill", typeof(ArgumentException))]
     [InlineData("configure", typeof(InvalidOperationException))]
     [InlineData("handlers-configure", typeof(InvalidOperationException))]
-    public void FailedRegistration_LeavesNoResources_AndARetryWithNewSkillsSucceeds(string failure, Type expectedException)
+    public async Task InvalidContributionsFailOptionsConstruction_InsteadOfBeingSilentlyLost(string failure, Type expectedException)
     {
         var services = new ServiceCollection();
         var builder = services.AddMcpServer();
-        int registrationCount = services.Count;
-
-        Assert.Throws(expectedException, () => RegisterFailing(builder, failure));
-        Assert.Equal(registrationCount, services.Count);
-
-        // New skill instances: a resource left behind by the failed call would conflict with them.
-        builder.WithSkills([CreateGitWorkflow()]);
-        using var provider = services.BuildServiceProvider();
-        var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-
-        Assert.Equal([GitWorkflowUri], options.ResourceCollection!.PrimitiveNames);
+        RegisterFailing(builder, failure);
+        await using var provider = services.BuildServiceProvider();
+        Assert.Throws(expectedException, () => provider.GetRequiredService<IOptions<McpServerOptions>>().Value);
     }
 
     [Theory]
@@ -173,7 +132,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
         var inner = McpServerSkill.Create("skill://acme/inner/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", InnerMarkdown)]);
         var services = new ServiceCollection();
         services.AddMcpServer()
-            .WithSkills([outer, inner])
+            .WithSkills([outer])
+            .WithSkills([inner])
             .WithResources(outer.Resources)
             .WithResources(
             [
@@ -228,7 +188,7 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
                 builder.WithSkills([CreateGitWorkflow(), changed]);
                 break;
             case "duplicate-skill":
-                // Identical files are shared, so this fails later, when the catalog sees the same skill URI twice.
+                // Identical files do not permit duplicate skill identities.
                 builder.WithSkills([CreateGitWorkflow(), CreateGitWorkflow()]);
                 break;
             case "configure":
@@ -246,18 +206,18 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
         McpServerSkill.Create(GitWorkflowUri, [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)]);
 
     [Fact]
-    public void LocalMetadataIsAShallowReadOnlySnapshot_AndDoesNotMutateTheOriginalPrimitive()
+    public void CreationOptionsMetadataIsAShallowReadOnlySnapshot_NotSharedWithFileResources()
     {
-        var original = CreateGitWorkflow().WithMetadata("server-local-policy");
         object[] source = ["initial"];
-        var copy = original.WithMetadata(source);
+        var options = new McpServerSkillCreateOptions { Metadata = source };
+        var skill = McpServerSkill.Create(GitWorkflowUri,
+            [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)], options);
         source[0] = "changed";
+        options.Metadata = ["replaced"];
 
-        Assert.Equal(original.Id, copy.Id);
-        Assert.Equal("initial", Assert.Single(copy.Metadata));
-        Assert.Equal("server-local-policy", Assert.Single(original.Metadata));
-        Assert.Throws<NotSupportedException>(() => ((IList<object>)copy.Metadata)[0] = "changed");
-        Assert.Same(original.Resources[0], copy.Resources[0]);
+        Assert.Equal("initial", Assert.Single(skill.Metadata));
+        Assert.Throws<NotSupportedException>(() => ((IList<object>)skill.Metadata)[0] = "changed");
+        Assert.DoesNotContain("initial", skill.Resources[0].Metadata);
     }
 
     [Fact]
@@ -339,7 +299,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     public async Task RegisteredPrimitive_RetainsIdentityAndCallerOwnedLocalMetadata()
     {
         await using var metadata = new OwnedMetadata();
-        var skill = CreateGitWorkflow().WithMetadata(metadata);
+        var skill = McpServerSkill.Create(
+            [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)], new() { Metadata = [metadata] });
         var services = new ServiceCollection();
         McpSkillsOptions? skillsOptions = null;
         services.AddMcpServer().WithSkills([skill], options => skillsOptions = options);
@@ -352,6 +313,85 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
         }
 
         Assert.Equal(0, metadata.DisposeCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DuplicateIdentitiesAcrossSeparateContributionsFailOptionsConstruction(bool sameInstance)
+    {
+        var skill = CreateGitWorkflow();
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithSkills([skill]).WithSkills([sameInstance ? skill : CreateGitWorkflow()]);
+        await using var provider = services.BuildServiceProvider();
+
+        var error = Assert.Throws<ArgumentException>(() => provider.GetRequiredService<IOptions<McpServerOptions>>().Value);
+        Assert.Contains(GitWorkflowUri, error.Message);
+    }
+
+    [Fact]
+    public void SortedSnapshotIsCachedAndInvalidatedBySuccessfulMutationsOnly()
+    {
+        var options = new McpSkillsOptions();
+        var getSnapshot = typeof(McpSkillsOptions).GetMethod("GetSortedSkills", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        McpServerSkill[] Snapshot() => (McpServerSkill[])getSnapshot.Invoke(options, null)!;
+        var empty = Snapshot();
+        Assert.Same(empty, Snapshot());
+        var skill = CreateGitWorkflow();
+        options.SkillCollection.Add(skill);
+        var added = Snapshot();
+        Assert.NotSame(empty, added);
+        Assert.Same(skill, Assert.Single(added));
+        Assert.False(options.SkillCollection.TryAdd(skill));
+        Assert.Same(added, Snapshot());
+        Assert.True(options.SkillCollection.Remove(skill));
+        var removed = Snapshot();
+        Assert.NotSame(added, removed);
+        Assert.Empty(removed);
+        Assert.False(options.SkillCollection.Remove(skill));
+        Assert.Same(removed, Snapshot());
+        options.SkillCollection.Add(skill);
+        var beforeClear = Snapshot();
+        options.SkillCollection.Clear();
+        Assert.NotSame(beforeClear, Snapshot());
+        Assert.Empty(Snapshot());
+    }
+
+    [Theory]
+    [InlineData("entry")]
+    [InlineData("files")]
+    [InlineData("files-uri")]
+    [InlineData("files-frontmatter")]
+    [InlineData("directory")]
+    [InlineData("directory-hidden")]
+    [InlineData("directory-uri")]
+    [InlineData("directory-uri-hidden")]
+    [InlineData("directory-frontmatter")]
+    [InlineData("directory-frontmatter-hidden")]
+    public void EveryCreationOverloadSnapshotsCreationOptionsMetadata(string creation)
+    {
+        object[] metadata = ["creation-metadata"];
+        var options = new McpServerSkillCreateOptions { Metadata = metadata };
+        var files = new[] { McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown) };
+        var frontmatter = CreateGitWorkflow().ProtocolSkill.Frontmatter;
+        string directory = Path.Combine(_root, "git-workflow");
+        var skill = creation switch
+        {
+            "entry" => new McpServerSkill(CreateGitWorkflow().ProtocolSkill, options),
+            "files" => McpServerSkill.Create(files, options),
+            "files-uri" => McpServerSkill.Create(GitWorkflowUri, files, options),
+            "files-frontmatter" => McpServerSkill.Create(GitWorkflowUri, frontmatter, files, options),
+            "directory" => McpServerSkill.CreateFromDirectory(directory, options),
+            "directory-hidden" => McpServerSkill.CreateFromDirectory(directory, includeHiddenAndSystemFiles: true, options),
+            "directory-uri" => McpServerSkill.CreateFromDirectory(GitWorkflowUri, directory, options),
+            "directory-uri-hidden" => McpServerSkill.CreateFromDirectory(GitWorkflowUri, directory, includeHiddenAndSystemFiles: true, options),
+            "directory-frontmatter" => McpServerSkill.CreateFromDirectory(GitWorkflowUri, frontmatter, directory, options),
+            "directory-frontmatter-hidden" => McpServerSkill.CreateFromDirectory(GitWorkflowUri, frontmatter, directory, includeHiddenAndSystemFiles: true, options),
+            _ => throw new ArgumentOutOfRangeException(nameof(creation)),
+        };
+        metadata[0] = "changed";
+        Assert.Equal("creation-metadata", Assert.Single(skill.Metadata));
+        Assert.Equal(GitWorkflowUri, skill.Id);
     }
 
     private sealed class OwnedMetadata : IAsyncDisposable

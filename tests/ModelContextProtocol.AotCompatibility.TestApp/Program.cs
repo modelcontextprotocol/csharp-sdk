@@ -16,12 +16,11 @@ var authoredSkill = McpServerSkill.Create(
 var expectedMeta = JsonNode.Parse("""{"example.com/aot":{"values":["native",42,true]}}""")!.AsObject();
 var entry = authoredSkill.ProtocolSkill;
 entry.Meta = (JsonObject)expectedMeta.DeepClone();
-var primitive = new McpServerSkill(entry, ["local-aot-metadata"]);
+var primitive = new McpServerSkill(entry, new() { Metadata = ["local-aot-metadata"] });
 entry.Meta["example.com/aot"]!["values"]!.AsArray().Clear();
 
 var services = new ServiceCollection();
 var catalogTracker = new AotCatalogTracker();
-services.AddSingleton(primitive);
 services.AddSingleton(catalogTracker);
 services.AddScoped<AotCatalogDependency>();
 services.AddScoped<AotSkillHandlers>();

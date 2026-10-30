@@ -12,8 +12,8 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <remarks>
 /// <para>
 /// The specification requires a skill's manifest to carry the SHA-256 digest and size of every file, and a host
-/// refuses content whose bytes do not match. Building a skill through <see cref="Create(IEnumerable{McpServerSkillFile})"/>
-/// or <see cref="CreateFromDirectory(string)"/> (or their overloads) computes the manifest from the same bytes the
+/// refuses content whose bytes do not match. Building a skill through <see cref="Create(IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/>
+/// or <see cref="CreateFromDirectory(string, McpServerSkillCreateOptions)"/> (or their overloads) computes the manifest from the same bytes the
 /// resources serve, so the two cannot disagree.
 /// </para>
 /// <para>
@@ -21,7 +21,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// or malformed input rather than publish guessed metadata. The reader handles a bounded subset of YAML: block
 /// mappings and sequences, plain, quoted and block scalars, single-line flow collections, and comments. Overloads
 /// accepting a <see cref="JsonObject"/> exist for YAML the reader does not support; see
-/// <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/> for what they check and what remains
+/// <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/> for what they check and what remains
 /// the caller's responsibility.
 /// </para>
 /// <para>
@@ -39,14 +39,14 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// Creates a server-side primitive from an existing protocol entry, without creating file resources.
     /// </summary>
     /// <param name="protocolSkill">The structurally valid entry to snapshot.</param>
-    /// <param name="metadata">Optional server-local metadata, copied as a shallow, read-only snapshot.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <remarks>
     /// The application must serve the entry's files separately and keep their content and frontmatter in agreement
     /// with this entry. No file is read to validate the entry. Prefer <c>Create</c> or <c>CreateFromDirectory</c>
     /// when the SDK should compute the manifest from the served bytes.
     /// </remarks>
-    public McpServerSkill(Skill protocolSkill, IReadOnlyList<object>? metadata = null)
-        : this(protocolSkill, [], metadata)
+    public McpServerSkill(Skill protocolSkill, McpServerSkillCreateOptions? options = null)
+        : this(protocolSkill, [], options?.Metadata)
     {
     }
 
@@ -69,20 +69,6 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// </remarks>
     public IReadOnlyList<object> Metadata { get; }
 
-    /// <summary>Creates a primitive with the same entry and files and a new shallow snapshot of local metadata.</summary>
-    /// <param name="metadata">The server-local metadata for the new primitive.</param>
-    /// <returns>A new primitive; the original is unchanged.</returns>
-    public McpServerSkill WithMetadata(params object[] metadata)
-    {
-#if NET
-        ArgumentNullException.ThrowIfNull(metadata);
-#else
-        if (metadata is null) throw new ArgumentNullException(nameof(metadata));
-#endif
-
-        return new McpServerSkill(_entry, Resources, metadata);
-    }
-
     /// <summary>
     /// Gets a copy of the skill's entry, as returned by <c>skills/list</c> and <c>skills/get</c>.
     /// </summary>
@@ -92,6 +78,8 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// what <c>WithSkills</c> registers.
     /// </remarks>
     public Skill ProtocolSkill => SkillValidation.Snapshot(_entry);
+
+    internal Skill Entry => _entry;
 
     /// <summary>
     /// Gets the resources serving the skill's files, one per file, each addressable at the URI its manifest entry names.
@@ -103,6 +91,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// from the frontmatter's <c>name</c> as <c>skill://{name}/SKILL.md</c>.
     /// </summary>
     /// <param name="files">The skill's files. Exactly one must have the path <c>SKILL.md</c>.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="files"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
@@ -110,7 +99,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// specification's per-skill limits; or the <c>SKILL.md</c> frontmatter cannot be read (it is malformed or uses
     /// YAML the reader does not support) or is missing a required field.
     /// </exception>
-    public static McpServerSkill Create(IEnumerable<McpServerSkillFile> files)
+    public static McpServerSkill Create(IEnumerable<McpServerSkillFile> files, McpServerSkillCreateOptions? options = null)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(files);
@@ -118,7 +107,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
         if (files is null) throw new ArgumentNullException(nameof(files));
 #endif
 
-        return CreateCore(uri: null, uriPrefix: DefaultUriPrefix, frontmatter: null, files, nameof(files));
+        return CreateCore(uri: null, uriPrefix: DefaultUriPrefix, frontmatter: null, files, nameof(files), options);
     }
 
     /// <summary>
@@ -129,6 +118,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// segment preceding <c>/SKILL.md</c>, decoded once, must equal the skill's name.
     /// </param>
     /// <param name="files">The skill's files. Exactly one must have the path <c>SKILL.md</c>.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
@@ -137,7 +127,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// frontmatter cannot be read (it is malformed or uses YAML the reader does not support), is missing a required
     /// field, or has a name that does not match <paramref name="uri"/>.
     /// </exception>
-    public static McpServerSkill Create(string uri, IEnumerable<McpServerSkillFile> files)
+    public static McpServerSkill Create(string uri, IEnumerable<McpServerSkillFile> files, McpServerSkillCreateOptions? options = null)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(uri);
@@ -147,7 +137,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
         if (files is null) throw new ArgumentNullException(nameof(files));
 #endif
 
-        return CreateCore(uri, uriPrefix: null, frontmatter: null, files, nameof(files));
+        return CreateCore(uri, uriPrefix: null, frontmatter: null, files, nameof(files), options);
     }
 
     /// <summary>
@@ -162,6 +152,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// <c>description</c> fields and reproduce the authored frontmatter exactly.
     /// </param>
     /// <param name="files">The skill's files. Exactly one must have the path <c>SKILL.md</c>.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
@@ -173,7 +164,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// </exception>
     /// <remarks>
     /// <para>
-    /// Prefer <see cref="Create(string, IEnumerable{McpServerSkillFile})"/>, which reads the frontmatter from the
+    /// Prefer <see cref="Create(string, IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/>, which reads the frontmatter from the
     /// file. This overload still checks UTF-8, the frontmatter boundaries, and the entry's structure, computes the
     /// manifest from the served bytes, and rejects malformed YAML the reader detects. When the reader reads the
     /// complete block, the supplied object must match it exactly.
@@ -184,7 +175,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// must have parsed the entire frontmatter with a full YAML parser and supplied the identical JSON.
     /// </para>
     /// </remarks>
-    public static McpServerSkill Create(string uri, JsonObject frontmatter, IEnumerable<McpServerSkillFile> files)
+    public static McpServerSkill Create(string uri, JsonObject frontmatter, IEnumerable<McpServerSkillFile> files, McpServerSkillCreateOptions? options = null)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(uri);
@@ -196,7 +187,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
         if (files is null) throw new ArgumentNullException(nameof(files));
 #endif
 
-        return CreateCore(uri, uriPrefix: null, frontmatter, files, nameof(files));
+        return CreateCore(uri, uriPrefix: null, frontmatter, files, nameof(files), options);
     }
 
     /// <summary>
@@ -204,11 +195,12 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// and deriving the skill's URI from the frontmatter's <c>name</c> as <c>skill://{name}/SKILL.md</c>.
     /// </summary>
     /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="directoryPath"/> is <see langword="null"/>.</exception>
     /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
     /// <exception cref="ArgumentException">
-    /// The directory's contents do not form a valid skill (see <see cref="Create(IEnumerable{McpServerSkillFile})"/>),
+    /// The directory's contents do not form a valid skill (see <see cref="Create(IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/>),
     /// or the directory contains a symbolic link or other reparse point.
     /// </exception>
     /// <remarks>
@@ -218,27 +210,28 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// </para>
     /// <para>
     /// Dot-prefixed, hidden, and system files and directories are excluded before reading or descending into them.
-    /// Use <see cref="CreateFromDirectory(string, bool)"/> to include them explicitly, or
-    /// <see cref="Create(IEnumerable{McpServerSkillFile})"/> with an explicit file selection.
+    /// Use <see cref="CreateFromDirectory(string, bool, McpServerSkillCreateOptions)"/> to include them explicitly, or
+    /// <see cref="Create(IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/> with an explicit file selection.
     /// </para>
     /// <para>
     /// Links are not followed. A symbolic link inside the directory could point outside it and publish a file
     /// under a URI that appears to belong to the skill, so encountering one is an error. Replace the link with a
-    /// regular file or directory, or build the skill with <see cref="Create(IEnumerable{McpServerSkillFile})"/> and
+    /// regular file or directory, or build the skill with <see cref="Create(IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/> and
     /// explicit files.
     /// </para>
     /// </remarks>
-    public static McpServerSkill CreateFromDirectory(string directoryPath) =>
-        CreateFromDirectory(directoryPath, includeHiddenAndSystemFiles: false);
+    public static McpServerSkill CreateFromDirectory(string directoryPath, McpServerSkillCreateOptions? options = null) =>
+        CreateFromDirectory(directoryPath, includeHiddenAndSystemFiles: false, options);
 
     /// <summary>
     /// Creates a skill from a directory with an explicit hidden/system-file policy.
     /// </summary>
     /// <param name="directoryPath">The skill's root directory, containing <c>SKILL.md</c>.</param>
     /// <param name="includeHiddenAndSystemFiles">Whether to include dot-prefixed, hidden, and system entries.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill with its manifest computed from the selected files.</returns>
-    /// <remarks>Included symbolic links remain errors. See <see cref="CreateFromDirectory(string)"/>.</remarks>
-    public static McpServerSkill CreateFromDirectory(string directoryPath, bool includeHiddenAndSystemFiles)
+    /// <remarks>Included symbolic links remain errors. See <see cref="CreateFromDirectory(string, McpServerSkillCreateOptions)"/>.</remarks>
+    public static McpServerSkill CreateFromDirectory(string directoryPath, bool includeHiddenAndSystemFiles, McpServerSkillCreateOptions? options = null)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(directoryPath);
@@ -247,7 +240,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
 #endif
 
         return CreateCore(uri: null, uriPrefix: DefaultUriPrefix, frontmatter: null,
-            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath));
+            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath), options);
     }
 
     /// <summary>
@@ -258,18 +251,19 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// segment preceding <c>/SKILL.md</c>, decoded once, must equal the skill's name.
     /// </param>
     /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
     /// <exception cref="ArgumentException">
-    /// The directory's contents do not form a valid skill (see <see cref="Create(string, IEnumerable{McpServerSkillFile})"/>),
+    /// The directory's contents do not form a valid skill (see <see cref="Create(string, IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/>),
     /// or the directory contains a symbolic link or other reparse point.
     /// </exception>
     /// <remarks>
-    /// See <see cref="CreateFromDirectory(string)"/> for how files and links are handled.
+    /// See <see cref="CreateFromDirectory(string, McpServerSkillCreateOptions)"/> for how files and links are handled.
     /// </remarks>
-    public static McpServerSkill CreateFromDirectory(string uri, string directoryPath) =>
-        CreateFromDirectory(uri, directoryPath, includeHiddenAndSystemFiles: false);
+    public static McpServerSkill CreateFromDirectory(string uri, string directoryPath, McpServerSkillCreateOptions? options = null) =>
+        CreateFromDirectory(uri, directoryPath, includeHiddenAndSystemFiles: false, options);
 
     /// <summary>
     /// Creates a skill with an explicit URI and hidden/system-file policy.
@@ -277,9 +271,10 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// <param name="uri">The resource URI of the skill's <c>SKILL.md</c>.</param>
     /// <param name="directoryPath">The skill's root directory.</param>
     /// <param name="includeHiddenAndSystemFiles">Whether to include dot-prefixed, hidden, and system entries.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill.</returns>
-    /// <remarks>Included symbolic links remain errors. See <see cref="CreateFromDirectory(string)"/>.</remarks>
-    public static McpServerSkill CreateFromDirectory(string uri, string directoryPath, bool includeHiddenAndSystemFiles)
+    /// <remarks>Included symbolic links remain errors. See <see cref="CreateFromDirectory(string, McpServerSkillCreateOptions)"/>.</remarks>
+    public static McpServerSkill CreateFromDirectory(string uri, string directoryPath, bool includeHiddenAndSystemFiles, McpServerSkillCreateOptions? options = null)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(uri);
@@ -290,7 +285,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
 #endif
 
         return CreateCore(uri, uriPrefix: null, frontmatter: null,
-            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath));
+            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath), options);
     }
 
     /// <summary>
@@ -305,20 +300,21 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// <c>description</c> fields and reproduce the authored frontmatter exactly.
     /// </param>
     /// <param name="directoryPath">The skill's root directory. It must contain a <c>SKILL.md</c>.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
     /// <exception cref="ArgumentException">
-    /// The directory's contents do not form a valid skill (see <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/>),
+    /// The directory's contents do not form a valid skill (see <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/>),
     /// or the directory contains a symbolic link or other reparse point.
     /// </exception>
     /// <remarks>
-    /// Prefer <see cref="CreateFromDirectory(string, string)"/>. The supplied frontmatter is checked, and remains
-    /// the caller's responsibility, as described for <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/>.
-    /// See <see cref="CreateFromDirectory(string)"/> for how files and links are handled.
+    /// Prefer <see cref="CreateFromDirectory(string, string, McpServerSkillCreateOptions)"/>. The supplied frontmatter is checked, and remains
+    /// the caller's responsibility, as described for <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/>.
+    /// See <see cref="CreateFromDirectory(string, McpServerSkillCreateOptions)"/> for how files and links are handled.
     /// </remarks>
-    public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath) =>
-        CreateFromDirectory(uri, frontmatter, directoryPath, includeHiddenAndSystemFiles: false);
+    public static McpServerSkill CreateFromDirectory(string uri, JsonObject frontmatter, string directoryPath, McpServerSkillCreateOptions? options = null) =>
+        CreateFromDirectory(uri, frontmatter, directoryPath, includeHiddenAndSystemFiles: false, options);
 
     /// <summary>
     /// Creates a skill with explicit frontmatter and a hidden/system-file policy.
@@ -327,13 +323,14 @@ public sealed class McpServerSkill : IMcpServerPrimitive
     /// <param name="frontmatter">The fully validated JSON frontmatter, matching the file.</param>
     /// <param name="directoryPath">The skill's root directory.</param>
     /// <param name="includeHiddenAndSystemFiles">Whether to include dot-prefixed, hidden, and system entries.</param>
+    /// <param name="options">Optional creation options, including server-local metadata.</param>
     /// <returns>The skill.</returns>
     /// <remarks>
-    /// See <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile})"/> for caller responsibilities.
+    /// See <see cref="Create(string, JsonObject, IEnumerable{McpServerSkillFile}, McpServerSkillCreateOptions)"/> for caller responsibilities.
     /// Included symbolic links remain errors.
     /// </remarks>
     public static McpServerSkill CreateFromDirectory(
-        string uri, JsonObject frontmatter, string directoryPath, bool includeHiddenAndSystemFiles)
+        string uri, JsonObject frontmatter, string directoryPath, bool includeHiddenAndSystemFiles, McpServerSkillCreateOptions? options = null)
     {
 #if NET
         ArgumentNullException.ThrowIfNull(uri);
@@ -346,7 +343,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
 #endif
 
         return CreateCore(uri, uriPrefix: null, frontmatter,
-            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath));
+            ReadDirectory(directoryPath, includeHiddenAndSystemFiles), nameof(directoryPath), options);
     }
 
     private const string DefaultUriPrefix = "skill://";
@@ -359,7 +356,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
         string directoryPath, string uriPrefix, string paramName, bool includeHiddenAndSystemFiles = false) =>
         CreateCore(uri: null, uriPrefix, frontmatter: null, ReadDirectory(directoryPath, includeHiddenAndSystemFiles), paramName);
 
-    private static McpServerSkill CreateCore(string? uri, string? uriPrefix, JsonObject? frontmatter, IEnumerable<McpServerSkillFile> files, string filesParamName)
+    private static McpServerSkill CreateCore(string? uri, string? uriPrefix, JsonObject? frontmatter, IEnumerable<McpServerSkillFile> files, string filesParamName, McpServerSkillCreateOptions? options = null)
     {
         // A violation found in the entry is reported against the frontmatter argument when the caller supplied
         // one, and against the files (or directory) it was read from otherwise.
@@ -504,7 +501,7 @@ public sealed class McpServerSkill : IMcpServerPrimitive
                 contents[i]);
         }
 
-        return new McpServerSkill(skill, resources);
+        return new McpServerSkill(skill, resources, options?.Metadata);
     }
 
     private static List<McpServerSkillFile> ReadDirectory(string directoryPath, bool includeHiddenAndSystemFiles)

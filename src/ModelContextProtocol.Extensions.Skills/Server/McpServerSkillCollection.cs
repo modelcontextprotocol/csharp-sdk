@@ -5,6 +5,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 internal sealed class McpServerSkillCollection : McpServerPrimitiveCollection<McpServerSkill>
 {
     private readonly object _mutationLock = new();
+    private McpServerSkill[]? _sortedSnapshot;
 
     public override bool TryAdd(McpServerSkill primitive)
     {
@@ -17,8 +18,13 @@ internal sealed class McpServerSkillCollection : McpServerPrimitiveCollection<Mc
             {
                 return false;
             }
-            ValidateSharedFiles(primitive.ProtocolSkill);
-            return base.TryAdd(primitive);
+            ValidateSharedFiles(primitive.Entry);
+            bool added = base.TryAdd(primitive);
+            if (added)
+            {
+                _sortedSnapshot = null;
+            }
+            return added;
         }
     }
 
@@ -27,7 +33,12 @@ internal sealed class McpServerSkillCollection : McpServerPrimitiveCollection<Mc
         using var changes = DeferChangedEvents();
         lock (_mutationLock)
         {
-            return base.Remove(primitive);
+            bool removed = base.Remove(primitive);
+            if (removed)
+            {
+                _sortedSnapshot = null;
+            }
+            return removed;
         }
     }
 
@@ -37,10 +48,24 @@ internal sealed class McpServerSkillCollection : McpServerPrimitiveCollection<Mc
         lock (_mutationLock)
         {
             base.Clear();
+            _sortedSnapshot = null;
         }
     }
 
-    internal void ValidateSharedFiles(Skill candidate)
+    internal McpServerSkill[] GetSortedSnapshot()
+    {
+        lock (_mutationLock)
+        {
+            if (_sortedSnapshot is null)
+            {
+                _sortedSnapshot = base.ToArray();
+                Array.Sort(_sortedSnapshot, static (left, right) => string.CompareOrdinal(left.Id, right.Id));
+            }
+            return _sortedSnapshot;
+        }
+    }
+
+    private void ValidateSharedFiles(Skill candidate)
     {
         if (candidate.Resources.Resources is null)
         {
@@ -50,7 +75,7 @@ internal sealed class McpServerSkillCollection : McpServerPrimitiveCollection<Mc
         AddFiles(files, candidate);
         foreach (var primitive in this)
         {
-            if (primitive.ProtocolSkill.Resources.Resources is not { } registered)
+            if (primitive.Entry.Resources.Resources is not { } registered)
             {
                 continue;
             }

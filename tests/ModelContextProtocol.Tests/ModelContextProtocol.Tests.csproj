@@ -42,6 +42,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\ModelContextProtocol\Server\DistributedCacheEventIdFormatter.cs" Link="DistributedCacheEventIdFormatter.cs" />
     <Compile Include="..\..\src\ModelContextProtocol.Extensions.Skills\SkillFrontmatter.cs" Link="SkillFrontmatter.cs" />
+    <Compile Include="..\..\samples\SkillsServer\DatabaseStyleHandlers.cs" Link="Samples\DatabaseStyleHandlers.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">

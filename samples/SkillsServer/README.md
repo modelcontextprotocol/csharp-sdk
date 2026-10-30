@@ -43,3 +43,28 @@ Any MCP host that supports Streamable HTTP can also be pointed at `http://localh
   A catalog that varies by principal must not do that.
 - See [docs/concepts/skills/skills.md](../../docs/concepts/skills/skills.md) for the full walkthrough,
   including the primitive collection and typed custom handlers that resolve request-scoped application services.
+
+## Database-style request handlers
+
+[DatabaseStyleHandlers.cs](DatabaseStyleHandlers.cs) is a compact alternative configuration using the same
+`context.Services.GetRequiredService<ExampleSkillRepository>()` pattern for Skills list/get and resource list/read.
+It is compiled and tested, but not enabled by this directory-backed server. To try it instead of
+`WithSkillsFromDirectory`, register an `ExampleSkillStore` with sample rows and call `WithRepositoryHandlers()`:
+
+```csharp
+using SkillsServer;
+
+builder.Services.AddSingleton(new ExampleSkillStore(
+[
+    ExampleSkillRow.Create("acme", "refunds"),
+    ExampleSkillRow.Create("acme", "direct-only", listed: false),
+]));
+builder.Services.AddMcpServer().WithHttpTransport().WithRepositoryHandlers();
+```
+
+The store is **in-memory illustrative data, not a database implementation**. Supply an authenticated principal
+with a `tenant` claim and the appropriate role using the application's authentication middleware. The example
+does not create identities or implement an authentication scheme. The repository applies tenant and permission
+predicates before pagination; direct skill lookup and file reads apply the same policy without requiring listing
+membership. Real database code should execute those predicates and the page limit in the query and pass the
+handler's cancellation token into async database calls. No resource-catalog abstraction is needed.

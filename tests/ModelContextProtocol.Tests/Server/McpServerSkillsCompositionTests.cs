@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
@@ -11,8 +12,8 @@ public class McpServerSkillsCompositionTests(ITestOutputHelper output) : ClientS
 {
     private readonly McpServerSkill _registered = McpServerSkill.Create(
         "skill://catalog/alpha/SKILL.md",
-        [McpServerSkillFile.FromText("SKILL.md", "---\nname: alpha\ndescription: Alpha\n---\n")])
-        .WithMetadata("server-local-policy");
+        [McpServerSkillFile.FromText("SKILL.md", "---\nname: alpha\ndescription: Alpha\n---\n")],
+        new() { Metadata = ["server-local-policy"] });
 
     [Fact]
     public async Task CustomListReplacesCollection_ButDoesNotRemoveEntriesOrResources()
@@ -39,6 +40,35 @@ public class McpServerSkillsCompositionTests(ITestOutputHelper output) : ClientS
         Assert.Equal(_registered.Id, direct.Uri);
         Assert.Single(await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.Single((await client.ReadSkillResourceAsync(direct, direct.Uri, TestContext.Current.CancellationToken)).Contents);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RepeatedCallsAddSkills_AndOnlyExplicitlyReconfiguredHandlersChange(bool clearListHandler)
+    {
+        var beta = McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", "---\nname: beta\ndescription: Beta\n---\n")]);
+        McpServerBuilder.WithSkills([_registered], options =>
+        {
+            options.ListSkillsHandler = (_, _) => new(new ListSkillsResult());
+            options.GetSkillHandler = (_, _) => throw new InvalidOperationException("Superseded handler.");
+        });
+        ServiceCollection.AddMcpServer().WithSkills([beta], options =>
+            options.GetSkillHandler = (context, _) => new(new GetSkillResult { Skill = options.SkillCollection[context.Params.Uri].ProtocolSkill }));
+        McpServerBuilder.WithSkills(options =>
+        {
+            if (clearListHandler)
+            {
+                options.ListSkillsHandler = null;
+            }
+        });
+        StartServer();
+        await using var client = await CreateMcpClientForServer();
+
+        Assert.Equal(clearListHandler ? 2 : 0, (await client.ListSkillsAsync(TestContext.Current.CancellationToken)).Count);
+        Assert.Equal(_registered.Id, (await client.GetSkillAsync(_registered.Id, TestContext.Current.CancellationToken)).Uri);
+        Assert.Equal(beta.Id, (await client.GetSkillAsync(beta.Id, TestContext.Current.CancellationToken)).Uri);
+        Assert.Equal(2, (await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken)).Count);
     }
 
     [Fact]
@@ -203,16 +233,16 @@ public class McpServerSkillsCompositionTests(ITestOutputHelper output) : ClientS
     [InlineData("skills/get", "null-entries")]
     [InlineData("skills/get", "frontmatter")]
     [InlineData("skills/get", "manifest")]
-    public async Task InvalidHandlerResultsAndRegisteredIdentityConflictsAreInternalErrors(string method, string failure)
+    public async Task InvalidHandlerResultsAreInternalErrors(string method, string failure)
     {
         var entry = _registered.ProtocolSkill;
         if (failure == "frontmatter")
         {
-            entry.Frontmatter["description"] = "A conflicting entry at the same identity";
+            entry.Frontmatter["description"] = "";
         }
         if (failure == "manifest")
         {
-            entry.Resources.Resources![0].Digest = "sha256:" + new string('a', 64);
+            entry.Resources.Resources![0].Digest = "sha256:invalid";
         }
         McpServerBuilder.WithSkills([_registered], options =>
         {
@@ -239,7 +269,7 @@ public class McpServerSkillsCompositionTests(ITestOutputHelper output) : ClientS
     [Theory]
     [InlineData("skills/list")]
     [InlineData("skills/get")]
-    public async Task HandlerCannotRedefineAFileServedByADifferentRegisteredSkill(string method)
+    public async Task ReplacementContentIsNotConstrainedByAnUnusedRegisteredManifest(string method)
     {
         var outer = McpServerSkill.Create("skill://catalog/SKILL.md",
         [
@@ -254,12 +284,69 @@ public class McpServerSkillsCompositionTests(ITestOutputHelper output) : ClientS
         StartServer();
         await using var client = await CreateMcpClientForServer();
 
-        var error = await Assert.ThrowsAsync<McpProtocolException>(() => client.SendRequestAsync(new JsonRpcRequest
+        var result = await client.SendRequestAsync(new JsonRpcRequest
         {
             Method = method,
             Params = new JsonObject { ["uri"] = outer.Uri },
-        }, TestContext.Current.CancellationToken));
+        }, TestContext.Current.CancellationToken);
+        var entry = method == SkillsProtocol.MethodSkillsList ? Assert.Single(result.Result!["skills"]!.AsArray()) : result.Result!["skill"];
+        Assert.Equal(outer.Uri, entry!["uri"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ReplacingARegisteredEntryCanServeCallerSpecificFrontmatterAndFileContent()
+    {
+        var replacement = McpServerSkill.Create(_registered.Id,
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: alpha\ndescription: Caller-specific Alpha\n---\nNew instructions\n")]);
+        var entryOnly = new McpServerSkill(_registered.ProtocolSkill);
+        McpServerBuilder
+            .WithSkills([entryOnly], options =>
+            {
+                options.ListSkillsHandler = (_, _) => new(new ListSkillsResult { Skills = [replacement.ProtocolSkill] });
+                options.GetSkillHandler = (context, _) =>
+                {
+                    Assert.Same(entryOnly, context.MatchedPrimitive);
+                    return new(new GetSkillResult { Skill = replacement.ProtocolSkill });
+                };
+            })
+            .WithReadResourceHandler((context, cancellationToken) =>
+                replacement.Resources[0].ReadAsync(context, cancellationToken));
+        StartServer();
+        await using var client = await CreateMcpClientForServer();
+
+        var listed = Assert.Single(await client.ListSkillsAsync(TestContext.Current.CancellationToken));
+        var retrieved = await client.GetSkillAsync(_registered.Id, TestContext.Current.CancellationToken);
+        Assert.Equal("Caller-specific Alpha", listed.Description);
+        Assert.Equal(listed.Description, retrieved.Description);
+        Assert.NotEqual(_registered.ProtocolSkill.Resources.Resources![0].Digest, retrieved.Resources.Resources![0].Digest);
+        Assert.Equal("Alpha", entryOnly.ProtocolSkill.Description);
+        Assert.Single((await client.ReadSkillResourceAsync(retrieved, retrieved.Uri, TestContext.Current.CancellationToken)).Contents);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WrongUriIsRejectedEvenWhenHandlerMutatesTypedParameters(bool mutateParameters)
+    {
+        var other = McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", "---\nname: beta\ndescription: Beta\n---\n")]);
+        McpServerBuilder.WithSkills([_registered], options =>
+        {
+            options.GetSkillHandler = (context, _) =>
+            {
+                if (mutateParameters)
+                {
+                    context.Params.Uri = other.Id;
+                }
+                return new(new GetSkillResult { Skill = other.ProtocolSkill });
+            };
+        });
+        StartServer();
+        await using var client = await CreateMcpClientForServer();
+
+        var error = await Assert.ThrowsAsync<McpProtocolException>(
+            async () => await client.GetSkillAsync(_registered.Id, TestContext.Current.CancellationToken));
         Assert.Equal(McpErrorCode.InternalError, error.ErrorCode);
+        Assert.Contains(_registered.Id, error.Message);
     }
 
     [Fact]

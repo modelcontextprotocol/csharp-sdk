@@ -23,7 +23,7 @@ public sealed class McpSkillsOptions
     /// </remarks>
     public McpServerPrimitiveCollection<McpServerSkill> SkillCollection => _skillCollection;
 
-    internal void ValidateSharedFiles(Skill entry) => _skillCollection.ValidateSharedFiles(entry);
+    internal McpServerSkill[] GetSortedSkills() => _skillCollection.GetSortedSnapshot();
 
     /// <summary>
     /// Gets or sets the maximum number of registered skills returned by the default list handler.
@@ -53,7 +53,9 @@ public sealed class McpSkillsOptions
     /// <para>
     /// The handler owns the complete page and cursor. Registered entries are not appended automatically.
     /// To combine sources, the application must define one pagination scheme and include the desired registered
-    /// entries itself. Omitting an entry from a listing does not prevent direct retrieval.
+    /// entries itself. Omitting an entry from a listing does not prevent direct retrieval. The handler may
+    /// return caller-specific entries at registered identities; it owns agreement with the files it serves.
+    /// Registered entries and manifests are not consulted to validate replacement content.
     /// </para>
     /// <para>
     /// Resolve application dependencies from the supplied context's <see cref="MessageContext.Services"/>.
@@ -76,7 +78,7 @@ public sealed class McpSkillsOptions
     /// <para>
     /// The context's <see cref="RequestContext{TParams}.MatchedPrimitive"/> identifies a registered skill at
     /// the requested URI, if present, even when this handler replaces lookup. It retains server-local metadata;
-    /// that metadata is not serialized and does not grant authorization automatically.
+    /// that metadata is not serialized, does not constrain replacement content, and does not grant authorization automatically.
     /// Services, serialization, validation, caching, and authorization follow <see cref="ListSkillsHandler"/>.
     /// </para>
     /// </remarks>

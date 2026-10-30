@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -16,15 +17,16 @@ public static class McpSkillsBuilderExtensions
     /// <param name="builder">The server builder.</param>
     /// <param name="configure">An optional callback configuring the collection, handlers, and cache defaults.</param>
     /// <returns>The supplied builder.</returns>
-    /// <exception cref="InvalidOperationException">Skills are already enabled for this service collection.</exception>
     /// <remarks>
     /// <para>
-    /// Call once per server. The default handlers list and retrieve <see cref="McpSkillsOptions.SkillCollection"/>.
+    /// Calls contribute to the same <see cref="McpSkillsOptions"/>, configured in registration order. Each wire
+    /// handler is installed once. A later callback can replace or clear an earlier handler; independent cursors
+    /// are never composed automatically. The default handlers list and retrieve <see cref="McpSkillsOptions.SkillCollection"/>.
     /// A custom handler replaces its operation completely; it neither augments the default listing nor falls back
     /// to registered entries. The SDK still validates and serializes its result.
     /// </para>
     /// <para>
-    /// Files authored by the initially registered primitives are registered as ordinary resources. Shared files
+    /// Files authored by the configured primitives are registered as ordinary resources when server options are built. Shared files
     /// must have identical URI text, digest, and size; conflicting application resources fail options construction.
     /// Later changes to the skill collection affect entries only. Applications manage later resource additions and
     /// removals separately, including resource conflicts. Removing a skill does not revoke its files.
@@ -44,56 +46,14 @@ public static class McpSkillsBuilderExtensions
         if (builder is null) throw new ArgumentNullException(nameof(builder));
 #endif
 
-        ThrowIfSkillsRegistered(builder);
-        var options = new McpSkillsOptions();
-        configure?.Invoke(options);
-
-        // Stage everything before changing the service collection, so a failed registration can be retried.
-        var files = new Dictionary<Uri, McpServerResource?>();
-        foreach (var skill in options.SkillCollection)
+        builder.Services.AddOptions<McpSkillsOptions>();
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<McpSkillsOptions>, McpSkillsOptionsSetup>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<McpServerOptions>, McpSkillsConfigureOptions>());
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<McpServerOptions>, SkillFileRegistration>());
+        if (configure is not null)
         {
-            var manifest = skill.ProtocolSkill.Resources.Resources;
-            if (manifest is null)
-            {
-                continue;
-            }
-
-            for (int i = 0; i < manifest.Count; i++)
-            {
-                var entry = manifest[i];
-                var key = new Uri(entry.Uri, UriKind.Absolute);
-                var resource = skill.Resources.Count == 0 ? null : skill.Resources[i];
-                if (files.TryGetValue(key, out var existing))
-                {
-                    if (existing is null && resource is not null)
-                    {
-                        files[key] = resource;
-                    }
-                }
-                else
-                {
-                    files.Add(key, resource);
-                }
-            }
+            builder.Services.Configure(configure);
         }
-
-        var skillFiles = new McpServerResourceCollection();
-        foreach (var resource in files.Values)
-        {
-            if (resource is not null)
-            {
-                skillFiles.Add(resource);
-            }
-        }
-
-        builder.Services.AddSingleton(new SkillsRegistrationMarker());
-        builder.Services.AddSingleton<IConfigureOptions<McpServerOptions>>(new McpSkillsConfigureOptions(options));
-        foreach (var resource in skillFiles)
-        {
-            builder.Services.AddSingleton(resource);
-        }
-        builder.Services.AddSingleton<IPostConfigureOptions<McpServerOptions>>(
-            services => new SkillFileConflictCheck(skillFiles, services.GetServices<McpServerResource>()));
         return builder;
     }
 
@@ -102,26 +62,33 @@ public static class McpSkillsBuilderExtensions
     /// <param name="skills">The primitives to add to the default collection.</param>
     /// <param name="configure">An optional callback configuring the collection, handlers, and cache defaults.</param>
     /// <returns>The supplied builder.</returns>
-    /// <remarks>Registration, handler composition, and mutation semantics follow <see cref="WithSkills(IMcpServerBuilder, Action{McpSkillsOptions})"/>.</remarks>
+    /// <remarks>
+    /// Repeated calls add primitives to the same collection. Duplicate identities and file conflicts fail when
+    /// options are built; they are not silently replaced. Registration and handler composition follow
+    /// <see cref="WithSkills(IMcpServerBuilder, Action{McpSkillsOptions})"/>.
+    /// </remarks>
     public static IMcpServerBuilder WithSkills(
         this IMcpServerBuilder builder,
         IEnumerable<McpServerSkill> skills,
         Action<McpSkillsOptions>? configure = null)
     {
 #if NET
+        ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(skills);
 #else
+        if (builder is null) throw new ArgumentNullException(nameof(builder));
         if (skills is null) throw new ArgumentNullException(nameof(skills));
 #endif
 
-        return WithSkills(builder, options =>
+        foreach (var skill in skills)
         {
-            foreach (var skill in skills)
+            if (skill is null)
             {
-                options.SkillCollection.Add(skill);
+                throw new ArgumentException("The skills must not contain null entries.", nameof(skills));
             }
-            configure?.Invoke(options);
-        });
+            builder.Services.AddSingleton(skill);
+        }
+        return WithSkills(builder, configure);
     }
 
     /// <summary>Enables Skills from the immediate skill subdirectories, excluding hidden and system entries.</summary>
@@ -166,7 +133,6 @@ public static class McpSkillsBuilderExtensions
         if (uriPrefix is null) throw new ArgumentNullException(nameof(uriPrefix));
 #endif
 
-        ThrowIfSkillsRegistered(builder);
         if (uriPrefix.Length == 0)
         {
             throw new ArgumentException("The URI prefix must not be empty.", nameof(uriPrefix));
@@ -220,40 +186,55 @@ public static class McpSkillsBuilderExtensions
         return WithSkills(builder, skills, configure);
     }
 
-    private static void ThrowIfSkillsRegistered(IMcpServerBuilder builder)
+    private sealed class McpSkillsOptionsSetup(IEnumerable<McpServerSkill> skills) : IConfigureOptions<McpSkillsOptions>
     {
-        if (builder.Services.Any(descriptor => descriptor.ServiceType == typeof(SkillsRegistrationMarker)))
+        public void Configure(McpSkillsOptions options)
         {
-            throw new InvalidOperationException(
-                "Skills are already registered for this server. Call WithSkills or WithSkillsFromDirectory once; " +
-                "configure one skill collection and one pair of request handlers.");
+            foreach (var skill in skills)
+            {
+                options.SkillCollection.Add(skill);
+            }
         }
     }
 
-    private sealed class SkillsRegistrationMarker;
-
-    private sealed class SkillFileConflictCheck(McpServerResourceCollection skillFiles, IEnumerable<McpServerResource> registeredResources)
+    private sealed class SkillFileRegistration(IOptions<McpSkillsOptions> skillsOptions, IEnumerable<McpServerResource> registeredResources)
         : IPostConfigureOptions<McpServerOptions>
     {
         public void PostConfigure(string? name, McpServerOptions options)
         {
+            var authoredFiles = skillsOptions.Value.SkillCollection.SelectMany(skill => skill.Resources).ToArray();
+            var skillFiles = new McpServerResourceCollection();
+            foreach (var file in authoredFiles)
+            {
+                skillFiles.TryAdd(file);
+            }
             var resources = options.ResourceCollection is { } collection ?
                 registeredResources.Concat(collection) : registeredResources;
             foreach (var resource in resources)
             {
                 string uri = resource.ProtocolResourceTemplate.UriTemplate;
-                if (skillFiles.TryGetPrimitive(uri, out var file) && !ReferenceEquals(file, resource))
+                if (skillFiles.TryGetPrimitive(uri, out var file) &&
+                    !authoredFiles.Any(authored => ReferenceEquals(authored, resource)))
                 {
                     throw new InvalidOperationException(
                         $"The Skills file '{file.ProtocolResourceTemplate.UriTemplate}' conflicts with another resource registered at '{uri}'. " +
                         "Remove the other resource, or give it a different URI.");
                 }
             }
+            if (!skillFiles.IsEmpty)
+            {
+                options.ResourceCollection ??= new();
+                foreach (var file in skillFiles)
+                {
+                    options.ResourceCollection.TryAdd(file);
+                }
+            }
         }
     }
 
-    private sealed class McpSkillsConfigureOptions(McpSkillsOptions skillsOptions) : IConfigureOptions<McpServerOptions>
+    private sealed class McpSkillsConfigureOptions(IOptions<McpSkillsOptions> options) : IConfigureOptions<McpServerOptions>
     {
+        private readonly McpSkillsOptions _skillsOptions = options.Value;
         private static readonly UTF8Encoding s_strictUtf8 = new(false, true);
 
         public void Configure(McpServerOptions options)
@@ -287,7 +268,7 @@ public static class McpSkillsBuilderExtensions
             {
                 Services = context.Services,
             };
-            var handler = skillsOptions.ListSkillsHandler;
+            var handler = _skillsOptions.ListSkillsHandler;
             var page = handler is not null ?
                 await handler(typedContext, cancellationToken).ConfigureAwait(false) :
                 ListRegisteredSkills(parameters);
@@ -296,17 +277,21 @@ public static class McpSkillsBuilderExtensions
                 throw new McpProtocolException("The Skills list handler returned no page or skills collection.", McpErrorCode.InternalError);
             }
 
-            var entries = new List<Skill>(page.Skills.Count);
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            Dictionary<Uri, SkillResource>? responseFiles = handler is not null ? new() : null;
-            foreach (var entry in page.Skills)
+            IList<Skill> entries = page.Skills;
+            if (handler is not null)
             {
-                var snapshot = ValidateAndSnapshotEntry(entry, validateSharedFiles: handler is not null, responseFiles);
-                if (!seen.Add(snapshot.Uri))
+                entries = new List<Skill>(page.Skills.Count);
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                var responseFiles = new Dictionary<Uri, SkillResource>();
+                foreach (var entry in page.Skills)
                 {
-                    throw new McpProtocolException($"The Skills list handler returned duplicate skill URI '{snapshot.Uri}'.", McpErrorCode.InternalError);
+                    var snapshot = ValidateAndSnapshotEntry(entry, responseFiles);
+                    if (!seen.Add(snapshot.Uri))
+                    {
+                        throw new McpProtocolException($"The Skills list handler returned duplicate skill URI '{snapshot.Uri}'.", McpErrorCode.InternalError);
+                    }
+                    entries.Add(snapshot);
                 }
-                entries.Add(snapshot);
             }
             bool modern = IsJuly2026OrLaterProtocolRequest(context.JsonRpcRequest);
             var result = new ListSkillsResult
@@ -315,8 +300,8 @@ public static class McpSkillsBuilderExtensions
                 NextCursor = page.NextCursor,
                 Meta = page.Meta?.DeepClone().AsObject(),
                 ResultType = modern ? "complete" : null,
-                TimeToLive = modern ? page.TimeToLive ?? skillsOptions.TimeToLive ?? TimeSpan.Zero : null,
-                CacheScope = modern ? page.CacheScope ?? skillsOptions.CacheScope ?? CacheScope.Private : null,
+                TimeToLive = modern ? page.TimeToLive ?? _skillsOptions.TimeToLive ?? TimeSpan.Zero : null,
+                CacheScope = modern ? page.CacheScope ?? _skillsOptions.CacheScope ?? CacheScope.Private : null,
             };
             return JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.ListSkillsResult);
         }
@@ -331,13 +316,13 @@ public static class McpSkillsBuilderExtensions
             }
 
             string uri = parameters.Uri;
-            skillsOptions.SkillCollection.TryGetPrimitive(uri, out var primitive);
+            _skillsOptions.SkillCollection.TryGetPrimitive(uri, out var primitive);
             var typedContext = new RequestContext<GetSkillRequestParams>(context.Server, context.JsonRpcRequest, parameters)
             {
                 Services = context.Services,
                 MatchedPrimitive = primitive,
             };
-            var handler = skillsOptions.GetSkillHandler;
+            var handler = _skillsOptions.GetSkillHandler;
             var response = handler is not null ?
                 await handler(typedContext, cancellationToken).ConfigureAwait(false) :
                 new GetSkillResult
@@ -345,7 +330,7 @@ public static class McpSkillsBuilderExtensions
                     Skill = primitive?.ProtocolSkill ??
                         throw new McpProtocolException($"No skill is served at '{uri}'.", McpErrorCode.InvalidParams),
                 };
-            var entry = ValidateAndSnapshotEntry(response?.Skill, validateSharedFiles: handler is not null);
+            var entry = handler is null ? response.Skill : ValidateAndSnapshotEntry(response?.Skill);
             if (!string.Equals(entry.Uri, uri, StringComparison.Ordinal))
             {
                 throw new McpProtocolException(
@@ -358,23 +343,22 @@ public static class McpSkillsBuilderExtensions
                 Skill = entry,
                 Meta = response!.Meta?.DeepClone().AsObject(),
                 ResultType = modern ? "complete" : null,
-                TimeToLive = modern ? response.TimeToLive ?? skillsOptions.TimeToLive ?? TimeSpan.Zero : null,
-                CacheScope = modern ? response.CacheScope ?? skillsOptions.CacheScope ?? CacheScope.Private : null,
+                TimeToLive = modern ? response.TimeToLive ?? _skillsOptions.TimeToLive ?? TimeSpan.Zero : null,
+                CacheScope = modern ? response.CacheScope ?? _skillsOptions.CacheScope ?? CacheScope.Private : null,
             };
             return JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.GetSkillResult);
         }
 
         private ListSkillsResult ListRegisteredSkills(ListSkillsRequestParams parameters)
         {
-            var ordered = skillsOptions.SkillCollection.ToArray();
-            Array.Sort(ordered, static (left, right) => string.CompareOrdinal(left.Id, right.Id));
+            var ordered = _skillsOptions.GetSortedSkills();
             string? afterUri = DecodeCursor(parameters.Cursor);
             int start = 0;
             while (start < ordered.Length && afterUri is not null && string.CompareOrdinal(ordered[start].Id, afterUri) <= 0)
             {
                 start++;
             }
-            int count = Math.Min(skillsOptions.PageSize, ordered.Length - start);
+            int count = Math.Min(_skillsOptions.PageSize, ordered.Length - start);
             var entries = new List<Skill>(count);
             for (int i = 0; i < count; i++)
             {
@@ -388,7 +372,7 @@ public static class McpSkillsBuilderExtensions
             };
         }
 
-        private Skill ValidateAndSnapshotEntry(Skill? entry, bool validateSharedFiles, Dictionary<Uri, SkillResource>? responseFiles = null)
+        private static Skill ValidateAndSnapshotEntry(Skill? entry, Dictionary<Uri, SkillResource>? responseFiles = null)
         {
             Skill snapshot;
             try
@@ -396,10 +380,6 @@ public static class McpSkillsBuilderExtensions
                 SkillValidation.Validate(entry!, "entry");
                 snapshot = SkillValidation.Snapshot(entry!);
                 SkillValidation.Validate(snapshot, "entry");
-                if (validateSharedFiles)
-                {
-                    skillsOptions.ValidateSharedFiles(snapshot);
-                }
                 if (responseFiles is not null)
                 {
                     McpServerSkillCollection.AddFiles(responseFiles, snapshot);
@@ -410,31 +390,7 @@ public static class McpSkillsBuilderExtensions
                 throw new McpProtocolException($"The Skills handler returned an invalid entry: {e.Message}", McpErrorCode.InternalError);
             }
 
-            if (skillsOptions.SkillCollection.TryGetPrimitive(snapshot.Uri, out var primitive))
-            {
-                var registered = primitive.ProtocolSkill;
-                if (!JsonNode.DeepEquals(registered.Frontmatter, snapshot.Frontmatter) ||
-                    !SameManifest(registered.Resources, snapshot.Resources))
-                {
-                    throw new McpProtocolException(
-                        $"The Skills handler returned content that conflicts with registered skill '{snapshot.Uri}'.", McpErrorCode.InternalError);
-                }
-            }
             return snapshot;
-        }
-
-        private static bool SameManifest(SkillResources expected, SkillResources actual)
-        {
-            if (expected.Resources is not { } expectedFiles)
-            {
-                return actual.IsDynamic;
-            }
-            if (actual.Resources is not { } actualFiles || actualFiles.Count != expectedFiles.Count)
-            {
-                return false;
-            }
-            var byUri = actualFiles.ToDictionary(file => file.Uri, StringComparer.Ordinal);
-            return expectedFiles.All(file => byUri.TryGetValue(file.Uri, out var other) && McpServerSkillCollection.SameFile(file, other));
         }
 
         private static string? DecodeCursor(string? cursor)
