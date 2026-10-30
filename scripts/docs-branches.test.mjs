@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+const normalize = text => text.replace(/\r\n/g, "\n");
 const workflow = readFileSync(process.env.DOCS_WORKFLOW_PATH || path.join(root, ".github", "workflows", "docs.yml"), "utf8").replace(/\r\n/g, "\n");
 const buildScript = workflow.match(/    - name: Build all versions\n[\s\S]*?      run: \|\n([\s\S]*?)(?=\n    - name:)/)[1]
   .split("\n").map(line => line.replace(/^        /, "")).join("\n");
@@ -23,15 +24,22 @@ function fixture(t) {
   const temp = path.join(dir, "runner-temp");
   mkdirSync(origin);
   mkdirSync(temp);
-  const gitAt = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  // Model inherited Windows settings without changing the user's configuration.
+  const globalConfig = path.join(dir, "inherited.gitconfig");
+  writeFileSync(globalConfig, "[core]\n\tautocrlf = true\n\tsafecrlf = true\n");
+  const env = { ...process.env, RUNNER_TEMP: temp, GIT_CONFIG_GLOBAL: globalConfig };
+  const gitAt = (cwd, ...args) => execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   const git = (...args) => gitAt(checkout, ...args);
   gitAt(origin, "init", "--initial-branch=main");
+  gitAt(origin, "config", "core.autocrlf", "false");
+  gitAt(origin, "config", "core.safecrlf", "false");
   gitAt(origin, "config", "user.name", "Docs tests");
   gitAt(origin, "config", "user.email", "docs-tests@example.invalid");
   gitAt(origin, "config", "commit.gpgsign", "false");
   cpSync(path.join(root, "scripts"), path.join(origin, "scripts"), { recursive: true });
   cpSync(path.join(root, "docs", "version-picker"), path.join(origin, "docs", "version-picker"), { recursive: true });
-  const picker = readFileSync(path.join(root, "docs", "version-picker", "version-picker.js"), "utf8");
+  // Preserve CRLF bytes deliberately; comparisons must not depend on checkout EOLs.
+  const picker = normalize(readFileSync(path.join(root, "docs", "version-picker", "version-picker.js"), "utf8")).replace(/\n/g, "\r\n");
   const resolver = readFileSync(path.join(root, "scripts", "list-versions.mjs"), "utf8");
   function commit(version, content, marker = content) {
     writeFileSync(path.join(origin, "docs", "version-picker", "version-picker.js"), `${picker}\n// ${marker}\n`);
@@ -60,7 +68,7 @@ function fixture(t) {
   gitAt(origin, "checkout", "-b", "docs-test");
   const manualSha = commit("2.4.0", "manual branch content must never ship", "manual orchestration marker");
   gitAt(origin, "checkout", "main");
-  gitAt(dir, "clone", "--quiet", origin, checkout);
+  gitAt(dir, "clone", "--quiet", "--config", "core.autocrlf=false", "--config", "core.safecrlf=false", origin, checkout);
   const orchestrations = {
     release: { ref: "refs/tags/v2.3.0", sha: tagSha, marker: "tag orchestration marker" },
     workflow_dispatch: { ref: "refs/heads/docs-test", sha: manualSha, marker: "manual orchestration marker" },
@@ -74,7 +82,6 @@ function fixture(t) {
   };
   const manifestFile = path.join(temp, "docs-versions.json");
   writeFileSync(manifestFile, JSON.stringify(manifest));
-  const env = { ...process.env, RUNNER_TEMP: temp };
   const resolve = (source = "latest-branches") => spawnSync(process.execPath, [path.join(checkout, "scripts", "list-versions.mjs"), "--source", source],
     { cwd: checkout, env, encoding: "utf8" });
   const build = (event, source = "release-tags") => {
@@ -163,8 +170,8 @@ for (const [event, source] of [
       .includes(branchMode ? "release/1.x branch content" : "v1 released tag content"));
     assert.match(readFileSync(path.join(combined, "index.html"), "utf8"), /url=.\/v2\//);
     assert.match(readFileSync(path.join(combined, "versioning.html"), "utf8"), /url=v1\/versioning.html/);
-    assert.equal(readFileSync(path.join(combined, "assets", "version-picker.js"), "utf8").replace(/\r\n/g, "\n"),
-      f.git("show", `${f.mainSha}:docs/version-picker/version-picker.js`) + "\n");
+    assert.equal(normalize(readFileSync(path.join(combined, "assets", "version-picker.js"), "utf8")),
+      normalize(f.git("show", `${f.mainSha}:docs/version-picker/version-picker.js`)) + "\n");
     assert.match(readFileSync(path.join(combined, "assets", "version-picker.js"), "utf8"), /main orchestration marker/);
     assert.deepEqual(JSON.parse(readFileSync(path.join(combined, "docs-versions.json"), "utf8")), {
       default: "v2",
@@ -258,4 +265,16 @@ test("workflow restores all-major source choice, tag default, main checkout and 
   assert.match(buildScript, /git worktree add --detach "\$wt" "\$sha"/);
   assert.match(workflow, /contents: read\s+pages: write\s+id-token: write/);
   assert.match(workflow, /group: "pages"\s+cancel-in-progress: true/);
+});
+
+test("fixtures override inherited autocrlf/safecrlf locally and preserve CRLF picker bytes", t => {
+  const f = fixture(t);
+  for (const setting of ["core.autocrlf", "core.safecrlf"]) {
+    assert.equal(f.git("config", "--global", "--get", setting), "true");
+    assert.equal(f.git("config", "--local", "--get", setting), "false");
+    assert.equal(f.gitAt(f.origin, "config", "--local", "--get", setting), "false");
+  }
+  assert.match(f.git("show", `${f.mainSha}:docs/version-picker/version-picker.js`), /\r\n/);
+  const result = f.build("workflow_dispatch", "latest-branches");
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
