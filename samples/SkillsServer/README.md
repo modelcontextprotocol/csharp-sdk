@@ -42,4 +42,4 @@ Any MCP host that supports Streamable HTTP can also be pointed at `http://localh
 - The listing is identical for every caller, so it advertises `cacheScope: public` with a five-minute `ttlMs`.
   A catalog that varies by principal must not do that.
 - See [docs/concepts/skills/skills.md](../../docs/concepts/skills/skills.md) for the full walkthrough,
-  including how to implement a custom `IMcpSkillCatalog`.
+  including the primitive collection and typed custom handlers that resolve request-scoped application services.

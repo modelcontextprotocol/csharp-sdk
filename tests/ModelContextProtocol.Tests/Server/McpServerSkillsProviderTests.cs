@@ -25,22 +25,26 @@ public class McpServerSkillsProviderTests(ITestOutputHelper output) : LoggedTest
     }
 
     [Theory]
-    [InlineData("catalog", true)]
-    [InlineData("catalog", false)]
+    [InlineData("handlers", true)]
+    [InlineData("handlers", false)]
     [InlineData("skills", true)]
     [InlineData("skills", false)]
     [InlineData("directory", true)]
     [InlineData("directory", false)]
-    public async Task SuppliedAndStaticCatalogs_WorkWithoutProvider(string registration, bool scopeRequests)
+    public async Task SuppliedHandlersAndStaticSkills_WorkWithoutProvider(string registration, bool scopeRequests)
     {
         var skill = McpServerSkill.Create(SkillUri, [McpServerSkillFile.FromText("SKILL.md", Markdown)]);
-        await using var catalog = new ProviderFreeCatalog(new InMemoryMcpSkillCatalog([skill.ProtocolSkill]));
+        await using var source = new ProviderFreeSource(skill);
         var services = new ServiceCollection();
         var builder = services.AddMcpServer(options => options.ScopeRequests = scopeRequests);
         switch (registration)
         {
-            case "catalog":
-                builder.WithSkills(catalog).WithResources(skill.Resources);
+            case "handlers":
+                builder.WithSkills(options =>
+                {
+                    options.ListSkillsHandler = source.ListAsync;
+                    options.GetSkillHandler = source.GetAsync;
+                }).WithResources(skill.Resources);
                 break;
             case "skills":
                 builder.WithSkills([skill]);
@@ -53,7 +57,7 @@ public class McpServerSkillsProviderTests(ITestOutputHelper output) : LoggedTest
                 break;
         }
         var options = await CreateOptionsAsync(services);
-        Assert.Equal(0, catalog.DisposeCount);
+        Assert.Equal(0, source.DisposeCount);
 
         await RunServerAsync(options, async transport =>
         {
@@ -70,31 +74,28 @@ public class McpServerSkillsProviderTests(ITestOutputHelper output) : LoggedTest
             Assert.Equal(Markdown, contents!["text"]!.GetValue<string>());
         });
 
-        Assert.Equal(0, catalog.DisposeCount);
+        Assert.Equal(0, source.DisposeCount);
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task TypeAndFactoryCatalogs_StillRequireProvider(bool factory)
+    [Fact]
+    public async Task ServiceResolvingHandlers_RequireProvider_WithoutManufacturingOne()
     {
         var skill = McpServerSkill.Create(SkillUri, [McpServerSkillFile.FromText("SKILL.md", Markdown)]);
         var services = new ServiceCollection();
-        services.AddSingleton(new InMemoryMcpSkillCatalog([skill.ProtocolSkill]));
         var builder = services.AddMcpServer();
         int factoryCalls = 0;
-        if (factory)
+        services.AddTransient(_ =>
         {
-            builder.WithSkills(provider =>
-            {
-                factoryCalls++;
-                return new ProviderFreeCatalog(provider.GetRequiredService<InMemoryMcpSkillCatalog>());
-            });
-        }
-        else
+            factoryCalls++;
+            return new ProviderFreeSource(skill);
+        });
+        builder.WithSkills(options =>
         {
-            builder.WithSkills<ProviderFreeCatalog>();
-        }
+            options.ListSkillsHandler = (context, cancellationToken) =>
+                ResolveSource(context).ListAsync(context, cancellationToken);
+            options.GetSkillHandler = (context, cancellationToken) =>
+                ResolveSource(context).GetAsync(context, cancellationToken);
+        });
         var options = await CreateOptionsAsync(services);
 
         await RunServerAsync(options, async transport =>
@@ -109,6 +110,10 @@ public class McpServerSkillsProviderTests(ITestOutputHelper output) : LoggedTest
 
         Assert.Equal(0, factoryCalls);
     }
+
+    private static ProviderFreeSource ResolveSource(MessageContext context) =>
+        (context.Services ?? throw new InvalidOperationException("Request services are required."))
+        .GetRequiredService<ProviderFreeSource>();
 
     private static async Task<McpServerOptions> CreateOptionsAsync(ServiceCollection services)
     {
@@ -158,22 +163,22 @@ public class McpServerSkillsProviderTests(ITestOutputHelper output) : LoggedTest
         return await response.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
     }
 
-    private sealed class ProviderFreeCatalog(InMemoryMcpSkillCatalog catalog) : IMcpSkillCatalog, IAsyncDisposable
+    private sealed class ProviderFreeSource(McpServerSkill skill) : IAsyncDisposable
     {
         public int DisposeCount { get; private set; }
 
-        public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
+        public ValueTask<ListSkillsResult> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
         {
             Assert.Null(context.Services);
             Assert.Null(context.Server.Services);
-            return catalog.ListAsync(context, cancellationToken);
+            return new(new ListSkillsResult { Skills = [skill.ProtocolSkill] });
         }
 
-        public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
+        public ValueTask<GetSkillResult> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
         {
             Assert.Null(context.Services);
             Assert.Null(context.Server.Services);
-            return catalog.GetAsync(context, cancellationToken);
+            return new(new GetSkillResult { Skill = skill.ProtocolSkill });
         }
 
         public ValueTask DisposeAsync()

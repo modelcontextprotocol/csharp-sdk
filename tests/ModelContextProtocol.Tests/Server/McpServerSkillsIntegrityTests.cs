@@ -55,8 +55,14 @@ public class McpServerSkillsIntegrityTests : ClientServerTestBase
         };
 
         mcpServerBuilder
-            .WithSkills(new InMemoryMcpSkillCatalog([snapshot.ProtocolSkill, swapEntry]))
-            .WithResources(snapshot.Resources)
+            .WithSkills([snapshot], options =>
+            {
+                options.ListSkillsHandler = (_, _) => new(new ListSkillsResult { Skills = [snapshot.ProtocolSkill, swapEntry] });
+                options.GetSkillHandler = (context, _) => new(new GetSkillResult
+                {
+                    Skill = context.Params.Uri == SwapUri ? swapEntry : snapshot.ProtocolSkill,
+                });
+            })
             .WithResources(
             [
                 McpServerResource.Create(

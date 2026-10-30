@@ -34,16 +34,16 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
     {
         if (factory)
         {
-            McpServerBuilder.WithSkills(services => new ScopedCatalog(
+            RegisterHandlers(services => new ScopedCatalog(
                 services.GetRequiredService<RequestDependency>(), services.GetRequiredService<CatalogTracker>()));
         }
         else
         {
-            McpServerBuilder.WithSkills<ScopedCatalog>();
+            RegisterHandlers<ScopedCatalog>();
         }
         _tracker.OnRequest = (invocation, _) =>
         {
-            var other = Assert.IsType<ScopedCatalog>(invocation.Services.GetRequiredService<IMcpSkillCatalog>());
+            var other = Assert.IsType<ScopedCatalog>(invocation.Services.GetRequiredService<TestCatalog>());
             Assert.NotSame(invocation.Catalog, other);
             Assert.Same(invocation.Dependency, other.Dependency);
             return default;
@@ -74,15 +74,15 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
         Action<McpSkillsOptions> configure = options => options.TimeToLive = timeToLive;
         if (factory)
         {
-            McpServerBuilder.WithSkills(services => new TestCatalog(services.GetRequiredService<CatalogTracker>()), lifetime, configure);
+            RegisterHandlers(services => new TestCatalog(services.GetRequiredService<CatalogTracker>()), lifetime, configure);
         }
         else
         {
-            McpServerBuilder.WithSkills<TestCatalog>(lifetime, configure);
+            RegisterHandlers<TestCatalog>(lifetime, configure);
         }
         _tracker.OnRequest = (invocation, _) =>
         {
-            var resolved = invocation.Services.GetRequiredService<IMcpSkillCatalog>();
+            var resolved = invocation.Services.GetRequiredService<TestCatalog>();
             if (lifetime == ServiceLifetime.Transient)
             {
                 Assert.NotSame(invocation.Catalog, resolved);
@@ -128,12 +128,12 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
     {
         if (factory)
         {
-            McpServerBuilder.WithSkills(services => new ScopedCatalog(
+            RegisterHandlers(services => new ScopedCatalog(
                 services.GetRequiredService<RequestDependency>(), services.GetRequiredService<CatalogTracker>()), lifetime);
         }
         else
         {
-            McpServerBuilder.WithSkills<ScopedCatalog>(lifetime);
+            RegisterHandlers<ScopedCatalog>(lifetime);
         }
         StartServer();
         await using var client = await CreateMcpClientForServer();
@@ -154,12 +154,12 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
     {
         if (factory)
         {
-            McpServerBuilder.WithSkills(services => new ScopedCatalog(
+            RegisterHandlers(services => new ScopedCatalog(
                 services.GetRequiredService<RequestDependency>(), services.GetRequiredService<CatalogTracker>()), ServiceLifetime.Singleton);
         }
         else
         {
-            McpServerBuilder.WithSkills<ScopedCatalog>(ServiceLifetime.Singleton);
+            RegisterHandlers<ScopedCatalog>(ServiceLifetime.Singleton);
         }
         StartServer();
         await using var client = await CreateMcpClientForServer();
@@ -175,7 +175,7 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
     [Fact]
     public async Task FactoryFailure_DisposesDependenciesCreatedBeforeTheFailure()
     {
-        McpServerBuilder.WithSkills(services =>
+        RegisterHandlers(services =>
         {
             services.GetRequiredService<RequestDependency>();
             throw new InvalidOperationException("Catalog construction failed.");
@@ -195,10 +195,11 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
     public async Task SuppliedInstance_IsSharedAndCallerOwned_ButCanUseRequestServices()
     {
         await using var catalog = new TestCatalog(_tracker);
-        McpServerBuilder.WithSkills(catalog);
+        ServiceCollection.AddSingleton(catalog);
+        RegisterHandlerOptions();
         _tracker.OnRequest = (invocation, _) =>
         {
-            Assert.Same(catalog, invocation.Services.GetRequiredService<IMcpSkillCatalog>());
+            Assert.Same(catalog, invocation.Services.GetRequiredService<TestCatalog>());
             return default;
         };
         StartServer();
@@ -216,7 +217,7 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
     [Fact]
     public async Task Catalog_ReceivesTypedParametersAndRequestMetadata()
     {
-        McpServerBuilder.WithSkills<TestCatalog>();
+        RegisterHandlers<TestCatalog>();
         StartServer();
         await using var client = await CreateMcpClientForServer();
 
@@ -256,7 +257,7 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
         {
             _tracker.OnRequest = (_, _) => throw new McpProtocolException("Catalog failed.", McpErrorCode.InternalError);
         }
-        McpServerBuilder.WithSkills<ScopedCatalog>();
+        RegisterHandlers<ScopedCatalog>();
         StartServer();
         await using var client = await CreateMcpClientForServer();
 
@@ -294,7 +295,7 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
             entered.SetResult(true);
             await waitForCancellation.Task.WaitAsync(cancellationToken);
         };
-        McpServerBuilder.WithSkills<ScopedCatalog>();
+        RegisterHandlers<ScopedCatalog>();
         StartServer();
         await using var client = await CreateMcpClientForServer();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
@@ -324,7 +325,7 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
             }
             await release.Task.WaitAsync(cancellationToken);
         };
-        McpServerBuilder.WithSkills<ScopedCatalog>();
+        RegisterHandlers<ScopedCatalog>();
         StartServer();
         await using var client = await CreateMcpClientForServer();
 
@@ -346,6 +347,33 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
         }
         await Task.WhenAll(first, second);
     }
+
+    private void RegisterHandlers<TSource>(
+        ServiceLifetime lifetime = ServiceLifetime.Transient, Action<McpSkillsOptions>? configure = null)
+        where TSource : TestCatalog
+    {
+        McpServerBuilder.Services.Add(new ServiceDescriptor(typeof(TestCatalog), typeof(TSource), lifetime));
+        RegisterHandlerOptions(configure);
+    }
+
+    private void RegisterHandlers(
+        Func<IServiceProvider, TestCatalog> factory,
+        ServiceLifetime lifetime = ServiceLifetime.Transient,
+        Action<McpSkillsOptions>? configure = null)
+    {
+        McpServerBuilder.Services.Add(new ServiceDescriptor(typeof(TestCatalog), factory, lifetime));
+        RegisterHandlerOptions(configure);
+    }
+
+    private void RegisterHandlerOptions(Action<McpSkillsOptions>? configure = null) =>
+        McpServerBuilder.WithSkills(options =>
+        {
+            options.ListSkillsHandler = (context, cancellationToken) =>
+                context.Services!.GetRequiredService<TestCatalog>().ListAsync(context, cancellationToken);
+            options.GetSkillHandler = (context, cancellationToken) =>
+                context.Services!.GetRequiredService<TestCatalog>().GetAsync(context, cancellationToken);
+            configure?.Invoke(options);
+        });
 
     private sealed class CatalogTracker
     {
@@ -384,7 +412,7 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
         }
     }
 
-    private class TestCatalog : IMcpSkillCatalog, IAsyncDisposable
+    private class TestCatalog : IAsyncDisposable
     {
         private readonly CatalogTracker _tracker;
         public int DisposeCount { get; private set; }
@@ -395,16 +423,20 @@ public class McpServerSkillsDependencyInjectionTests : ClientServerTestBase
             tracker.Catalogs.Enqueue(this);
         }
 
-        public async ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
+        public async ValueTask<ListSkillsResult> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
         {
             await RecordAsync(context, cancellationToken);
-            return new McpSkillPage { Skills = [CreateEntry()] };
+            return new ListSkillsResult { Skills = [CreateEntry()] };
         }
 
-        public async ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
+        public async ValueTask<GetSkillResult> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
         {
             await RecordAsync(context, cancellationToken);
-            return context.Params.Uri == SkillUri ? CreateEntry() : null;
+            return new GetSkillResult
+            {
+                Skill = context.Params.Uri == SkillUri ? CreateEntry() :
+                    throw new McpProtocolException("No skill is served.", McpErrorCode.InvalidParams),
+            };
         }
 
         protected virtual void ValidateDependency(RequestDependency dependency)

@@ -117,13 +117,20 @@ public class SkillsDependencyInjectionTests(ITestOutputHelper output) : KestrelI
             }));
         if (factory)
         {
-            mcpBuilder.WithSkills(services => new ScopedCatalog(
+            Builder.Services.AddScoped(services => new ScopedCatalog(
                 services.GetRequiredService<RequestDependency>(), services.GetRequiredService<InvocationTracker>()));
         }
         else
         {
-            mcpBuilder.WithSkills<ScopedCatalog>();
+            Builder.Services.AddScoped<ScopedCatalog>();
         }
+        mcpBuilder.WithSkills(options =>
+        {
+            options.ListSkillsHandler = (context, cancellationToken) =>
+                context.Services!.GetRequiredService<ScopedCatalog>().ListAsync(context, cancellationToken);
+            options.GetSkillHandler = (context, cancellationToken) =>
+                context.Services!.GetRequiredService<ScopedCatalog>().GetAsync(context, cancellationToken);
+        });
 
         var app = Builder.Build();
         app.Use(async (context, next) =>
@@ -162,21 +169,25 @@ public class SkillsDependencyInjectionTests(ITestOutputHelper output) : KestrelI
         }
     }
 
-    private sealed class ScopedCatalog(RequestDependency dependency, InvocationTracker tracker) : IMcpSkillCatalog, IAsyncDisposable
+    private sealed class ScopedCatalog(RequestDependency dependency, InvocationTracker tracker) : IAsyncDisposable
     {
         public TaskCompletionSource Disposed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public int DisposeCount { get; private set; }
 
-        public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
+        public ValueTask<ListSkillsResult> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
         {
             Record(context);
-            return new(new McpSkillPage { Skills = [CreateEntry()] });
+            return new(new ListSkillsResult { Skills = [CreateEntry()] });
         }
 
-        public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
+        public ValueTask<GetSkillResult> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
         {
             Record(context);
-            return new(context.Params.Uri == SkillUri ? CreateEntry() : null);
+            return new(new GetSkillResult
+            {
+                Skill = context.Params.Uri == SkillUri ? CreateEntry() :
+                    throw new McpProtocolException("No skill is served.", McpErrorCode.InvalidParams),
+            });
         }
 
         private void Record(MessageContext context)

@@ -44,7 +44,7 @@ Keeping the entry and the file in agreement is the server's job, and checking th
 | Who | Responsibility |
 |---|---|
 | Server, using `McpServerSkill` | Frontmatter is read from `SKILL.md` and the manifest computed from the served bytes. With explicit frontmatter for YAML the reader does not support, the application must supply JSON identical to the file. |
-| Server, using a custom catalog | The application supplies entries whose frontmatter and manifest match the files it serves. The SDK checks entry structure only. |
+| Server, using custom handlers or an existing entry | The application supplies entries whose frontmatter and manifest match the files it serves. The SDK checks entry structure only. |
 | Host | Verifies each file against the manifest, then parses the fetched `SKILL.md` and compares its frontmatter with the entry before loading. |
 
 ### Serving skills
@@ -101,8 +101,24 @@ builder.Services.AddMcpServer().WithHttpTransport().WithSkills([gitWorkflow, ref
 
 Register skills once per server. `WithSkills` and `WithSkillsFromDirectory` install the `skills/list` and `skills/get`
 handlers, so a second call for the same service collection throws <xref:System.InvalidOperationException> before it
-registers anything. To serve skills from several directories or sources, pass every `McpServerSkill` to one
-`WithSkills` call, as above, or implement one `IMcpSkillCatalog` that combines them.
+registers anything. To serve skills from several directories, pass every `McpServerSkill` to one
+`WithSkills` call, as above. For database or generated sources, configure typed handlers as described below.
+
+Registered skills live in `McpSkillsOptions.SkillCollection`, a
+`McpServerPrimitiveCollection<McpServerSkill>` indexed by exact URI text. The collection retains each primitive's
+identity and server-local `Metadata`; it does not reduce registrations to protocol DTOs. `WithMetadata` creates a
+primitive with the same snapshotted entry and files and a shallow, read-only snapshot of local metadata.
+That metadata is not serialized and does not automatically authorize either Skills or resource requests.
+`new McpServerSkill(entry, metadata)` wraps an existing, structurally valid protocol entry without creating file
+resources; the application must serve those files separately.
+
+The default handlers observe live collection additions and removals. The default listing sorts by exact URI text
+and uses keyset cursors, with a configurable `PageSize` of 50. File registration is separate: `WithSkills` registers
+files belonging to the initial collection, but subsequent collection mutations do not add or remove resources.
+Duplicate skill identities and conflicting shared-file manifests are rejected before an addition changes the collection.
+When adding an authored skill later, register its file resources explicitly and reject conflicting resource URIs.
+When removing one, decide separately whether its files should remain readable or are shared with other skills.
+There is no atomic cross-collection update or automatic resource revocation.
 
 Each skill file must be the only resource at its URI. If another resource is registered at a URI that the server's
 resource collection treats as the same (scheme and authority are compared without case), building the server's
@@ -123,7 +139,7 @@ names containing characters with URI syntax (such as `{`, `?`, or a space) are p
 
 The optional <xref:ModelContextProtocol.Extensions.Skills.Skill.Meta> property carries entry-level `_meta`.
 It is separate from the frontmatter's string-to-string `metadata` map and may contain arbitrary JSON values.
-Catalog snapshots preserve it without sharing mutable objects with callers.
+Primitive and response snapshots preserve it without sharing mutable objects with callers.
 
 #### Frontmatter
 
@@ -156,11 +172,11 @@ The reader can stop at the first unsupported construct, though, so for such a fi
 block, and it cannot compare the block with the supplied object. The application must parse the entire frontmatter
 with a full YAML parser and supply the identical JSON; the SDK accepting it is not proof that it matches.
 
-#### Custom catalogs
+#### Custom request handlers
 
-When skills come from a database, a file share, or a large or generated catalog, implement
-<xref:ModelContextProtocol.Extensions.Skills.IMcpSkillCatalog> and register it with `WithSkills<TCatalog>`.
-For example, a database-backed catalog can take a scoped repository in its constructor:
+When skills come from a database, a file share, or an unbounded generated source, configure
+`McpSkillsOptions.ListSkillsHandler` and `GetSkillHandler`. There is no SDK catalog interface, intermediate page
+type, or catalog lifetime registration. Resolve ordinary application services from the request context:
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
@@ -171,76 +187,54 @@ builder.Services.AddScoped<SkillRepository>();
 builder.Services
     .AddMcpServer()
     .WithHttpTransport()
-    .WithSkills<DatabaseSkillCatalog>();
-
-public sealed class DatabaseSkillCatalog(SkillRepository repository) : IMcpSkillCatalog
-{
-    public async ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
+    .WithSkills(options =>
     {
-        string tenant = GetTenant(context.User);
-        var (skills, nextCursor) = await repository.GetPageAsync(tenant, context.Params.Cursor, pageSize: 50, cancellationToken);
-        return new McpSkillPage { Skills = skills, NextCursor = nextCursor };
-    }
-
-    public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken) =>
-        repository.FindAsync(GetTenant(context.User), context.Params.Uri, cancellationToken);
-}
+        options.ListSkillsHandler = async (context, cancellationToken) =>
+        {
+            var repository = context.Services!.GetRequiredService<SkillRepository>();
+            // Return ListSkillsResult, including the application's opaque continuation cursor.
+            return await repository.GetPageAsync(context.User, context.Params.Cursor, pageSize: 50, cancellationToken);
+        };
+        options.GetSkillHandler = async (context, cancellationToken) =>
+        {
+            var repository = context.Services!.GetRequiredService<SkillRepository>();
+            var entry = await repository.FindAsync(context.User, context.Params.Uri, cancellationToken);
+            return new GetSkillResult
+            {
+                Skill = entry ?? throw new McpProtocolException("No skill is served at this URI.", McpErrorCode.InvalidParams),
+            };
+        };
+    });
 ```
 
 `SkillRepository` represents the application's data-access layer; register its database context and other
-dependencies with their usual lifetimes. The repository's methods should apply the caller's tenant or access
-policy before querying and paginating. Register the skill file resources separately, using the same policy.
+dependencies with their usual lifetimes. Its methods should apply the caller's tenant or access policy before
+querying and paginating. Neither listing nor lookup requires materializing every skill or file. Register the
+skill file resources separately, using the same policy.
 
-Catalog methods receive the standard `RequestContext<ListSkillsRequestParams>` or
+Handlers receive the standard `RequestContext<ListSkillsRequestParams>` or
 `RequestContext<GetSkillRequestParams>`. `context.Params` carries the cursor or URI and request metadata.
 The context also exposes the JSON-RPC request, the caller's <xref:System.Security.Claims.ClaimsPrincipal>
 when the transport supplies one (the ASP.NET Core transport does), any items that incoming-message filters
 attached to the request, the request-bound `Server`, and the request's `Services`.
+For get requests, `context.MatchedPrimitive` identifies the registered `McpServerSkill`, if any, including its
+local metadata. Application handlers can use that identity and metadata without a synthetic resource read.
 
-All catalog overloads register `IMcpSkillCatalog` in the container. Generic and factory registrations resolve it
-from the request's services when a Skills request runs, not while configuring the server's options.
-Supplied catalog instances are retained directly by the configured handlers.
-The generic and factory overloads default to `ServiceLifetime.Transient`.
-Use the factory overload instead when construction needs application-specific configuration:
-
-```csharp
-builder.Services
-    .AddMcpServer()
-    .WithHttpTransport()
-    .WithSkills(
-        services => new DatabaseSkillCatalog(services.GetRequiredService<SkillRepository>()),
-        configure: options => options.TimeToLive = TimeSpan.FromMinutes(1));
-```
-
-Choose a lifetime for the catalog, independently of the lifetimes of its dependencies:
-
-| Registration | Lifetime and ownership |
-|---|---|
-| `WithSkills<TCatalog>()` or `WithSkills(factory)` | Transient by default. A new catalog is created on resolution and disposed by its owning scope. Scoped dependencies still come from the request's provider. |
-| Either overload with `lifetime: ServiceLifetime.Scoped` | One catalog instance per scope, shared by resolutions within that scope. DI owns the catalog and its dependencies. |
-| Either overload with `lifetime: ServiceLifetime.Singleton` | One container-owned catalog is shared across requests. Its constructor or factory must not capture scoped dependencies. |
-| `WithSkills(catalog)` | The supplied instance is shared across requests and remains caller-owned; the SDK does not dispose it. It must not capture scoped dependencies. |
-
-Catalog lifetime does not determine whether to create a scope. A transient catalog can depend on scoped
-services: resolving it from `context.Services` uses the request's existing scoped instances.
-
-A singleton or externally supplied catalog can use request-scoped services without retaining them:
-
-```csharp
-public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
-{
-    var repository = context.Services!.GetRequiredService<SkillRepository>();
-    return repository.FindAsync(GetTenant(context.User), context.Params.Uri, cancellationToken);
-}
-```
+**Composition is explicit replacement, not resource-style augmentation/fallback.** Each configured handler
+owns its entire operation. A custom list handler does not have registered entries appended to its pages.
+A custom get handler must answer for every URI it serves, including registered skills; it does not fall back
+after returning an error. When combining sources, define one application cursor scheme rather than trying to
+compose independent cursors. Leaving either handler unset preserves that operation's collection-backed default.
+A listing can intentionally omit skills, including registered skills; direct get remains independent of listing.
+Returning different frontmatter or manifest content for an already registered URI is an internal server error.
 
 Use `context.Services`, not `context.Server.Services`, for request-scoped dependencies. The latter may be the
 server's longer-lived provider. The SDK supplies a provider when the server is created through dependency
-injection. For a low-level server created directly with `McpServer.Create`, supply the corresponding provider
-when using a generic or factory registration, or when the catalog or its resource handlers need services.
-Supplied catalogs, fixed skills, and directory-loaded skills can use the configured options without a provider
-when their handlers need no services. Then `context.Services` is null; the options retain only the supplied
-catalog, not the provider used to configure them. Supplied instances remain caller-owned.
+injection. For a low-level server created directly with `McpServer.Create`, pass the configured options and supply
+a provider only when application handlers or resources need services. Fixed skills, directory-loaded skills, and
+supplied callbacks need no provider when they use no services. Then `context.Services` is null. Options retain the
+primitives and callbacks, not the provider used to configure them. Callback targets and local metadata remain
+caller-owned; do not capture scoped dependencies in long-lived callbacks.
 
 The scope follows the same lifecycle as built-in MCP request handlers:
 
@@ -248,56 +242,34 @@ The scope follows the same lifecycle as built-in MCP request handlers:
 |---|---|
 | Stateless Streamable HTTP, including modern clients on a hybrid endpoint | The existing `HttpContext.RequestServices`. Scoped state set by HTTP middleware is preserved; Skills does not create another scope. ASP.NET Core owns and disposes it. |
 | Stream/stdio, stateful Streamable HTTP, and legacy SSE | When a scope factory is available and `McpServerOptions.ScopeRequests = true` (the default), Core creates an independent scope per MCP request and disposes it asynchronously after the handler finishes, including on failure or cancellation. This is not the HTTP middleware's scope. |
-| `McpServerOptions.ScopeRequests = false` | The provider supplied to the server is used as-is and remains caller-owned. Supply an appropriately scoped provider when using scoped catalogs or dependencies. |
+| `McpServerOptions.ScopeRequests = false` | The provider supplied to the server is used as-is and remains caller-owned. Supply an appropriately scoped provider when using scoped dependencies. |
 
-Neither the catalog nor application code should dispose the request provider or retain its scoped services
-after returning. Concurrent requests have separate request scopes, but singleton and externally supplied
-catalogs are shared and must support concurrent calls. A catalog can still create an independent scope with
-`IServiceScopeFactory` when that is intentional; such a scope does not share the existing request's instances,
-and the catalog owns its disposal.
+Application code must not dispose the request provider or retain its scoped services after returning.
+Concurrent requests have separate request scopes; shared callbacks and singleton application services must
+support concurrent calls. Skills does not manufacture a provider or create its own nested scope.
 
 Skills methods still do not pass through the typed request filters or ASP.NET Core's built-in resource
-authorization filters. DI registration does not add authorization; enforce catalog visibility and guard the
+authorization filters. Primitive metadata does not add authorization; enforce Skills visibility and guard the
 corresponding file resources separately.
 
-A catalog supplies entries only; the skills' files must still be served as resources, since hosts read them with
-`resources/read`. Each entry's frontmatter must match its `SKILL.md`; the SDK validates entry structure but does not
-read the files to check this. A catalog may list only part of what it serves, or nothing at all, as long as
-`GetAsync` answers for every skill the server serves to the caller. Throw
-<xref:ModelContextProtocol.McpProtocolException> with <xref:ModelContextProtocol.McpErrorCode.InvalidParams> for a
-cursor the catalog cannot interpret. <xref:ModelContextProtocol.Extensions.Skills.InMemoryMcpSkillCatalog> is the
-built-in implementation over a fixed set of entries and can be composed into a custom one.
+The SDK validates and snapshots handler entries, checks that get returns the requested URI, and handles JSON
+serialization and protocol-version gating. A handler supplies entries only; each entry's frontmatter and
+manifest must match the files served through `resources/read`. The SDK does not read those files to check this.
+Throw <xref:ModelContextProtocol.McpProtocolException> with <xref:ModelContextProtocol.McpErrorCode.InvalidParams>
+for a cursor the application cannot interpret or a skill it does not serve to the caller.
 
 To show different callers different skills, filter the entries first and paginate only the filtered set. Every
 page and continuation cursor then covers only skills the caller may read. Filtering a finished page while passing
-on its cursor is not enough, because the cursor can still lead to hidden skills. Building an
-`InMemoryMcpSkillCatalog` validates and copies its entries, so keep one filtered view per role or user instead of
-building a new one on every request when that is expensive:
-
-```csharp
-public sealed class RoleSkillCatalog(IReadOnlyList<Skill> skills, SkillAccessPolicy policy) : IMcpSkillCatalog
-{
-    private readonly ConcurrentDictionary<string, InMemoryMcpSkillCatalog> _viewsByRole = new();
-
-    public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken) =>
-        GetView(context.User).ListAsync(context, cancellationToken);
-
-    public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken) =>
-        GetView(context.User).GetAsync(context, cancellationToken);
-
-    // Authorize before paginating: the view holds only the skills this role may read.
-    private InMemoryMcpSkillCatalog GetView(ClaimsPrincipal? user) =>
-        _viewsByRole.GetOrAdd(policy.GetRole(user), role =>
-            new InMemoryMcpSkillCatalog(skills.Where(skill => policy.CanRead(role, skill.Uri))));
-}
-```
-
-Guard `resources/read` for the skills' files with the same policy, for example with a read-resource request filter.
+on its cursor is not enough, because the cursor can still lead to hidden skills. For database sources, apply
+the authorization predicate in the query before taking a page. For registered primitives, filter the collection
+by the application's policy and local metadata before computing a page and its cursor. Guard `resources/read`
+for the files with the same policy, for example with a read-resource request filter. Local skill metadata is not
+copied automatically to every file resource, especially files shared between skills.
 
 #### Dynamic skills
 
 A skill whose content is generated on demand cannot publish stable digests. Set its entry's `Resources` to
-<xref:ModelContextProtocol.Extensions.Skills.SkillResources.Dynamic> and serve it through a catalog. Such a skill
+<xref:ModelContextProtocol.Extensions.Skills.SkillResources.Dynamic> and serve it through a handler or registered primitive. Such a skill
 offers no content integrity, and hosts may decline to load it. A host that does load one still verifies its
 frontmatter.
 
@@ -308,7 +280,8 @@ configured through <xref:ModelContextProtocol.Extensions.Skills.McpSkillsOptions
 `resultType`, are defined from protocol revision `2026-07-28`. The SDK emits them only on requests negotiated under that revision or later,
 where they are required and default to `0` and `private` when unset, the same conservative defaults the built-in
 list methods use. On earlier revisions, which reject them as unrecognized keys, they are omitted. Both methods use
-the same configured hints, so use `public` only when the listing and every entry are identical for every caller.
+the configured defaults unless a typed handler supplies a per-result hint. Use `public` only when that listing or
+entry is identical for every caller. Older revisions omit these fields even if a custom handler supplied them.
 
 ### Consuming skills
 
@@ -401,10 +374,10 @@ specification places most of the burden on hosts. In particular:
 - `skills/list` and `skills/get` are registered as raw request handlers, so they do not pass through the request
   filters that guard the built-in resource methods, including the ASP.NET Core authorization filters. A listing
   therefore discloses frontmatter, file names, sizes, and digests to any caller the transport admits. If some
-  callers must not see some skills, implement <xref:ModelContextProtocol.Extensions.Skills.IMcpSkillCatalog> and
-  decide from the request context's user, and guard the corresponding resources the same way. The built-in
-  in-memory catalog serves the same entries to every caller. Use one shared application policy for both
-  metadata and file access, and filter before paginating as shown in [Custom catalogs](#custom-catalogs), so
+  callers must not see some skills, configure typed handlers that decide from the request context's user,
+  and guard the corresponding resources the same way. The default collection handlers serve the same entries to
+  every caller. Use one shared application policy for both metadata and file access, and filter before
+  paginating as described in [Custom request handlers](#custom-request-handlers), so
   continuation cursors cannot disclose hidden skill URIs. Filtering a completed page while forwarding its
   unfiltered cursor is not sufficient. Do not derive authorization from `resources/list` membership:
   listings may intentionally be partial while an authorized direct read remains valid.

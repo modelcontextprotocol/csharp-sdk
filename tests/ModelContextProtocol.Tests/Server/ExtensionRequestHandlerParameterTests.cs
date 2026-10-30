@@ -19,21 +19,21 @@ public class ExtensionRequestHandlerParameterTests : ClientServerTestBase
         : base(output, startServer: false)
     {
         McpServerBuilder
-            .WithSkills(new InMemoryMcpSkillCatalog(
+            .WithSkills(
             [
-                new Skill
+                new McpServerSkill(new Skill
                 {
                     Uri = AlphaUri,
                     Frontmatter = new JsonObject { ["name"] = "alpha", ["description"] = "Alpha" },
                     Resources = SkillResources.Dynamic,
-                },
-                new Skill
+                }),
+                new McpServerSkill(new Skill
                 {
                     Uri = BetaUri,
                     Frontmatter = new JsonObject { ["name"] = "beta", ["description"] = "Beta" },
                     Resources = SkillResources.Dynamic,
-                },
-            ], pageSize: 1))
+                }),
+            ], options => options.PageSize = 1)
             .WithTasks(_store.Object);
     }
 

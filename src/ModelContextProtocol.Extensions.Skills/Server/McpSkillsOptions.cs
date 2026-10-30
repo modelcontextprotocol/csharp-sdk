@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Extensions.Skills;
 
@@ -7,6 +8,80 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </summary>
 public sealed class McpSkillsOptions
 {
+    private readonly McpServerSkillCollection _skillCollection = new();
+    private int _pageSize = 50;
+
+    /// <summary>
+    /// Gets the registered server-side skills, indexed by their exact URI text.
+    /// </summary>
+    /// <remarks>
+    /// The default handlers read this live collection. Duplicate identities are rejected, and each primitive
+    /// retains its local metadata. Conflicting shared-file manifests are rejected before addition, including
+    /// later mutations. Files belonging to the initial collection are registered by <c>WithSkills</c>.
+    /// Later collection changes affect Skills metadata only: register new file resources separately, and remove
+    /// them explicitly when appropriate. Removing an entry does not revoke access to its resources.
+    /// </remarks>
+    public McpServerPrimitiveCollection<McpServerSkill> SkillCollection => _skillCollection;
+
+    internal void ValidateSharedFiles(Skill entry) => _skillCollection.ValidateSharedFiles(entry);
+
+    /// <summary>
+    /// Gets or sets the maximum number of registered skills returned by the default list handler.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to 50. Registered skills are ordered by exact URI text and paginated with keyset cursors.
+    /// This setting does not apply to <see cref="ListSkillsHandler"/>.
+    /// </remarks>
+    public int PageSize
+    {
+        get => _pageSize;
+        set
+        {
+            if (value < 1)
+            {
+                throw new ArgumentOutOfRangeException(nameof(value));
+            }
+
+            _pageSize = value;
+        }
+    }
+
+    /// <summary>
+    /// Gets or sets a handler that replaces the default listing of <see cref="SkillCollection"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The handler owns the complete page and cursor. Registered entries are not appended automatically.
+    /// To combine sources, the application must define one pagination scheme and include the desired registered
+    /// entries itself. Omitting an entry from a listing does not prevent direct retrieval.
+    /// </para>
+    /// <para>
+    /// Resolve application dependencies from the supplied context's <see cref="MessageContext.Services"/>.
+    /// The SDK owns serialization, entry validation, and protocol-version gating of cache hints. A handler's
+    /// cache hints override the defaults on these options. The handler must enforce per-caller visibility;
+    /// the built-in resource authorization filters do not run for Skills requests.
+    /// </para>
+    /// </remarks>
+    public McpRequestHandler<ListSkillsRequestParams, ListSkillsResult>? ListSkillsHandler { get; set; }
+
+    /// <summary>
+    /// Gets or sets a handler that replaces the default lookup in <see cref="SkillCollection"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The handler is responsible for every URI it serves, including registered skills and skills absent from
+    /// listings. There is no automatic fallback. Throw <see cref="McpProtocolException"/> with
+    /// <see cref="McpErrorCode.InvalidParams"/> when the caller cannot retrieve the requested skill.
+    /// </para>
+    /// <para>
+    /// The context's <see cref="RequestContext{TParams}.MatchedPrimitive"/> identifies a registered skill at
+    /// the requested URI, if present, even when this handler replaces lookup. It retains server-local metadata;
+    /// that metadata is not serialized and does not grant authorization automatically.
+    /// Services, serialization, validation, caching, and authorization follow <see cref="ListSkillsHandler"/>.
+    /// </para>
+    /// </remarks>
+    public McpRequestHandler<GetSkillRequestParams, GetSkillResult>? GetSkillHandler { get; set; }
+
     /// <summary>
     /// Gets or sets the freshness hint advertised on <c>skills/list</c> and <c>skills/get</c> results.
     /// </summary>

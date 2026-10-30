@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -28,9 +29,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("skills")]
     [InlineData("directory")]
     [InlineData("directory-with-hidden-files")]
-    [InlineData("catalog")]
-    [InlineData("catalog-type")]
-    [InlineData("catalog-factory")]
+    [InlineData("collection")]
+    [InlineData("handlers")]
     public void SecondRegistrationOnTheSameBuilder_ThrowsBeforeRegisteringAnything(string method)
     {
         var services = new ServiceCollection();
@@ -48,9 +48,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("skills")]
     [InlineData("directory")]
     [InlineData("directory-with-hidden-files")]
-    [InlineData("catalog")]
-    [InlineData("catalog-type")]
-    [InlineData("catalog-factory")]
+    [InlineData("collection")]
+    [InlineData("handlers")]
     public void SecondRegistrationThroughAnotherBuilderForTheSameServices_Throws(string method)
     {
         // For example a library and the application each enabling Skills on the same service collection.
@@ -69,9 +68,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("skills")]
     [InlineData("directory")]
     [InlineData("directory-with-hidden-files")]
-    [InlineData("catalog")]
-    [InlineData("catalog-type")]
-    [InlineData("catalog-factory")]
+    [InlineData("collection")]
+    [InlineData("handlers")]
     public async Task SingleRegistration_InstallsEachSkillsMethodOnce(string method)
     {
         var services = new ServiceCollection();
@@ -101,8 +99,7 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     [InlineData("conflicting-file", typeof(ArgumentException))]
     [InlineData("duplicate-skill", typeof(ArgumentException))]
     [InlineData("configure", typeof(InvalidOperationException))]
-    [InlineData("catalog-type-configure", typeof(InvalidOperationException))]
-    [InlineData("catalog-factory-configure", typeof(InvalidOperationException))]
+    [InlineData("handlers-configure", typeof(InvalidOperationException))]
     public void FailedRegistration_LeavesNoResources_AndARetryWithNewSkillsSucceeds(string failure, Type expectedException)
     {
         var services = new ServiceCollection();
@@ -206,14 +203,15 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
             case "directory-with-hidden-files":
                 builder.WithSkillsFromDirectory(_root, includeHiddenAndSystemFiles: true);
                 break;
-            case "catalog":
-                builder.WithSkills(new InMemoryMcpSkillCatalog([CreateGitWorkflow().ProtocolSkill]));
+            case "collection":
+                builder.WithSkills(options => options.SkillCollection.Add(CreateGitWorkflow()));
                 break;
-            case "catalog-type":
-                builder.WithSkills<EmptyCatalog>();
-                break;
-            case "catalog-factory":
-                builder.WithSkills(_ => new EmptyCatalog());
+            case "handlers":
+                builder.WithSkills(options =>
+                {
+                    options.ListSkillsHandler = (_, _) => new(new ListSkillsResult());
+                    options.GetSkillHandler = (_, _) => throw new InvalidOperationException("No skills.");
+                });
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(method), method, "Unknown registration method.");
@@ -236,11 +234,8 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
             case "configure":
                 builder.WithSkills([CreateGitWorkflow()], _ => throw new InvalidOperationException("The configuration failed."));
                 break;
-            case "catalog-type-configure":
-                builder.WithSkills<EmptyCatalog>(configure: _ => throw new InvalidOperationException("The configuration failed."));
-                break;
-            case "catalog-factory-configure":
-                builder.WithSkills(_ => new EmptyCatalog(), configure: _ => throw new InvalidOperationException("The configuration failed."));
+            case "handlers-configure":
+                builder.WithSkills(_ => throw new InvalidOperationException("The configuration failed."));
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(failure), failure, "Unknown failure.");
@@ -251,30 +246,117 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
         McpServerSkill.Create(GitWorkflowUri, [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)]);
 
     [Fact]
-    public async Task SuppliedInstance_IsRegisteredInDi_AndRemainsCallerOwned()
+    public void LocalMetadataIsAShallowReadOnlySnapshot_AndDoesNotMutateTheOriginalPrimitive()
     {
-        await using var catalog = new EmptyCatalog();
+        var original = CreateGitWorkflow().WithMetadata("server-local-policy");
+        object[] source = ["initial"];
+        var copy = original.WithMetadata(source);
+        source[0] = "changed";
+
+        Assert.Equal(original.Id, copy.Id);
+        Assert.Equal("initial", Assert.Single(copy.Metadata));
+        Assert.Equal("server-local-policy", Assert.Single(original.Metadata));
+        Assert.Throws<NotSupportedException>(() => ((IList<object>)copy.Metadata)[0] = "changed");
+        Assert.Same(original.Resources[0], copy.Resources[0]);
+    }
+
+    [Fact]
+    public void LiveCollectionRejectsConflictingSharedFilesBeforeMutation_AndClearReleasesTheConstraint()
+    {
+        const string InnerMarkdown = "---\nname: inner\ndescription: Inner\n---\n";
+        var outer = McpServerSkill.Create("skill://catalog/SKILL.md",
+        [
+            McpServerSkillFile.FromText("SKILL.md", "---\nname: catalog\ndescription: Outer\n---\n"),
+            McpServerSkillFile.FromText("inner/SKILL.md", InnerMarkdown),
+        ]);
+        var inner = McpServerSkill.Create("skill://catalog/inner/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", InnerMarkdown)]);
+        var conflicting = McpServerSkill.Create("skill://catalog/inner/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", InnerMarkdown + "changed\n")]);
+        var collection = new McpSkillsOptions().SkillCollection;
+        collection.Add(outer);
+        int changes = 0;
+        collection.Changed += (_, _) => changes++;
+
+        Assert.Throws<ArgumentException>(() => collection.Add(conflicting));
+        Assert.Equal(0, changes);
+        Assert.Same(outer, Assert.Single(collection));
+        collection.Add(inner);
+        Assert.Equal(2, collection.Count);
+        Assert.True(collection.Remove(inner));
+        Assert.Throws<ArgumentException>(() => collection.Add(conflicting));
+        collection.Clear();
+        collection.Add(conflicting);
+        Assert.Same(conflicting, Assert.Single(collection));
+    }
+
+    [Fact]
+    public async Task ConcurrentAdditionsCannotBothPublishConflictingSharedFiles()
+    {
+        var outer = McpServerSkill.Create("skill://catalog/SKILL.md",
+        [
+            McpServerSkillFile.FromText("SKILL.md", "---\nname: catalog\ndescription: Outer\n---\n"),
+            McpServerSkillFile.FromText("inner/SKILL.md", "---\nname: inner\ndescription: Inner\n---\n"),
+        ]);
+        var conflicting = McpServerSkill.Create("skill://catalog/inner/SKILL.md",
+            [McpServerSkillFile.FromText("SKILL.md", "---\nname: inner\ndescription: Changed\n---\n")]);
+        var collection = new McpSkillsOptions().SkillCollection;
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int waiting = 0;
+
+        async Task<bool> AddAsync(McpServerSkill skill)
+        {
+            if (Interlocked.Increment(ref waiting) == 2)
+            {
+                entered.SetResult(true);
+            }
+            await release.Task.WaitAsync(TestContext.Current.CancellationToken);
+            try
+            {
+                collection.Add(skill);
+                return true;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        var first = Task.Run(() => AddAsync(outer), TestContext.Current.CancellationToken);
+        var second = Task.Run(() => AddAsync(conflicting), TestContext.Current.CancellationToken);
+        try
+        {
+            await entered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            release.TrySetResult(true);
+        }
+        Assert.Single(await Task.WhenAll(first, second), added => added);
+        Assert.Single(collection);
+    }
+
+    [Fact]
+    public async Task RegisteredPrimitive_RetainsIdentityAndCallerOwnedLocalMetadata()
+    {
+        await using var metadata = new OwnedMetadata();
+        var skill = CreateGitWorkflow().WithMetadata(metadata);
         var services = new ServiceCollection();
-        services.AddMcpServer().WithSkills(catalog);
+        McpSkillsOptions? skillsOptions = null;
+        services.AddMcpServer().WithSkills([skill], options => skillsOptions = options);
 
         await using (var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true }))
         {
             _ = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-            Assert.Same(catalog, provider.GetRequiredService<IMcpSkillCatalog>());
+            Assert.Same(skill, skillsOptions!.SkillCollection[GitWorkflowUri]);
+            Assert.Same(metadata, Assert.Single(skill.Metadata));
         }
 
-        Assert.Equal(0, catalog.DisposeCount);
+        Assert.Equal(0, metadata.DisposeCount);
     }
 
-    private sealed class EmptyCatalog : IMcpSkillCatalog, IAsyncDisposable
+    private sealed class OwnedMetadata : IAsyncDisposable
     {
         public int DisposeCount { get; private set; }
-
-        public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken) =>
-            new(new McpSkillPage { Skills = [] });
-
-        public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken) =>
-            new((Skill?)null);
 
         public ValueTask DisposeAsync()
         {

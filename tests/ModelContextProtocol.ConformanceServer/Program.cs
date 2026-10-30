@@ -61,8 +61,9 @@ public class Program
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
-            .WithSkills(ConformanceSkills.CreateCatalog(), options =>
+            .WithSkills(ConformanceSkills.CreateSkills(), options =>
             {
+                options.PageSize = 2;
                 options.TimeToLive = TimeSpan.FromMinutes(5);
                 options.CacheScope = CacheScope.Public;
             })

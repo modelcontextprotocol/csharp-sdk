@@ -10,11 +10,11 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
-/// End-to-end tests for skills served through a custom <see cref="IMcpSkillCatalog"/>: pagination, skills that
+/// End-to-end tests for skills served through typed custom request handlers: pagination, skills that
 /// are served but not listed, dynamic skills, the error contract, and the protocol-version gating of
 /// <c>resultType</c>, <c>ttlMs</c>, and <c>cacheScope</c> (issue #1721).
 /// </summary>
-public class McpServerSkillsCatalogTests : ClientServerTestBase
+public class McpServerSkillsHandlerTests : ClientServerTestBase
 {
     private const string TamperedUri = "skill://tampered/SKILL.md";
     private const string UnlistedUri = "skill://hidden/SKILL.md";
@@ -22,7 +22,7 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
     private const string BrokenUri = "skill://broken/SKILL.md";
     private const string SwappedUri = "skill://swapped/SKILL.md";
 
-    public McpServerSkillsCatalogTests(ITestOutputHelper testOutputHelper)
+    public McpServerSkillsHandlerTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
     {
     }
@@ -52,14 +52,16 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
             Resources = SkillResources.FromResources([new SkillResource { Uri = "skill://broken/other.md", Digest = "sha256:" + new string('a', 64), Size = 1 }]),
         };
 
-        var catalog = new PartialCatalog(
-            listed: new InMemoryMcpSkillCatalog([.. listed, tampered, dynamic], pageSize: 2),
+        var source = new PartialSource(
+            listed: [.. listed, tampered, dynamic],
             unlisted: unlisted,
             broken: broken);
 
         mcpServerBuilder
-            .WithSkills(catalog, options =>
+            .WithSkills(options =>
             {
+                options.ListSkillsHandler = source.ListAsync;
+                options.GetSkillHandler = source.GetAsync;
                 options.TimeToLive = TimeSpan.FromMinutes(5);
                 options.CacheScope = CacheScope.Public;
             })
@@ -275,42 +277,65 @@ public class McpServerSkillsCatalogTests : ClientServerTestBase
     }
 
     /// <summary>
-    /// A catalog that lists some skills and serves one more by URI only.
+    /// Application handlers that list some skills and serve one more by URI only.
     /// </summary>
-    private sealed class PartialCatalog(InMemoryMcpSkillCatalog listed, Skill unlisted, Skill broken) : IMcpSkillCatalog
+    private sealed class PartialSource(IReadOnlyList<Skill> listed, Skill unlisted, Skill broken)
     {
-        public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
+        public ValueTask<ListSkillsResult> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
         {
             AssertContext(context, SkillsProtocol.MethodSkillsList);
             if (string.Equals(context.Params.Cursor, "broken-entry", StringComparison.Ordinal))
             {
-                return new ValueTask<McpSkillPage>(new McpSkillPage { Skills = [broken] });
+                return new(new ListSkillsResult { Skills = [broken] });
             }
-            return listed.ListAsync(context, cancellationToken);
+            string? afterUri = null;
+            if (context.Params.Cursor is { } cursor)
+            {
+                try
+                {
+                    afterUri = Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
+                }
+                catch (FormatException)
+                {
+                    throw new McpProtocolException("Invalid cursor.", McpErrorCode.InvalidParams);
+                }
+            }
+            var remaining = listed.OrderBy(skill => skill.Uri, StringComparer.Ordinal)
+                .Where(skill => afterUri is null || string.CompareOrdinal(skill.Uri, afterUri) > 0).ToArray();
+            var entries = remaining.Take(2).ToList();
+            return new(new ListSkillsResult
+            {
+                Skills = entries,
+                NextCursor = remaining.Length > 2 ? Convert.ToBase64String(Encoding.UTF8.GetBytes(entries[1].Uri)) : null,
+            });
         }
 
-        public async ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
+        public ValueTask<GetSkillResult> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
         {
             AssertContext(context, SkillsProtocol.MethodSkillsGet);
             string uri = context.Params.Uri;
             if (string.Equals(uri, unlisted.Uri, StringComparison.Ordinal))
             {
-                return unlisted;
+                return new(new GetSkillResult { Skill = unlisted });
             }
 
             if (string.Equals(uri, broken.Uri, StringComparison.Ordinal))
             {
-                return broken;
+                return new(new GetSkillResult { Skill = broken });
             }
 
             if (string.Equals(uri, SwappedUri, StringComparison.Ordinal))
             {
                 // A catalog bug: a valid entry for the wrong skill, even if it changes the request parameters.
                 context.Params.Uri = "skill://alpha/SKILL.md";
-                return await listed.GetAsync(context, cancellationToken);
+                return new(new GetSkillResult { Skill = listed.Single(skill => skill.Uri == context.Params.Uri) });
             }
 
-            return await listed.GetAsync(context, cancellationToken);
+            return new(new GetSkillResult
+            {
+                Skill = listed.SingleOrDefault(skill => skill.Uri == uri) ??
+                    throw new McpProtocolException("No skill is served.", McpErrorCode.InvalidParams),
+            });
         }
 
         // The catalog receives the request it is answering, so a per-caller catalog can decide from it.

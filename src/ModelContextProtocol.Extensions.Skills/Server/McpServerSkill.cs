@@ -7,8 +7,7 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Extensions.Skills;
 
 /// <summary>
-/// Represents a skill served by an MCP server: its <see cref="Skill"/> entry together with the
-/// <see cref="McpServerResource"/> instances that serve the skill's files.
+/// Represents a server-side skill, retaining its identity, local metadata, protocol entry, and any authored file resources.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,21 +26,61 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </para>
 /// <para>
 /// Register skills with <see cref="McpSkillsBuilderExtensions.WithSkills(IMcpServerBuilder, IEnumerable{McpServerSkill}, Action{McpSkillsOptions})"/>,
-/// which registers both the catalog entries and the file resources, or point
+/// which registers both the primitives and the file resources, or point
 /// <see cref="McpSkillsBuilderExtensions.WithSkillsFromDirectory(IMcpServerBuilder, string, string, Action{McpSkillsOptions})"/>
 /// at a directory of skills.
 /// </para>
 /// </remarks>
-public sealed class McpServerSkill
+public sealed class McpServerSkill : IMcpServerPrimitive
 {
     private readonly Skill _entry;
 
-    private McpServerSkill(Skill entry, IReadOnlyList<McpServerResource> resources)
+    /// <summary>
+    /// Creates a server-side primitive from an existing protocol entry, without creating file resources.
+    /// </summary>
+    /// <param name="protocolSkill">The structurally valid entry to snapshot.</param>
+    /// <param name="metadata">Optional server-local metadata, copied as a shallow, read-only snapshot.</param>
+    /// <remarks>
+    /// The application must serve the entry's files separately and keep their content and frontmatter in agreement
+    /// with this entry. No file is read to validate the entry. Prefer <c>Create</c> or <c>CreateFromDirectory</c>
+    /// when the SDK should compute the manifest from the served bytes.
+    /// </remarks>
+    public McpServerSkill(Skill protocolSkill, IReadOnlyList<object>? metadata = null)
+        : this(protocolSkill, [], metadata)
     {
-        // The entry may hold the caller's frontmatter object; keep a private copy so later changes to it do not
-        // reach the skill.
-        _entry = SkillValidation.Snapshot(entry);
-        Resources = resources;
+    }
+
+    private McpServerSkill(Skill protocolSkill, IReadOnlyList<McpServerResource> resources, IReadOnlyList<object>? metadata = null)
+    {
+        SkillValidation.Validate(protocolSkill, nameof(protocolSkill));
+        _entry = SkillValidation.Snapshot(protocolSkill);
+        SkillValidation.Validate(_entry, nameof(protocolSkill));
+        Resources = Array.AsReadOnly(resources.ToArray());
+        Metadata = metadata is null ? [] : Array.AsReadOnly(metadata.ToArray());
+    }
+
+    /// <summary>Gets the skill's immutable identity: the exact URI text of its <c>SKILL.md</c>.</summary>
+    public string Id => _entry.Uri;
+
+    /// <summary>Gets the server-local metadata associated with this primitive.</summary>
+    /// <remarks>
+    /// These objects are not included in the protocol entry. They are available to application handlers through
+    /// <see cref="RequestContext{TParams}.MatchedPrimitive"/>; the SDK does not interpret them as authorization policies.
+    /// </remarks>
+    public IReadOnlyList<object> Metadata { get; }
+
+    /// <summary>Creates a primitive with the same entry and files and a new shallow snapshot of local metadata.</summary>
+    /// <param name="metadata">The server-local metadata for the new primitive.</param>
+    /// <returns>A new primitive; the original is unchanged.</returns>
+    public McpServerSkill WithMetadata(params object[] metadata)
+    {
+#if NET
+        ArgumentNullException.ThrowIfNull(metadata);
+#else
+        if (metadata is null) throw new ArgumentNullException(nameof(metadata));
+#endif
+
+        return new McpServerSkill(_entry, Resources, metadata);
     }
 
     /// <summary>

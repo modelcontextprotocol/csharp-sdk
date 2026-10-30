@@ -11,7 +11,7 @@ namespace ModelContextProtocol.ConformanceServer.Skills;
 /// <para>
 /// The three static skills are authored through <see cref="McpServerSkill"/>, so their frontmatter is read from
 /// their <c>SKILL.md</c> and their manifests are computed from the same bytes their resources serve. A fourth,
-/// dynamically generated skill is included in the same catalog: it is listed and answerable through
+/// dynamically generated skill is included in the same collection: it is listed and answerable through
 /// <c>skills/get</c>, but its dynamic manifest carries no digests and so cannot be content-bound.
 /// </para>
 /// <para>
@@ -56,10 +56,9 @@ public static class ConformanceSkills
     };
 
     /// <summary>
-    /// Creates the catalog backing <c>skills/list</c> and <c>skills/get</c>.
+    /// Creates the primitives backing <c>skills/list</c> and <c>skills/get</c>.
     /// </summary>
-    public static IMcpSkillCatalog CreateCatalog() =>
-        new InMemoryMcpSkillCatalog([.. s_skills.Select(s => s.ProtocolSkill), s_generatedReport], pageSize: 2);
+    public static IEnumerable<McpServerSkill> CreateSkills() => [.. s_skills, new(s_generatedReport)];
 
     /// <summary>
     /// Creates the resources serving every skill file, so the files are enumerable through <c>resources/list</c>

@@ -16,14 +16,15 @@ var authoredSkill = McpServerSkill.Create(
 var expectedMeta = JsonNode.Parse("""{"example.com/aot":{"values":["native",42,true]}}""")!.AsObject();
 var entry = authoredSkill.ProtocolSkill;
 entry.Meta = (JsonObject)expectedMeta.DeepClone();
-var catalog = new InMemoryMcpSkillCatalog([entry]);
+var primitive = new McpServerSkill(entry, ["local-aot-metadata"]);
 entry.Meta["example.com/aot"]!["values"]!.AsArray().Clear();
 
 var services = new ServiceCollection();
 var catalogTracker = new AotCatalogTracker();
-services.AddSingleton(catalog);
+services.AddSingleton(primitive);
 services.AddSingleton(catalogTracker);
 services.AddScoped<AotCatalogDependency>();
+services.AddScoped<AotSkillHandlers>();
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
@@ -33,7 +34,13 @@ services.AddMcpServer()
         new OverridingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "OverridingEcho", UseStructuredContent = true })),
     ])
     .WithMcpApps()
-    .WithSkills<AotSkillCatalog>()
+    .WithSkills([primitive], options =>
+    {
+        options.ListSkillsHandler = (context, cancellationToken) =>
+            context.Services!.GetRequiredService<AotSkillHandlers>().ListAsync(context, cancellationToken);
+        options.GetSkillHandler = (context, cancellationToken) =>
+            context.Services!.GetRequiredService<AotSkillHandlers>().GetAsync(context, cancellationToken);
+    })
     .WithResources(authoredSkill.Resources);
 
 await using var serviceProvider = services.BuildServiceProvider(validateScopes: true);
@@ -149,18 +156,23 @@ internal sealed class AotCatalogDependency : IAsyncDisposable
     }
 }
 
-internal sealed class AotSkillCatalog(InMemoryMcpSkillCatalog catalog, AotCatalogDependency dependency) : IMcpSkillCatalog
+internal sealed class AotSkillHandlers(McpServerSkill primitive, AotCatalogDependency dependency)
 {
-    public ValueTask<McpSkillPage> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
+    public ValueTask<ListSkillsResult> ListAsync(RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
     {
         ValidateRequestServices(context);
-        return catalog.ListAsync(context, cancellationToken);
+        return new(new ListSkillsResult { Skills = [primitive.ProtocolSkill] });
     }
 
-    public ValueTask<Skill?> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
+    public ValueTask<GetSkillResult> GetAsync(RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken)
     {
         ValidateRequestServices(context);
-        return catalog.GetAsync(context, cancellationToken);
+        if (!ReferenceEquals(context.MatchedPrimitive, primitive) ||
+            primitive.Metadata is not ["local-aot-metadata"])
+        {
+            throw new Exception("The handler did not receive the registered primitive and its local metadata.");
+        }
+        return new(new GetSkillResult { Skill = primitive.ProtocolSkill });
     }
 
     private void ValidateRequestServices(MessageContext context)

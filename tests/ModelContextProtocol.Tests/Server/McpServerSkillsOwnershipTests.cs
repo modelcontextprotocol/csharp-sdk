@@ -37,8 +37,16 @@ public class McpServerSkillsOwnershipTests : ClientServerTestBase
             ]),
         };
 
+        var entries = new[] { files.ProtocolSkill, directory.ProtocolSkill, catalog };
         mcpServerBuilder
-            .WithSkills(new InMemoryMcpSkillCatalog([files.ProtocolSkill, directory.ProtocolSkill, catalog]))
+            .WithSkills(options =>
+            {
+                options.ListSkillsHandler = (_, _) => new(new ListSkillsResult { Skills = entries });
+                options.GetSkillHandler = (context, _) => new(new GetSkillResult
+                {
+                    Skill = entries.Single(entry => entry.Uri == context.Params.Uri),
+                });
+            })
             .WithResources(files.Resources)
             .WithResources(directory.Resources)
             .WithResources(

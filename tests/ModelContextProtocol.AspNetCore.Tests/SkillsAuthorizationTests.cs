@@ -126,11 +126,14 @@ public class SkillsAuthorizationTests(ITestOutputHelper output) : KestrelInMemor
             ? new[] { CreateSkill("secret-payroll"), CreateSkill("zebra"), CreateSkill("zulu") }
             : new[] { CreateSkill("report") };
         var policy = new ReadPolicy();
-        var catalog = new AuthorizedCatalog(skills.Select(skill => skill.ProtocolSkill).ToArray(), policy, pageSize: 1);
+        var handlers = new AuthorizedHandlers(skills, policy, pageSize: 1);
         Builder.Services.AddMcpServer()
             .WithHttpTransport(options => options.Stateless = true)
-            .WithSkills(catalog)
-            .WithResources(skills.SelectMany(skill => skill.Resources))
+            .WithSkills(skills, options =>
+            {
+                options.ListSkillsHandler = handlers.ListAsync;
+                options.GetSkillHandler = handlers.GetAsync;
+            })
             .WithRequestFilters(filters =>
             {
                 filters.AddListResourcesFilter(next => async (context, cancellationToken) =>
@@ -176,17 +179,30 @@ public class SkillsAuthorizationTests(ITestOutputHelper output) : KestrelInMemor
             (user?.IsInRole("reader")).GetValueOrDefault();
     }
 
-    private sealed class AuthorizedCatalog(IReadOnlyList<Skill> skills, ReadPolicy policy, int pageSize) : IMcpSkillCatalog
+    private sealed class AuthorizedHandlers(IReadOnlyList<McpServerSkill> skills, ReadPolicy policy, int pageSize)
     {
-        public ValueTask<McpSkillPage> ListAsync(
-            RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken) =>
-            ForUser(context.User).ListAsync(context, cancellationToken);
+        public ValueTask<ListSkillsResult> ListAsync(
+            RequestContext<ListSkillsRequestParams> context, CancellationToken cancellationToken)
+        {
+            string? after = context.Params.Cursor is { } cursor ? Encoding.UTF8.GetString(Convert.FromBase64String(cursor)) : null;
+            var visible = skills.Where(skill => policy.CanRead(context.User, skill.Id))
+                .OrderBy(skill => skill.Id, StringComparer.Ordinal)
+                .Where(skill => after is null || string.CompareOrdinal(skill.Id, after) > 0).ToArray();
+            var page = visible.Take(pageSize).Select(skill => skill.ProtocolSkill).ToList();
+            return new(new ListSkillsResult
+            {
+                Skills = page,
+                NextCursor = visible.Length > pageSize ?
+                    Convert.ToBase64String(Encoding.UTF8.GetBytes(page[page.Count - 1].Uri)) : null,
+            });
+        }
 
-        public ValueTask<Skill?> GetAsync(
+        public ValueTask<GetSkillResult> GetAsync(
             RequestContext<GetSkillRequestParams> context, CancellationToken cancellationToken) =>
-            ForUser(context.User).GetAsync(context, cancellationToken);
-
-        private InMemoryMcpSkillCatalog ForUser(ClaimsPrincipal? user) =>
-            new(skills.Where(skill => policy.CanRead(user, skill.Uri)), pageSize);
+            new(new GetSkillResult
+            {
+                Skill = context.MatchedPrimitive is McpServerSkill skill && policy.CanRead(context.User, skill.Id) ?
+                    skill.ProtocolSkill : throw new McpProtocolException("No skill is served.", McpErrorCode.InvalidParams),
+            });
     }
 }
