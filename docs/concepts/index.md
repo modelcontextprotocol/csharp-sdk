@@ -45,6 +45,7 @@ To install the SDK and build your first MCP client and server, see [Getting star
 | [Logging](logging/logging.md) | Learn how to implement logging in MCP servers and how clients can consume log messages. |
 | [Pagination](pagination/pagination.md) | Learn how to use cursor-based pagination when listing tools, prompts, and resources. |
 | [HTTP Context](httpcontext/httpcontext.md) | Learn how to access the underlying `HttpContext` for a request. |
+| [Authorization](authorization/authorization.md) | Learn how to protect a production MCP server with OAuth 2.0 using an existing identity provider. |
 | [MCP Server Handler Filters](filters.md) | Learn how to add filters to the handler pipeline. Filters let you wrap the original handler with additional functionality. |
 
 ### Extensions
