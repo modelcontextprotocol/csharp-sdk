@@ -171,7 +171,7 @@ public abstract class TaskStatusNotificationParams : NotificationParams
                             }
                             string requestKey = reader.GetString()!;
                             reader.Read();
-                            var inputRequest = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.DefaultOptions.GetTypeInfo<InputRequest>())
+                            var inputRequest = JsonSerializer.Deserialize(ref reader, McpJsonUtilities.ProtocolOptions.GetTypeInfo<InputRequest>())
                                 ?? throw new JsonException($"Failed to deserialize InputRequest for key '{requestKey}'.");
                             inputRequests[requestKey] = inputRequest;
                         }
@@ -311,7 +311,7 @@ public abstract class TaskStatusNotificationParams : NotificationParams
                         foreach (var kvp in reqs)
                         {
                             writer.WritePropertyName(kvp.Key);
-                            JsonSerializer.Serialize(writer, kvp.Value, McpJsonUtilities.DefaultOptions.GetTypeInfo<InputRequest>());
+                            JsonSerializer.Serialize(writer, kvp.Value, McpJsonUtilities.ProtocolOptions.GetTypeInfo<InputRequest>());
                         }
                     }
                     writer.WriteEndObject();

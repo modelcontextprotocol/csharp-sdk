@@ -118,13 +118,16 @@ public class Sep2106ListToolsBackCompatTests : ClientServerTestBase
 
         JsonElement schema = await GetOutputSchemaAsync(client, "return_nullable_object");
 
-        Assert.False(schema.GetProperty("properties").TryGetProperty("result", out _),
+        var result = await client.CallToolAsync("return_nullable_object", cancellationToken: TestContext.Current.CancellationToken);
+        JsonElement content = result.StructuredContent!.Value;
+        Assert.Equal("John", content.GetProperty("name").GetString());
+        Assert.False(content.TryGetProperty("result", out _),
             "type:['object','null'] schemas must not be re-wrapped in a result envelope.");
 
         JsonElement typeProperty = schema.GetProperty("type");
         if (expectNormalized)
         {
-            // Legacy wire shape: ["object","null"] collapsed to plain "object" string.
+            // Only the wire root is constrained to object; recursive descendants retain the natural schema.
             Assert.Equal(JsonValueKind.String, typeProperty.ValueKind);
             Assert.Equal("object", typeProperty.GetString());
         }
