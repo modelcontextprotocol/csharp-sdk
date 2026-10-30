@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+import re
 
 
 class RepositoryLinks:
@@ -25,6 +26,12 @@ class RepositoryLinks:
             updated = text
             for prefix in prefixes:
                 updated = updated.replace(prefix, "/")
+            # mlc treats GitHub/DocFX alert markers as unresolved reference links.
+            updated = re.sub(
+                r"(?m)^([ \t]*(?:>[ \t]*)+)\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([ \t]*)$",
+                r"\1\\[!\2]\3",
+                updated,
+            )
             if updated != text:
                 path.write_text(updated, encoding="utf-8")
                 changed += 1
@@ -33,9 +40,9 @@ class RepositoryLinks:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Resolve this repository's main-branch links against the proposed checkout for mlc."
+        description="Prepare repository-local links and alert markers for mlc without skipping link validation."
     )
     parser.add_argument("root")
     arguments = parser.parse_args()
     count = RepositoryLinks(arguments.root).prepare()
-    print(f"Prepared repository-local links in {count} Markdown files; mlc still validates each target.")
+    print(f"Prepared links and alert markers in {count} Markdown files; mlc still validates each target.")
