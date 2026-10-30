@@ -3,11 +3,12 @@ name: Publish Docs
 # Publishes the versioned docs site to GitHub Pages.
 #
 # Discovers the versions to publish from the repository's GitHub releases (the
-# latest release, by date, for each major >= 1), builds each release tag into
+# latest release, by date, for each major >= 1), builds each selected content ref into
 # its own sub-path (e.g. /v1/ and /v2/) with make generate-docs, injects a
 # version-picker widget into each page, adds a root redirect to the default
-# version, and deploys the combined site. A manual dispatch can build every
-# major-version path from release tags or current source branches.
+# version, and deploys the combined site. Release and manual triggers use the
+# release-tag content by default; manual runs can select latest release branches.
+# Orchestration scripts and picker assets always come from current main.
 # Triggers on release publish and manual dispatch.
 
 on:
@@ -49,10 +50,9 @@ jobs:
     - name: Checkout docs orchestration
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        # A release event otherwise checks out the released tag. Keep the
-        # orchestration scripts and picker assets current with main.
+        # Keep orchestration scripts and picker assets current with main.
         ref: main
-        # Full history + tags so we can add a worktree for each version's release tag.
+        # Full history and tags for immutable content worktrees.
         fetch-depth: 0
 
     - name: .NET Setup
@@ -61,6 +61,9 @@ jobs:
         dotnet-version: |
           10.0.x
           9.0.x
+
+    - name: Test docs orchestration
+      run: node --test scripts/docs-branches.test.mjs
 
     - name: Discover versions from GitHub releases
       shell: bash
@@ -90,7 +93,7 @@ jobs:
     - name: Build all versions
       shell: bash
       env:
-        USE_SOURCE_BRANCHES: ${{ inputs.docs_source == 'latest-branches' }}
+        DOCS_SOURCE: ${{ inputs.docs_source || 'release-tags' }}
       run: |
         set -euo pipefail
         ROOT="$PWD"
@@ -98,50 +101,16 @@ jobs:
         rm -rf "$COMBINED"
         mkdir -p "$COMBINED"
 
-        # Orchestration (discovered docs-versions.json, scripts, picker assets)
-        # always comes from THIS branch. Normally each version's HTML is produced
-        # by its release tag. A manual dispatch can instead build every major from
-        # its current source branch.
-        git fetch --tags --force --prune origin "+refs/heads/*:refs/remotes/origin/*"
-        USE_SOURCE_BRANCHES="${USE_SOURCE_BRANCHES:-false}"
+        echo "Docs orchestration: refs/heads/main at $(git rev-parse HEAD)"
+        git fetch --tags --prune origin "+refs/heads/*:refs/remotes/origin/*"
+        # Resolve and validate every selected content ref once, before building any version.
+        # Use a file rather than process substitution so resolution failures stop the run.
+        node "$ROOT/scripts/list-versions.mjs" --source "$DOCS_SOURCE" > "$RUNNER_TEMP/docs-sources.tsv"
 
-        MAIN_SLUG=""
-        if [[ "$USE_SOURCE_BRANCHES" == "true" ]]; then
-          MAIN_PROPS="$(mktemp)"
-          git show refs/remotes/origin/main:src/Directory.Build.props > "$MAIN_PROPS"
-          MAIN_SLUG="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$MAIN_PROPS")"
-          rm -f "$MAIN_PROPS"
-          echo "Refreshing all published docs from source branches (main serves $MAIN_SLUG)"
-        else
-          echo "Refreshing all published docs from release tags"
-        fi
-
-        while IFS=$'\t' read -r slug ref; do
-          if [[ "$USE_SOURCE_BRANCHES" == "true" ]]; then
-            source_branch="release/${slug#v}.x"
-            if ! git show-ref --verify --quiet "refs/remotes/origin/$source_branch"; then
-              if [[ "$slug" == "$MAIN_SLUG" ]]; then
-                source_branch="main"
-              else
-                echo "::error::No source branch found for $slug. Expected release/${slug#v}.x, or main with VersionPrefix for $slug."
-                exit 1
-              fi
-            fi
-
-            echo "::group::Build $slug (from branch $source_branch)"
-            wt="$ROOT/../work-$slug"
-            git worktree add --force --detach "$wt" "refs/remotes/origin/$source_branch"
-            source_slug="$(node "$ROOT/scripts/get-docs-version-slug.mjs" "$wt/src/Directory.Build.props")"
-            if [[ "$source_slug" != "$slug" ]]; then
-              git worktree remove --force "$wt"
-              echo "::error::Source branch '$source_branch' has major '$source_slug', not '$slug'."
-              exit 1
-            fi
-          else
-            echo "::group::Build $slug (from tag $ref)"
-            wt="$ROOT/../work-$slug"
-            git worktree add --force --detach "$wt" "refs/tags/$ref"
-          fi
+        while IFS=$'\t' read -r slug ref sha; do
+          echo "::group::Build $slug (from $ref at $sha)"
+          wt="$ROOT/../work-$slug"
+          git worktree add --detach "$wt" "$sha"
 
           make -C "$wt" generate-docs
 
@@ -151,7 +120,7 @@ jobs:
 
           git worktree remove --force "$wt"
           echo "::endgroup::"
-        done < <(node "$ROOT/scripts/list-versions.mjs")
+        done < "$RUNNER_TEMP/docs-sources.tsv"
 
         node "$ROOT/scripts/finalize-docs-site.mjs" "$COMBINED"
 
