@@ -89,6 +89,22 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
         }
     }
 
+    [Theory]
+    [InlineData("test://resource/{+name}", "hello\U0001F600", "test://resource/hello%F0%9F%98%80")]
+    [InlineData("test://resource/{#name}", "hello\U0001F600", "test://resource/#hello%F0%9F%98%80")]
+    [InlineData("test://resource/{+name}", "a\U0001F600b\U00010348/c", "test://resource/a%F0%9F%98%80b%F0%90%8D%88/c")]
+    [InlineData("test://resource/{+name}", "ü\U0001F600€", "test://resource/%C3%BC%F0%9F%98%80%E2%82%AC")]
+    public async Task ReservedExpansion_EncodesSupplementaryUnicodeScalar(string uriTemplate, string value, string expectedUri)
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.ReadResourceAsync(
+            uriTemplate, new Dictionary<string, object?> { ["name"] = value }, null, TestContext.Current.CancellationToken);
+
+        var actualUri = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text;
+        Assert.Equal(expectedUri, actualUri);
+    }
+
     public class TestGroup
     {
         [JsonPropertyName("level")]
