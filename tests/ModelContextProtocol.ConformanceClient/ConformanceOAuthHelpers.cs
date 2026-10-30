@@ -119,7 +119,7 @@ internal static class ConformanceOAuthHelpers
             loggerFactory);
 
         var tokens = await provider.GetAccessTokenAsync(
-            resourceUri,
+            new Uri(discovery.Resource),
             new Uri(discovery.AuthorizationServer),
             cancellationToken).ConfigureAwait(false);
         return tokens.AccessToken;

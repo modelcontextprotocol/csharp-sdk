@@ -375,24 +375,21 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
     [MemberData(nameof(GetClients))]
     public async Task Sampling_Stdio(string clientId)
     {
-        // Set up the sampling handler
+        // Set up the sampling handler. Like the fixture's default options, only test_server gets the test discovery
+        // timeouts; the everything server keeps the default probe.
         int samplingHandlerCalls = 0;
-        await using var client = await _fixture.CreateClientAsync(clientId, new()
+        var clientOptions = clientId == "test_server" ? TestMcpClient.CreateOptions() : new McpClientOptions();
+        clientOptions.Handlers.SamplingHandler = async (_, _, _) =>
         {
-            Handlers = new()
+            samplingHandlerCalls++;
+            return new CreateMessageResult
             {
-                SamplingHandler = async (_, _, _) =>
-                {
-                    samplingHandlerCalls++;
-                    return new CreateMessageResult
-                    {
-                        Model = "test-model",
-                        Role = Role.Assistant,
-                        Content = [new TextContentBlock { Text = "Test response" }],
-                    };
-                }
-            }
-        });
+                Model = "test-model",
+                Role = Role.Assistant,
+                Content = [new TextContentBlock { Text = "Test response" }],
+            };
+        };
+        await using var client = await _fixture.CreateClientAsync(clientId, clientOptions);
 
         // Call the server's trigger-sampling-request tool which should trigger our sampling handler
         var result = await client.CallToolAsync(

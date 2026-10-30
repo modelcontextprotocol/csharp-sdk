@@ -225,7 +225,7 @@ public static class McpTasksBuilderExtensions
                 try
                 {
                     var error = new JsonRpcErrorDetail { Code = (int)McpErrorCode.InternalError, Message = outer.Message };
-                    var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                    var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.ProtocolOptions.GetTypeInfo<JsonRpcErrorDetail>());
                     await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
                 }
                 catch (Exception storeEx)
@@ -259,12 +259,12 @@ public static class McpTasksBuilderExtensions
                         Code = (int)McpErrorCode.InternalError,
                         Message = $"{nameof(IMcpTaskStore)} is configured and the {nameof(McpServerHandlers.CallToolWithAlternateHandler)} returned IsAlternate = true. Use only one mechanism.",
                     };
-                    var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                    var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.ProtocolOptions.GetTypeInfo<JsonRpcErrorDetail>());
                     await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
                     return;
                 }
 
-                var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+                var resultJson = JsonSerializer.SerializeToElement(augmented.Result!, McpJsonUtilities.ProtocolOptions.GetTypeInfo<CallToolResult>());
                 await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (taskCancellationToken.IsCancellationRequested)
@@ -278,14 +278,14 @@ public static class McpTasksBuilderExtensions
                     Code = (int)McpErrorCode.InvalidRequest,
                     Message = "MRTR and tasks cannot be composed via [McpServerTool] yet.",
                 };
-                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.ProtocolOptions.GetTypeInfo<JsonRpcErrorDetail>());
                 await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
             }
             catch (McpProtocolException mcpEx)
             {
                 // SEP-2663 §186: protocol exceptions store as failed with JSON-RPC error shape.
                 var error = new JsonRpcErrorDetail { Code = (int)mcpEx.ErrorCode, Message = mcpEx.Message };
-                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.ProtocolOptions.GetTypeInfo<JsonRpcErrorDetail>());
                 await _store.SetFailedAsync(taskId, errorJson).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -302,7 +302,7 @@ public static class McpTasksBuilderExtensions
                             : $"An error occurred invoking '{request.Params?.Name}'.",
                     }],
                 };
-                var resultJson = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.DefaultOptions.GetTypeInfo<CallToolResult>());
+                var resultJson = JsonSerializer.SerializeToElement(errorResult, McpJsonUtilities.ProtocolOptions.GetTypeInfo<CallToolResult>());
                 await _store.SetCompletedAsync(taskId, resultJson).ConfigureAwait(false);
             }
         }
@@ -336,7 +336,7 @@ public static class McpTasksBuilderExtensions
             // InputResponsesCore backing property on RequestParams. The extension's source-gen
             // context cannot see that internal member.
             var inputResponses = request.Params?["inputResponses"]?.Deserialize(
-                    McpJsonUtilities.DefaultOptions.GetTypeInfo<IDictionary<string, InputResponse>>())
+                    McpJsonUtilities.ProtocolOptions.GetTypeInfo<IDictionary<string, InputResponse>>())
                 ?? new Dictionary<string, InputResponse>();
 
             await _store.ResolveInputRequestsAsync(taskId, inputResponses, cancellationToken).ConfigureAwait(false);

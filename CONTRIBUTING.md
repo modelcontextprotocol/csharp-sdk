@@ -97,6 +97,12 @@ The test projects include shared infrastructure in `tests/Common/Utils/` that mo
 
 Use `TestConstants.DefaultTimeout` (60 seconds) rather than hardcoded values. CI machines are often slower than developer workstations, and short timeouts cause flaky failures.
 
+For direct client connections to controlled test servers that respond to discovery, use `TestMcpClient.CreateAsync`.
+It disables the separate discovery probe timeout while retaining the overall `TestConstants.DefaultTimeout` initialization deadline.
+If configuring client options, start with `TestMcpClient.CreateOptions()` before applying test-specific settings; explicitly supplied options are otherwise preserved unchanged.
+Do not use these defaults in discovery-timeout tests or with servers that silently ignore discovery, since those rely on the probe timeout for fallback.
+For a mock that only implements the legacy initialize handshake, explicitly select its supported protocol version instead of waiting for discovery to time out.
+
 ```csharp
 // Good
 using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);

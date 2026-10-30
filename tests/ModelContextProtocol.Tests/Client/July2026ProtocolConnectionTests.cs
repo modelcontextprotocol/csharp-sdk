@@ -24,6 +24,7 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
 
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
+        mcpServerBuilder.WithTools([McpServerTool.Create(() => "ready", new() { Name = "health" })]);
         services.Configure<McpServerOptions>(options =>
         {
             options.ServerInfo = new Implementation { Name = nameof(July2026ProtocolConnectionTests), Version = "1.0" };
@@ -40,7 +41,7 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
 
         Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
         Assert.NotNull(client.ServerCapabilities);
-        Assert.Equal(nameof(July2026ProtocolConnectionTests), client.ServerInfo.Name);
+        Assert.Equal(nameof(July2026ProtocolConnectionTests), client.ServerInfo?.Name);
     }
 
     [Fact]
@@ -63,7 +64,10 @@ public class July2026ProtocolConnectionTests : ClientServerTestBase
         await using var client = await CreateMcpClientForServer(options);
 
         Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
-        Assert.Throws<InvalidOperationException>(() => _ = client.ServerInfo);
+        Assert.Null(client.ServerInfo);
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("health", Assert.Single(tools).Name);
+        Assert.NotNull(await client.CallToolAsync("health", cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]

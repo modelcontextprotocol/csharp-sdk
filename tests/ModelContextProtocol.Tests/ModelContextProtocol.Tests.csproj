@@ -41,6 +41,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\ModelContextProtocol\Server\DistributedCacheEventIdFormatter.cs" Link="DistributedCacheEventIdFormatter.cs" />
+    <Compile Include="..\..\src\ModelContextProtocol.Extensions.Skills\SkillFrontmatter.cs" Link="SkillFrontmatter.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
@@ -50,6 +51,12 @@
 
   <ItemGroup Condition="'$(TargetFramework)' != 'net472'">
     <Compile Include="..\..\src\Common\Polyfills\System\IdHelpers.cs" Link="Polyfills\IdHelpers.cs" />
+  </ItemGroup>
+
+  <!-- The SkillsClient sample (.NET 8) verifies fetched frontmatter with this reader; compile it here to test it. -->
+  <ItemGroup Condition="'$(TargetFramework)' != 'net472'">
+    <Compile Include="..\..\samples\SkillsClient\YamlFrontmatterReader.cs" Link="Samples\YamlFrontmatterReader.cs" />
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 
   <ItemGroup>
@@ -84,6 +91,7 @@
     <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Core\ModelContextProtocol.Core.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Apps\ModelContextProtocol.Extensions.Apps.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Skills\ModelContextProtocol.Extensions.Skills.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Tasks\ModelContextProtocol.Extensions.Tasks.csproj" />
     <ProjectReference Include="..\ModelContextProtocol.TestServer\ModelContextProtocol.TestServer.csproj" />
     <ProjectReference Include="..\..\samples\TestServerWithHosting\TestServerWithHosting.csproj" />

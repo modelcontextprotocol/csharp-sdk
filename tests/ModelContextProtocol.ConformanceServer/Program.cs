@@ -1,8 +1,10 @@
 using ConformanceServer.Prompts;
 using ConformanceServer.Resources;
 using ConformanceServer.Tools;
+using ModelContextProtocol.ConformanceServer.Skills;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Extensions.Tasks;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -13,6 +15,12 @@ namespace ModelContextProtocol.ConformanceServer;
 public class Program
 {
     public static async Task MainAsync(string[] args, ILoggerProvider? loggerProvider = null, CancellationToken cancellationToken = default)
+    {
+        var app = new Program().CreateApplication(args, loggerProvider);
+        await app.RunAsync(cancellationToken);
+    }
+
+    public WebApplication CreateApplication(string[] args, ILoggerProvider? loggerProvider = null)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -37,7 +45,7 @@ public class Program
 
         app.MapGet("/health", () => "Healthy");
 
-        await app.RunAsync(cancellationToken);
+        return app;
     }
 
     // Registers the conformance MCP server (tools, prompts, resources, filters, and handlers)
@@ -53,6 +61,12 @@ public class Program
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
+            .WithSkills(ConformanceSkills.CreateCatalog(), options =>
+            {
+                options.TimeToLive = TimeSpan.FromMinutes(5);
+                options.CacheScope = CacheScope.Public;
+            })
+            .WithResources(ConformanceSkills.CreateResources())
             .WithTasks(
                 new InMemoryMcpTaskStore
                 {
