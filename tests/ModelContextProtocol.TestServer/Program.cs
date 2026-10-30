@@ -41,6 +41,13 @@ internal static class Program
             return;
         }
 
+        if (args.Contains("--echo-cwd-and-exit"))
+        {
+            Console.Error.WriteLine($"CWD:{Environment.CurrentDirectory}");
+            Console.Error.Flush();
+            return;
+        }
+
         Log.Logger.Information("Starting server...");
 
         string? cliArg = ParseCliArgument(args);
