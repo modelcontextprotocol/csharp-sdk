@@ -53,11 +53,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private string? _clientCredentialsAuthorizationServer;
     private ITokenCache _tokenCache;
     private AuthorizationServerMetadata? _authServerMetadata;
+    private string? _resourceUri;
 
     // Coalesces concurrent token acquisition so that when multiple in-flight requests observe an
     // expired token (or a 401) at the same time, only the first runs the refresh/authorization flow
     // while the others await its result. This also serializes all reads and writes to the mutable auth
-    // state below (_authServerMetadata, _clientId, _clientSecret, _tokenEndpointAuthMethod) as well as
+    // state (_authServerMetadata, _resourceUri, _clientId, _clientSecret, _tokenEndpointAuthMethod) as well as
     // the accumulated scope set and step-up tracking (_accumulatedScopes, _hasAttemptedStepUp), so those
     // fields need no separate lock.
     //
@@ -198,7 +199,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         if (request.Headers.Authorization is null && request.RequestUri is not null)
         {
             string? accessToken;
-            (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(request.RequestUri, cancellationToken).ConfigureAwait(false);
+            using (message?.Context?.RequestTimeout?.Suspend())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                (accessToken, attemptedRefresh) = await GetAccessTokenSilentAsync(cancellationToken).ConfigureAwait(false);
+            }
 
             if (!string.IsNullOrEmpty(accessToken))
             {
@@ -219,7 +224,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         return response;
     }
 
-    private async Task<(string? AccessToken, bool AttemptedRefresh)> GetAccessTokenSilentAsync(Uri resourceUri, CancellationToken cancellationToken)
+    private async Task<(string? AccessToken, bool AttemptedRefresh)> GetAccessTokenSilentAsync(CancellationToken cancellationToken)
     {
         var tokens = await _tokenCache.GetTokensAsync(cancellationToken).ConfigureAwait(false);
 
@@ -251,7 +256,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             current?.RefreshToken is { Length: > 0 } refreshToken &&
             CachedTokensMatchClientCredentials(current, _clientCredentialsAuthorizationServer))
         {
-            var accessToken = await RefreshTokensAsync(refreshToken, resourceUri.ToString(), _authServerMetadata, cancellationToken).ConfigureAwait(false);
+            var accessToken = await RefreshTokensAsync(refreshToken, _resourceUri, _authServerMetadata, cancellationToken).ConfigureAwait(false);
             return (accessToken, true);
         }
 
@@ -308,7 +313,12 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             throw new McpException($"The server does not support the '{BearerScheme}' authentication scheme. Server supports: [{serverSchemes}].");
         }
 
-        var accessToken = await GetAccessTokenAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
+        string accessToken;
+        using (originalJsonRpcMessage?.Context?.RequestTimeout?.Suspend())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            accessToken = await GetAccessTokenAsync(response, attemptedRefresh, usedAccessToken, cancellationToken).ConfigureAwait(false);
+        }
 
         using var retryRequest = new HttpRequestMessage(originalRequest.Method, originalRequest.RequestUri);
 
@@ -453,7 +463,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
             var accessToken = await RefreshTokensAsync(refreshToken, resourceUri, authServerMetadata, cancellationToken).ConfigureAwait(false);
             if (accessToken is not null)
             {
-                // A non-null result indicates the refresh succeeded and the new tokens have been stored.
+                // Retain discovery state when a cold-start refresh bypasses registration below.
+                _authServerMetadata = authServerMetadata;
+                _resourceUri = resourceUri;
                 return accessToken;
             }
         }
@@ -477,8 +489,10 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         // Determine the token endpoint auth method from server metadata if not already set by DCR.
         _tokenEndpointAuthMethod ??= authServerMetadata.TokenEndpointAuthMethodsSupported?.FirstOrDefault();
 
-        // Store auth server metadata for future refresh operations
+        // Enable silent refresh only after client registration is ready.
+        // A successful cold-start refresh initializes this state before its early return.
         _authServerMetadata = authServerMetadata;
+        _resourceUri = resourceUri;
 
         // Perform the OAuth flow
         return await InitiateAuthorizationCodeFlowAsync(protectedResourceMetadata, authServerMetadata, cancellationToken).ConfigureAwait(false);
@@ -504,7 +518,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
     private async Task<AuthorizationServerMetadata> GetAuthServerMetadataAsync(Uri authServerUri, string? resourceUri, CancellationToken cancellationToken)
     {
         // Tracks whether at least one well-known endpoint returned a structurally valid metadata document.
-        // This distinguishes "no metadata document was found" (eligible for the 2025-03-26 legacy fallback)
+        // This distinguishes "no metadata document was found" (eligible for the opt-in 2025-03-26 legacy fallback)
         // from "a metadata document exists but failed PKCE validation" (must not fall back to synthesized defaults).
         var metadataDocumentFound = false;
         McpException? pkceValidationFailure = null;
@@ -574,6 +588,11 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
                 // another well-known endpoint.
                 throw;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Caller cancellation or the initialization timeout must not be reported as missing metadata.
+                throw;
+            }
             catch (Exception ex)
             {
                 LogErrorFetchingAuthServerMetadata(ex, wellKnownEndpoint);
@@ -625,8 +644,14 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
         if (resourceUri is null)
         {
+            if (!AppContext.TryGetSwitch("ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback", out var enabled) || !enabled)
+            {
+                ThrowFailedToHandleUnauthorizedResponse("Authorization server metadata could not be discovered, so PKCE support could not be verified.");
+            }
+
             // 2025-03-26 backcompat: when PRM is unavailable and no auth server metadata document was
-            // discovered, fall back to default endpoint paths per the 2025-03-26 spec.
+            // discovered, allow explicitly opted-in hosts to use the default endpoint paths.
+            LogUsingLegacyOAuthMetadataFallback(authServerUri);
             return BuildDefaultAuthServerMetadata(authServerUri);
         }
 
@@ -1556,6 +1581,7 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
         _clientSecret = null;
         _tokenEndpointAuthMethod = null;
         _authServerMetadata = null;
+        _resourceUri = null;
         _clientCredentialsAuthorizationServer = null;
     }
 
@@ -1577,6 +1603,9 @@ internal sealed partial class ClientOAuthProvider : McpHttpClient
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Authorization server metadata from {Endpoint} does not satisfy PKCE requirements; skipping it and trying the next discovery endpoint.")]
     partial void LogAuthServerMetadataMissingPkceSupport(Exception ex, Uri endpoint);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Using legacy OAuth metadata fallback for {AuthorizationServer} because ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback is enabled. PKCE support could not be verified. Use this switch only for trusted deployments whose PKCE support has been independently established.")]
+    partial void LogUsingLegacyOAuthMetadataFallback(Uri authorizationServer);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Performing dynamic client registration with {RegistrationEndpoint}")]
     partial void LogPerformingDynamicClientRegistration(Uri registrationEndpoint);

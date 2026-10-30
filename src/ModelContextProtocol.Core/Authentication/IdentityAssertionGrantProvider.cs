@@ -126,7 +126,9 @@ public sealed class IdentityAssertionGrantProvider
     /// <summary>
     /// Performs the full Cross-Application Access flow to obtain an access token for the given MCP resource.
     /// </summary>
-    /// <param name="resourceUrl">The MCP resource server URL.</param>
+    /// <param name="resourceUrl">
+    /// The canonical MCP resource identifier. Its <see cref="Uri.OriginalString"/> is sent unchanged as the resource parameter.
+    /// </param>
     /// <param name="authorizationServerUrl">The MCP authorization server URL.</param>
     /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for cancellation requests.</param>
     /// <returns>A <see cref="TokenContainer"/> containing the access token.</returns>
@@ -210,7 +212,7 @@ public sealed class IdentityAssertionGrantProvider
                 // caller-supplied URL, which can differ from it (e.g. Uri.ToString() appends a trailing slash).
                 // OriginalString preserves the advertised issuer exactly as published.
                 Audience = mcpAuthMetadata.Issuer?.OriginalString ?? authorizationServerUrl.ToString(),
-                Resource = resourceUrl.ToString(),
+                Resource = resourceUrl.OriginalString,
                 IdToken = idToken,
                 ClientId = _options.IdpClientId,
                 ClientSecret = _options.IdpClientSecret,

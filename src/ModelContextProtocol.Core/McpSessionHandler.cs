@@ -213,6 +213,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         int inFlightCount = 1;
         var allHandlersCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // subscriptions/listen handlers only complete when cancelled. Once the transport stops delivering messages,
+        // no notifications/cancelled can arrive, so their requests are linked to this source and cancelled in the
+        // finally below. Other requests are left to run to completion.
+        using var subscriptionsCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         try
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -242,11 +247,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         // when subsequent messages arrive, even if the asynchronous processing happens
                         // out of order. Per spec, "The initialize request MUST NOT be cancelled by clients",
                         // so we don't track it in _handlingRequests to prevent cancellation notifications from
-                        // canceling it.
+                        // canceling it. Responses aren't tracked either: their IDs were allocated by this endpoint,
+                        // independently of the IDs the peer allocates, so tracking them could replace the entry
+                        // for an in-flight request that happens to have the same ID.
                         if (messageWithId is not null)
                         {
-                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                            if (message is not JsonRpcRequest { Method: RequestMethods.Initialize })
+                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                                message is JsonRpcRequest { Method: RequestMethods.SubscriptionsListen }
+                                    ? subscriptionsCts.Token
+                                    : cancellationToken);
+                            if (message is JsonRpcRequest { Method: not RequestMethods.Initialize })
                             {
                                 _handlingRequests[messageWithId.Id] = combinedCts;
                             }
@@ -337,7 +347,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     {
                         if (messageWithId is not null)
                         {
-                            _handlingRequests.TryRemove(messageWithId.Id, out _);
+                            // Only remove the entry registered above, never one belonging to another message with the same ID.
+                            ((ICollection<KeyValuePair<RequestId, CancellationTokenSource>>)_handlingRequests).Remove(new(messageWithId.Id, combinedCts!));
                             combinedCts!.Dispose();
                         }
 
@@ -359,6 +370,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // Decrement our own count. If all handlers have already completed, this will signal completion.
             if (Interlocked.Decrement(ref inFlightCount) != 0)
             {
+                await subscriptionsCts.CancelAsync().ConfigureAwait(false);
                 await allHandlersCompleted.Task.ConfigureAwait(false);
             }
 
@@ -689,11 +701,15 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
             // Per spec, "The initialize request MUST NOT be cancelled by clients", so skip registration for initialize.
+            // Start waiting before registering: cancellation callbacks run in reverse order of registration, so this
+            // ensures the notification callback runs first. Otherwise, the wait's continuation can run synchronously
+            // as part of canceling the token and dispose the registration before its callback has run.
             LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id);
             JsonRpcMessage? response;
+            Task<JsonRpcMessage> responseTask = tcs.Task.WaitAsync(cancellationToken);
             using (var registration = method != RequestMethods.Initialize ? RegisterCancellation(cancellationToken, request) : default)
             {
-                response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                response = await responseTask.ConfigureAwait(false);
             }
 
             if (response is JsonRpcError error)
