@@ -44,6 +44,7 @@ public abstract partial class McpClient : McpSession
         CancellationToken cancellationToken = default)
     {
         Throw.IfNull(clientTransport);
+        ValidateProtocolVersionSelection(clientOptions);
 
         var transport = await clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
         var endpointName = clientTransport.Name;
@@ -117,6 +118,16 @@ public abstract partial class McpClient : McpSession
         Throw.IfNull(resumeOptions);
         Throw.IfNull(resumeOptions.ServerCapabilities);
         Throw.IfNull(resumeOptions.ServerInfo);
+        ValidateProtocolVersionSelection(clientOptions);
+
+        if (clientOptions?.MaximumProtocolVersion is { } maximumVersion &&
+            resumeOptions.NegotiatedProtocolVersion is { } resumedVersion &&
+            StringComparer.Ordinal.Compare(resumedVersion, maximumVersion) > 0)
+        {
+            throw new ArgumentException(
+                $"The resumed protocol version '{resumedVersion}' exceeds the configured maximum '{maximumVersion}'.",
+                nameof(resumeOptions));
+        }
 
         var transport = await clientTransport.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
@@ -124,6 +135,16 @@ public abstract partial class McpClient : McpSession
         clientSession.ResumeSession(resumeOptions);
         
         return clientSession;
+    }
+
+    private static void ValidateProtocolVersionSelection(McpClientOptions? options)
+    {
+        if (options?.ProtocolVersion is not null && options.MaximumProtocolVersion is not null)
+        {
+            throw new ArgumentException(
+                $"{nameof(McpClientOptions.ProtocolVersion)} and {nameof(McpClientOptions.MaximumProtocolVersion)} cannot both be set.",
+                nameof(options));
+        }
     }
 
     /// <summary>

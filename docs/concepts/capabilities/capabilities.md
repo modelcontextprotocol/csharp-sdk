@@ -128,3 +128,16 @@ string? version = server.NegotiatedProtocolVersion;
 ```
 
 Version negotiation is handled automatically. If the client and server cannot agree on a compatible protocol version, the initialization fails with an error.
+
+To keep an agent or gateway on a tested protocol range while still connecting to older servers, set
+<xref:ModelContextProtocol.Client.McpClientOptions.MaximumProtocolVersion>:
+
+```csharp
+var options = new McpClientOptions { MaximumProtocolVersion = "2025-11-25" };
+await using McpClient client = await McpClient.CreateAsync(transport, options);
+```
+
+The client requests the ceiling and accepts a mutually supported older revision. This differs from
+<xref:ModelContextProtocol.Client.McpClientOptions.ProtocolVersion>, which requires an exact version.
+Set only one of these properties. Leaving both unset preserves automatic negotiation with the newest
+supported revision.

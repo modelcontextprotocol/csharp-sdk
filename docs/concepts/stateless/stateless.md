@@ -62,7 +62,7 @@ On a dual-era stdio server, discovery alone does not commit the connection to th
 
 The era is cached per <xref:ModelContextProtocol.Client.IClientTransport> instance, so the probe cost is paid only on the first connect.
 
-**Opting out of fallback.** Pin <xref:ModelContextProtocol.Client.McpClientOptions.ProtocolVersion> to `2026-07-28` when you want the client to refuse to fall back. A non-null `ProtocolVersion` is also treated as the minimum, so the connect call throws an <xref:ModelContextProtocol.McpException> instead of silently degrading to an initialize-capable revision. This is useful for strict `2026-07-28` production code and for tests that need to assert `2026-07-28`-only behavior. To try several versions yourself, leave `ProtocolVersion` unset (the default) or retry the connection with a different value.
+**Opting out of fallback.** Pin <xref:ModelContextProtocol.Client.McpClientOptions.ProtocolVersion> to `2026-07-28` when you want the client to refuse to fall back. A non-null `ProtocolVersion` is also treated as the minimum, so the connect call throws an <xref:ModelContextProtocol.McpException> instead of silently degrading to an initialize-capable revision. This is useful for strict `2026-07-28` production code and for tests that need to assert `2026-07-28`-only behavior. To accept older revisions while excluding newer ones, set <xref:ModelContextProtocol.Client.McpClientOptions.MaximumProtocolVersion> instead.
 
 ```csharp
 var clientOptions = new McpClientOptions
