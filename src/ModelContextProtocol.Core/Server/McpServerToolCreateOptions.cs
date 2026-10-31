@@ -158,6 +158,16 @@ public sealed class McpServerToolCreateOptions
     public JsonSerializerOptions? SerializerOptions { get; set; }
 
     /// <summary>
+    /// Gets or sets a delegate used to determine the object returned from invoking the tool,
+    /// based on the result of the underlying method.
+    /// </summary>
+    /// <value>
+    /// The default is <see langword="null"/>, which means the underlying method's result is
+    /// returned as-is.
+    /// </value>
+    public Func<object?, Type?, CancellationToken, ValueTask<object?>>? MarshalResult { get; set; }
+
+    /// <summary>
     /// Gets or sets the JSON schema options when creating an <see cref="AIFunction"/> from a method.
     /// </summary>
     /// <value>
@@ -214,6 +224,7 @@ public sealed class McpServerToolCreateOptions
             UseStructuredContent = UseStructuredContent,
             OutputSchema = OutputSchema,
             SerializerOptions = SerializerOptions,
+            MarshalResult = MarshalResult,
             SchemaCreateOptions = SchemaCreateOptions,
             Metadata = Metadata,
             Icons = Icons,
