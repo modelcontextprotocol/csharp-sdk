@@ -218,17 +218,31 @@ foreach (bool field in new[] { false, true })
 List<McpServerTool> forwardingRecoveryTools = [];
 foreach (bool required in new[] { false, true })
 {
-    JsonElement requiredSchema = JsonDocument.Parse("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""").RootElement;
-    JsonElement optionalSchema = JsonDocument.Parse("""{"type":"object","properties":{"note":{"type":"string"}}}""").RootElement;
-    McpServerTool inner = McpServerTool.Create(() => new AotNullableChild(), new()
+    foreach (bool rebindMatch in new[] { false, true })
     {
-        Name = required ? "ForwardingRequiredNote" : "ForwardingOptionalNote",
-        UseStructuredContent = true,
-        SerializerOptions = structuredOptions,
-        OutputSchema = required ? optionalSchema : requiredSchema,
-    });
-    forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(inner, required ? requiredSchema : optionalSchema));
+        JsonElement requiredSchema = JsonDocument.Parse("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""").RootElement;
+        JsonElement optionalSchema = JsonDocument.Parse("""{"type":"object","properties":{"note":{"type":"string"}}}""").RootElement;
+        McpServerTool inner = McpServerTool.Create(() => new AotNullableChild(), new()
+        {
+            Name = (required ? "ForwardingRequiredNote" : "ForwardingOptionalNote") + (rebindMatch ? "Rebound" : ""),
+            UseStructuredContent = true,
+            SerializerOptions = structuredOptions,
+            OutputSchema = required ? optionalSchema : requiredSchema,
+        });
+        forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(inner, required ? requiredSchema : optionalSchema, rebindMatch));
+    }
 }
+var mutableNote = new AotMutableNote();
+McpServerTool mutableNoteTool = McpServerTool.Create(() => mutableNote, new()
+{
+    Name = "ForwardingMutableNote",
+    UseStructuredContent = true,
+    SerializerOptions = structuredOptions,
+    OutputSchema = JsonDocument.Parse("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""").RootElement,
+});
+forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(
+    mutableNoteTool, JsonDocument.Parse(mutableNoteTool.ProtocolTool.OutputSchema!.Value.GetRawText()).RootElement,
+    afterInvocation: () => mutableNote.Note = "changed after serialization"));
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
@@ -387,14 +401,27 @@ if (callbackRecoveryResult.IsError == true ||
 
 foreach (bool required in new[] { false, true })
 {
-    var forwardingResult = await client.CallToolAsync(required ? "ForwardingRequiredNote" : "ForwardingOptionalNote");
-    if (forwardingResult.IsError == true ||
-        forwardingResult.StructuredContent is not { } forwarded ||
-        forwarded.TryGetProperty("note", out JsonElement note) != required ||
-        (required && note.ValueKind != JsonValueKind.Null))
+    foreach (bool rebindMatch in new[] { false, true })
     {
-        throw new Exception($"Unexpected forwarding recovery output: {forwardingResult.StructuredContent}");
+        var forwardingResult = await client.CallToolAsync(
+            (required ? "ForwardingRequiredNote" : "ForwardingOptionalNote") + (rebindMatch ? "Rebound" : ""));
+        if (forwardingResult.IsError == true ||
+            forwardingResult.StructuredContent is not { } forwarded ||
+            forwarded.TryGetProperty("note", out JsonElement note) != required ||
+            (required && note.ValueKind != JsonValueKind.Null))
+        {
+            throw new Exception($"Unexpected forwarding recovery output: {forwardingResult.StructuredContent}");
+        }
     }
+}
+var mutableNoteResult = await client.CallToolAsync("ForwardingMutableNote");
+if (mutableNoteResult.IsError == true ||
+    mutableNoteResult.StructuredContent is not { } mutableNoteContent ||
+    !mutableNoteContent.TryGetProperty("note", out JsonElement mutableNoteValue) ||
+    mutableNoteValue.ValueKind != JsonValueKind.Null ||
+    mutableNote.Note != "changed after serialization")
+{
+    throw new Exception($"Unexpected mutable forwarding recovery output: {mutableNoteResult.StructuredContent}");
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");
@@ -586,6 +613,12 @@ internal struct AotNullableChild
     public string? Real { get; init; }
 }
 
+internal sealed class AotMutableNote
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Note { get; set; }
+}
+
 internal sealed class AotUnevaluatedOutput
 {
     [JsonPropertyName("evaluated\0path")]
@@ -758,12 +791,17 @@ internal sealed class AotCallbackOutput : IJsonOnSerializing, IJsonOnSerialized
 [JsonSerializable(typeof(AotGenericMutableList))]
 [JsonSerializable(typeof(AotReadOnlyOutput))]
 [JsonSerializable(typeof(AotCallbackOutput))]
+[JsonSerializable(typeof(AotMutableNote))]
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
 
-internal sealed class ForwardingSchemaAotTool(McpServerTool inner, JsonElement schema) : DelegatingMcpServerTool(inner)
+internal sealed class ForwardingSchemaAotTool(
+    McpServerTool inner, JsonElement schema, bool rebindMatch = false, Action? afterInvocation = null)
+    : DelegatingMcpServerTool(inner)
 {
+    private readonly McpServerTool _inner = inner;
+
     public override Tool ProtocolTool { get; } = new()
     {
         Name = inner.ProtocolTool.Name,
@@ -774,9 +812,22 @@ internal sealed class ForwardingSchemaAotTool(McpServerTool inner, JsonElement s
     public override async ValueTask<CallToolResult> InvokeAsync(
         RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
     {
-        CallToolResult result = await base.InvokeAsync(request, cancellationToken);
-        await base.InvokeAsync(request, cancellationToken);
-        return result;
+        IMcpServerPrimitive? original = request.MatchedPrimitive;
+        if (rebindMatch)
+        {
+            request.MatchedPrimitive = _inner;
+        }
+        try
+        {
+            CallToolResult result = await base.InvokeAsync(request, cancellationToken);
+            await base.InvokeAsync(request, cancellationToken);
+            afterInvocation?.Invoke();
+            return result;
+        }
+        finally
+        {
+            request.MatchedPrimitive = original;
+        }
     }
 }
 

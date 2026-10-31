@@ -15,6 +15,43 @@ namespace ModelContextProtocol.Tests.Server;
 public partial class DelegatingToolOutputSchemaTests
 {
     [Theory]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
+    public async Task ListTools_ForwardingInvocation_CapturesSchemaBeforeUserCodeRuns(string protocolVersion)
+    {
+        JsonElement required = ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""");
+        JsonElement optional = ParseJson("""{"type":"object","properties":{"note":{"type":"string"}}}""");
+        McpServerTool? tool = null;
+        McpServerTool inner = McpServerTool.Create(() =>
+        {
+            tool!.ProtocolTool.OutputSchema = optional;
+            return new { Note = (string?)null };
+        }, new()
+        {
+            Name = "changed_schema",
+            UseStructuredContent = true,
+            OutputSchema = optional,
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        tool = new SchemaOverrideTool(new ForwardingInvocationTool(inner, 1), required);
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+            var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal(optional, tool.ProtocolTool.OutputSchema);
+            Assert.True(ParseSchema(listed.ProtocolTool.OutputSchema!.Value).Evaluate(result.StructuredContent!.Value).IsValid);
+            Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        });
+    }
+
+    [Theory]
     [InlineData("2025-06-18", false)]
     [InlineData("2025-06-18", true)]
     [InlineData("2025-11-25", false)]
@@ -200,6 +237,127 @@ public partial class DelegatingToolOutputSchemaTests
             Assert.NotEqual(true, result.IsError);
             Assert.True(ParseSchema(requiredSchema).Evaluate(result.StructuredContent!.Value).IsValid);
             Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        });
+    }
+
+    [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
+    public async Task ListTools_ForwardingInvocation_PreservesRegisteredSchemaWhenMatchChanges(
+        string protocolVersion, bool outerRequiresNull)
+    {
+        JsonElement required = ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""");
+        JsonElement optional = ParseJson("""{"type":"object","properties":{"note":{"type":"string"}}}""");
+        McpServerTool inner = McpServerTool.Create(() => new { Note = (string?)null }, new()
+        {
+            Name = "rebound_note",
+            UseStructuredContent = true,
+            OutputSchema = outerRequiresNull ? optional : required,
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        McpServerTool tool = new SchemaOverrideTool(
+            new RequestStateTool(inner, inner, null), outerRequiresNull ? required : optional);
+        foreach (bool alternateHandler in new[] { false, true })
+        {
+            await WithClientAsync(tool, protocolVersion, async client =>
+            {
+                var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+                var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+                Assert.NotEqual(true, result.IsError);
+                Assert.True(ParseSchema(listed.ProtocolTool.OutputSchema!.Value).Evaluate(result.StructuredContent!.Value).IsValid);
+                Assert.Equal(outerRequiresNull, result.StructuredContent.Value.TryGetProperty("note", out _));
+            }, alternateHandler);
+        }
+    }
+
+    [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
+    public async Task ListTools_ForwardingInvocation_PreservesValidJsonAfterSourceMutation(
+        string protocolVersion, bool arrayResult)
+    {
+        const string itemSchema = """{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""";
+        string schema = arrayResult ? $$"""{"type":"array","items":{{itemSchema}}}""" : itemSchema;
+        foreach (bool alternateHandler in new[] { false, true })
+        {
+            var source = new MutableNote();
+            McpServerTool inner = McpServerTool.Create(() => arrayResult ? (object)new[] { source } : source, new()
+            {
+                Name = "mutated_note",
+                UseStructuredContent = true,
+                OutputSchema = ParseJson(schema),
+                SerializerOptions = new(JsonSerializerDefaults.Web)
+                {
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                    TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                },
+            });
+            McpServerTool tool = new SchemaOverrideTool(
+                new RequestStateTool(inner, null, () => source.Note = "changed after serialization"), ParseJson(schema));
+            await WithClientAsync(tool, protocolVersion, async client =>
+            {
+                var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+                var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+                JsonElement content = result.StructuredContent!.Value;
+
+                Assert.Equal("changed after serialization", source.Note);
+                Assert.NotEqual(true, result.IsError);
+                Assert.True(ParseSchema(listed.ProtocolTool.OutputSchema!.Value).Evaluate(content).IsValid);
+                if (arrayResult)
+                {
+                    if (protocolVersion != "2026-07-28")
+                    {
+                        content = content.GetProperty("result");
+                    }
+                    content = content[0];
+                }
+                Assert.Equal(JsonValueKind.Null, content.GetProperty("note").ValueKind);
+            }, alternateHandler);
+        }
+    }
+
+    [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
+    public async Task ListTools_ForwardingInvocation_PreservesInnerProjectionWhenOuterRecoveryFails(
+        string protocolVersion, bool invalidSchema)
+    {
+        McpServerTool inner = McpServerTool.Create(() => new { Note = (string?)null }, new()
+        {
+            Name = "unrecoverable_outer_note",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object","required":["note"]}"""),
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        McpServerTool tool = new SchemaOverrideTool(new ForwardingInvocationTool(inner, 1),
+            ParseJson(invalidSchema ? """{"type":42}""" : """{"required":["note","missing"]}"""));
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal("""{"note":null}""", result.StructuredContent!.Value.GetRawText());
         });
     }
 
@@ -1170,6 +1328,35 @@ public partial class DelegatingToolOutputSchemaTests
     }
 
     private sealed class DelegatingTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
+
+    private sealed class MutableNote
+    {
+        public string? Note { get; set; }
+    }
+
+    private sealed class RequestStateTool(McpServerTool inner, McpServerTool? temporaryMatch, Action? afterInvocation)
+        : DelegatingMcpServerTool(inner)
+    {
+        public override async ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        {
+            IMcpServerPrimitive? original = request.MatchedPrimitive;
+            if (temporaryMatch is not null)
+            {
+                request.MatchedPrimitive = temporaryMatch;
+            }
+            try
+            {
+                CallToolResult result = await base.InvokeAsync(request, cancellationToken);
+                afterInvocation?.Invoke();
+                return result;
+            }
+            finally
+            {
+                request.MatchedPrimitive = original;
+            }
+        }
+    }
 
     private sealed class ForwardingInvocationTool(McpServerTool inner, int mode) : DelegatingMcpServerTool(inner)
     {

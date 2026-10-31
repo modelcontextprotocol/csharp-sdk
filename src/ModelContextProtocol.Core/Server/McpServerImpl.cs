@@ -1653,7 +1653,7 @@ internal sealed partial class McpServerImpl : McpServer
         CancellationToken cancellationToken)
     {
         request.ClearStructuredContentRecovery();
-        request.SupportsDeferredStructuredContentRecovery = true;
+        request.StructuredContentRecoveryTarget = new(tool, tool.ProtocolTool.OutputSchema);
         try
         {
             CallToolResult result = await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
@@ -1662,7 +1662,7 @@ internal sealed partial class McpServerImpl : McpServer
         }
         finally
         {
-            request.SupportsDeferredStructuredContentRecovery = false;
+            request.StructuredContentRecoveryTarget = null;
             request.ClearStructuredContentRecovery();
         }
     }
