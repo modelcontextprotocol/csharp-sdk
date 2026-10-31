@@ -208,10 +208,10 @@ public sealed class McpServerHandlers
     /// <para>
     /// This is a <b>full replacement</b> for the built-in <c>subscriptions/listen</c> handler. When set, the
     /// SDK does not track the subscription, does not send the acknowledgement, and does not perform any
-    /// automatic <c>*/list_changed</c> fan-out for the request; the handler is solely responsible for the
-    /// entire lifetime of the stream. The SDK still enforces protocol-version gating: the handler is only
-    /// reached when the negotiated protocol revision is 2026-07-28 or later, and is otherwise rejected with
-    /// <see cref="McpErrorCode.MethodNotFound"/>.
+    /// automatic <c>*/list_changed</c> or <c>resources/updated</c> fan-out for the request; the handler is
+    /// solely responsible for the entire lifetime of the stream. The SDK still enforces protocol-version
+    /// gating: the handler is only reached when the negotiated protocol revision is 2026-07-28 or later;
+    /// older revisions are rejected with <see cref="McpErrorCode.MethodNotFound"/>.
     /// </para>
     /// <para>
     /// An implementation of this handler is responsible for:
