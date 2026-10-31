@@ -1,0 +1,143 @@
+#pragma warning disable MCPEXP003
+
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Extensions.Apps;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using System.ComponentModel;
+using System.Text.Json.Nodes;
+
+namespace ModelContextProtocol.Tests.Server;
+
+/// <summary>
+/// Verifies that <see cref="McpAppsBuilderExtensions.WithAppTool"/> preserves the
+/// tool and resource behavior across a client/server round trip.
+/// </summary>
+public sealed class McpAppsWithAppToolIntegrationTests : ClientServerTestBase
+{
+    private const string AppResourceUri = "ui://weather/view.html";
+    private const string AppHtml = "<html><body>weather</body></html>";
+    private const string ValueTaskResourceUri = "ui://weather/details.html";
+    private const string ValueTaskHtml = "<html><body>weather details</body></html>";
+
+    public McpAppsWithAppToolIntegrationTests(ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
+    {
+    }
+
+    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
+    {
+        mcpServerBuilder
+            .WithAppTool(
+                AppTools.GetWeather,
+                AppResourceUri,
+                AppTools.GetHtmlAsync,
+                new McpServerToolCreateOptions
+                {
+                    Meta = new JsonObject
+                    {
+                        ["ui"] = new JsonObject
+                        {
+                            ["resourceUri"] = AppResourceUri,
+                            ["visibility"] = new JsonArray(McpUiToolVisibility.App),
+                        },
+                    },
+                })
+            .WithAppTool(AppTools.GetWeatherSummary, AppResourceUri, static () => "<html><body>ignored</body></html>")
+            .WithAppTool(AppTools.GetWeatherDetails, ValueTaskResourceUri, AppTools.GetValueTaskHtmlAsync);
+    }
+
+    [Fact]
+    public async Task WithAppTool_RoundTripsToolMetadataAndParameters()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(3, tools.Count);
+        var tool = Assert.Single(tools, t => t.Name == "weather");
+
+        Assert.Equal("weather", tool.Name);
+        Assert.Equal("Gets weather for a location", tool.Description);
+        Assert.Equal("ui://weather/view.html", tool.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>());
+        Assert.Equal(McpUiToolVisibility.App, tool.ProtocolTool.Meta?["ui"]?["visibility"]?[0]?.GetValue<string>());
+        Assert.Contains("location", tool.ProtocolTool.InputSchema.GetProperty("properties").EnumerateObject().Select(p => p.Name));
+
+        var result = await client.CallToolAsync(
+            "weather",
+            new Dictionary<string, object?> { ["location"] = "Paris" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
+        Assert.Equal("Weather for Paris", text.Text);
+    }
+
+    [Fact]
+    public async Task WithAppTool_DuplicateResourceUriUsesFirstHtmlHandler()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(2, resources.Count);
+        var resource = Assert.Single(resources, resource => resource.Uri == AppResourceUri);
+        Assert.Equal(AppResourceUri, resource.Uri);
+        Assert.Equal(McpApps.HtmlMimeType, resource.MimeType);
+
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(
+            2,
+            tools.Count(tool =>
+                tool.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>() == resource.Uri));
+
+        var result = await client.ReadResourceAsync(
+            resource.Uri,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents));
+        Assert.Equal(resource.Uri, content.Uri);
+        Assert.Equal(McpApps.HtmlMimeType, content.MimeType);
+        Assert.Equal(AppHtml, content.Text);
+    }
+
+    [Fact]
+    public async Task WithAppTool_RoundTripsValueTaskHtmlHandler()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.ReadResourceAsync(
+            ValueTaskResourceUri,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var content = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents));
+        Assert.Equal(ValueTaskResourceUri, content.Uri);
+        Assert.Equal(McpApps.HtmlMimeType, content.MimeType);
+        Assert.Equal(ValueTaskHtml, content.Text);
+    }
+
+    private static class AppTools
+    {
+        [McpServerTool(Name = "weather")]
+        [Description("Gets weather for a location")]
+        public static string GetWeather(string location) => $"Weather for {location}";
+
+        [McpServerTool(Name = "weather_summary")]
+        [Description("Gets a weather summary")]
+        public static string GetWeatherSummary() => "Weather summary";
+
+        [McpServerTool(Name = "weather_details")]
+        [Description("Gets weather details")]
+        public static string GetWeatherDetails() => "Weather details";
+
+        public static Task<string> GetHtmlAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(AppHtml);
+        }
+
+        public static ValueTask<string> GetValueTaskHtmlAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return new(ValueTaskHtml);
+        }
+    }
+}
