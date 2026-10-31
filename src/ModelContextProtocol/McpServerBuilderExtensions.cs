@@ -7,6 +7,7 @@ using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -120,7 +121,7 @@ public static partial class McpServerBuilderExtensions
 
         return builder;
     }
-
+    
     /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
     /// <param name="builder">The builder instance.</param>
     /// <param name="toolTypes">Types with <see cref="McpServerToolAttribute"/>-attributed methods to add as tools to the server.</param>
@@ -133,7 +134,23 @@ public static partial class McpServerBuilderExtensions
     /// instance for each. For instance methods, an instance is constructed for each invocation of the tool.
     /// </remarks>
     [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
-    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null)
+    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, JsonSerializerOptions? serializerOptions = null) =>
+        builder.WithTools(toolTypes, schemaCreateOptions: null, serializerOptions);
+    
+    /// <summary>Adds <see cref="McpServerTool"/> instances to the service collection backing <paramref name="builder"/>.</summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="toolTypes">Types with <see cref="McpServerToolAttribute"/>-attributed methods to add as tools to the server.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <param name="schemaCreateOptions">The schema creation options governing tool parameter/output schema generation.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="toolTypes"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This method discovers all instance and static methods (public and non-public) on the specified <paramref name="toolTypes"/>
+    /// types, where the methods are attributed as <see cref="McpServerToolAttribute"/>, and adds an <see cref="McpServerTool"/>
+    /// instance for each. For instance methods, an instance is constructed for each invocation of the tool.
+    /// </remarks>
+    [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
+    public static IMcpServerBuilder WithTools(this IMcpServerBuilder builder, IEnumerable<Type> toolTypes, AIJsonSchemaCreateOptions? schemaCreateOptions, JsonSerializerOptions? serializerOptions = null)
     {
         Throw.IfNull(builder);
         Throw.IfNull(toolTypes);
@@ -147,8 +164,8 @@ public static partial class McpServerBuilderExtensions
                     if (toolMethod.GetCustomAttribute<McpServerToolAttribute>() is not null)
                     {
                         builder.Services.AddSingleton((Func<IServiceProvider, McpServerTool>)(toolMethod.IsStatic ?
-                            services => McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = serializerOptions }) :
-                            services => McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services, SerializerOptions = serializerOptions })));
+                            services => McpServerTool.Create(toolMethod, options: new() { Services = services, SerializerOptions = serializerOptions, SchemaCreateOptions = schemaCreateOptions }) :
+                            services => McpServerTool.Create(toolMethod, r => CreateTarget(r.Services, toolType), new() { Services = services, SerializerOptions = serializerOptions, SchemaCreateOptions = schemaCreateOptions })));
                     }
                 }
             }
@@ -157,6 +174,50 @@ public static partial class McpServerBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Adds types marked with the <see cref="McpServerToolTypeAttribute"/> attribute from the given assembly as tools to the server.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="serializerOptions">The serializer options governing tool parameter marshalling.</param>
+    /// <param name="toolAssembly">The assembly to load the types from. If <see langword="null"/>, the calling assembly is used.</param>
+    /// <param name="schemaCreateOptions">The schema creation options governing tool parameter/output schema generation.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// <para>
+    /// This method scans the specified assembly (or the calling assembly if none is provided) for classes
+    /// marked with the <see cref="McpServerToolTypeAttribute"/>. It then discovers all methods within those
+    /// classes that are marked with the <see cref="McpServerToolAttribute"/> and registers them as <see cref="McpServerTool"/>s
+    /// in the <paramref name="builder"/>'s <see cref="IServiceCollection"/>.
+    /// </para>
+    /// <para>
+    /// The method automatically handles both static and instance methods. For instance methods, a new instance
+    /// of the containing class is constructed for each invocation of the tool.
+    /// </para>
+    /// <para>
+    /// Tools registered through this method can be discovered by clients using the <c>list_tools</c> request
+    /// and invoked using the <c>call_tool</c> request.
+    /// </para>
+    /// <para>
+    /// Note that this method performs reflection at runtime and might not work in Native AOT scenarios. For
+    /// Native AOT compatibility, consider using the generic <see cref="M:WithTools"/> method instead.
+    /// </para>
+    /// </remarks>
+    [RequiresUnreferencedCode(WithToolsRequiresUnreferencedCodeMessage)]
+    public static IMcpServerBuilder WithToolsFromAssembly(this IMcpServerBuilder builder, AIJsonSchemaCreateOptions? schemaCreateOptions, Assembly? toolAssembly = null, JsonSerializerOptions? serializerOptions = null)
+    {
+        Throw.IfNull(builder);
+
+        toolAssembly ??= Assembly.GetCallingAssembly();
+
+        return builder.WithTools(
+            from t in toolAssembly.GetTypes()
+            where t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null
+            select t,
+            schemaCreateOptions,
+            serializerOptions);
+    }
+    
     /// <summary>
     /// Adds types marked with the <see cref="McpServerToolTypeAttribute"/> attribute from the given assembly as tools to the server.
     /// </summary>
@@ -196,6 +257,7 @@ public static partial class McpServerBuilderExtensions
             from t in toolAssembly.GetTypes()
             where t.GetCustomAttribute<McpServerToolTypeAttribute>() is not null
             select t,
+            schemaCreateOptions: null,
             serializerOptions);
     }
     #endregion
