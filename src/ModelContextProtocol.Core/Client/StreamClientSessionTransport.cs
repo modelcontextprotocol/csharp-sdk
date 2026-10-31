@@ -80,7 +80,7 @@ internal class StreamClientSessionTransport : TransportBase
         using var _ = await _sendLock.LockAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var json = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
+            var json = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>());
             await _serverInputStream.WriteAsync(json, cancellationToken).ConfigureAwait(false);
             await _serverInputStream.WriteAsync(s_newlineBytes, cancellationToken).ConfigureAwait(false);
             await _serverInputStream.FlushAsync(cancellationToken).ConfigureAwait(false);
