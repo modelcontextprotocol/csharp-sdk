@@ -367,15 +367,15 @@ public class McpClientTests : ClientServerTestBase
 
         var valuesSetViaAttr = tools.Single(t => t.Name == "ValuesSetViaAttr");
         Assert.Null(valuesSetViaAttr.ProtocolTool.Annotations?.Title);
-        Assert.Null(valuesSetViaAttr.ProtocolTool.Annotations?.ReadOnlyHint);
-        Assert.Null(valuesSetViaAttr.ProtocolTool.Annotations?.IdempotentHint);
+        Assert.False(valuesSetViaAttr.ProtocolTool.Annotations?.ReadOnlyHint);
+        Assert.False(valuesSetViaAttr.ProtocolTool.Annotations?.IdempotentHint);
         Assert.False(valuesSetViaAttr.ProtocolTool.Annotations?.DestructiveHint);
         Assert.True(valuesSetViaAttr.ProtocolTool.Annotations?.OpenWorldHint);
 
         var valuesSetViaOptions = tools.Single(t => t.Name == "ValuesSetViaOptions");
         Assert.Null(valuesSetViaOptions.ProtocolTool.Annotations?.Title);
         Assert.True(valuesSetViaOptions.ProtocolTool.Annotations?.ReadOnlyHint);
-        Assert.Null(valuesSetViaOptions.ProtocolTool.Annotations?.IdempotentHint);
+        Assert.False(valuesSetViaOptions.ProtocolTool.Annotations?.IdempotentHint);
         Assert.True(valuesSetViaOptions.ProtocolTool.Annotations?.DestructiveHint);
         Assert.False(valuesSetViaOptions.ProtocolTool.Annotations?.OpenWorldHint);
     }
