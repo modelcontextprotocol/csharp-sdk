@@ -139,13 +139,9 @@ public abstract class ResourceContents
 
             if (blob is not null)
             {
-                return new BlobResourceContents
-                {
-                    Uri = uri ?? string.Empty,
-                    MimeType = mimeType,
-                    Blob = blob.Value,
-                    Meta = meta,
-                };
+                var blobResource = BlobResourceContents.FromTrustedBase64Utf8(blob.Value, uri ?? string.Empty, mimeType);
+                blobResource.Meta = meta;
+                return blobResource;
             }
 
             if (text is not null)

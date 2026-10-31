@@ -483,7 +483,7 @@ public static class ResourceContentsTests
         {
             Uri = "file:///test.bin",
             MimeType = null,
-            Blob = new byte[] { 1, 2, 3 }
+            Blob = System.Text.Encoding.UTF8.GetBytes(Convert.ToBase64String(new byte[] { 1, 2, 3 }))
         };
 
         var json = JsonSerializer.Serialize<ResourceContents>(resource, McpJsonUtilities.DefaultOptions);
@@ -507,6 +507,21 @@ public static class ResourceContentsTests
         var blob = Assert.IsType<BlobResourceContents>(deserialized);
         Assert.Equal(base64, System.Text.Encoding.UTF8.GetString(blob.Blob.ToArray()));
         Assert.Equal(originalBytes, blob.DecodedData.ToArray());
+    }
+
+    [Fact]
+    public static void BlobResourceContents_BlobSetter_ThrowsForRawUnencodedBytes()
+    {
+        // Assigning raw binary directly to Blob (instead of going through FromBytes) must fail
+        // immediately and clearly, rather than silently producing a corrupt JSON payload that only
+        // fails to parse on the receiving end. Regression test for
+        // https://github.com/modelcontextprotocol/csharp-sdk/issues/1835.
+        byte[] rawBytes = new byte[900_000];
+        new Random(42).NextBytes(rawBytes);
+
+        var ex = Assert.Throws<ArgumentException>(() => new BlobResourceContents { Blob = rawBytes, Uri = "demo://files/1/test.pdf" });
+        Assert.Equal("Blob", ex.ParamName);
+        Assert.Contains("BlobResourceContents.FromBytes", ex.Message);
     }
 
     [Theory]
