@@ -10,6 +10,8 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(RepoRoot)\Open.snk</AssemblyOriginatorKeyFile>
     <!-- https://github.com/dotnet/sdk/issues/51060 -->
     <NoWarn>$(NoWarn);NU1903;NU1902;MCP9006</NoWarn>
     <!-- Define for conditional TimeProvider support in InMemoryMcpTaskStore -->
@@ -35,8 +37,6 @@
 
   <ItemGroup>
     <Compile Include="..\Common\**\*.cs" />
-    <Compile Include="..\..\src\Common\McpHttpHeaders.cs" Link="McpHttpHeaders.cs" />
-    <Compile Include="..\..\src\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
   </ItemGroup>
 
   <ItemGroup>
