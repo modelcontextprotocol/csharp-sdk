@@ -5,6 +5,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 #pragma warning disable MCPEXP001
 
@@ -112,6 +113,34 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         Assert.Equal(McpTaskStatus.Working, augmented.TaskCreated.Status);
         Assert.NotNull(augmented.TaskCreated.TaskId);
         Assert.True(augmented.TaskCreated.PollIntervalMs > 0);
+    }
+
+    [Fact]
+    public async Task CallToolAsTaskAsync_WithSessionLevelExtensions_StillReturnsCreatedTask()
+    {
+        // A client declaring its own extensions at session level must not lose the per-request
+        // tasks opt-in that CallToolAsTaskAsync adds to the request's client capabilities.
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities
+            {
+                Extensions = new Dictionary<string, object>
+                {
+                    ["io.modelcontextprotocol/ui"] = new JsonObject(),
+                },
+            },
+        });
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams
+            {
+                Name = "test-tool",
+                Arguments = CreateArguments("input", "test"),
+            }, ct);
+
+        Assert.True(augmented.IsTask);
+        Assert.NotNull(augmented.TaskCreated);
     }
 
     [Fact]
