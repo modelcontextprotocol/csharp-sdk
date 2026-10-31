@@ -35,6 +35,11 @@ public interface IMcpTaskStore
     /// <summary>
     /// Creates a new task for tracking an asynchronous execution.
     /// </summary>
+    /// <param name="executionIntent">
+    /// The executor-owned execution intent to persist atomically with the task record, or
+    /// <see langword="null"/> when the task's executor is stateless and needs no recovery
+    /// metadata.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token for the operation.</param>
     /// <returns>
     /// A <see cref="McpTaskInfo"/> with a unique task ID, initial status of <see cref="McpTaskStatus.Working"/>,
@@ -54,8 +59,22 @@ public interface IMcpTaskStore
     /// write to be visible (e.g., quorum acknowledgement, write-through, or an equivalent
     /// barrier) before returning.
     /// </para>
+    /// <para>
+    /// When <paramref name="executionIntent"/> is non-null, it MUST be persisted atomically with
+    /// the task record — a later <see cref="GetTaskAsync"/> must be able to return it via
+    /// <see cref="McpTaskInfo.ExecutionIntent"/> — and implementations MUST copy the
+    /// <see cref="JsonElement"/> (e.g., via <see cref="JsonElement.Clone"/>) rather than retaining
+    /// a reference to the executor's original backing document, which the executor may dispose
+    /// once execution has been handed off; a retained reference surfaces later as an
+    /// <see cref="ObjectDisposedException"/>. The intent is server-only and MUST NOT surface in
+    /// protocol responses, notifications, or errors. Implementations that cannot persist a
+    /// non-null intent MUST reject it by throwing from this method, rather than silently
+    /// dropping it, so no task is created without its recovery metadata.
+    /// </para>
     /// </remarks>
-    Task<McpTaskInfo> CreateTaskAsync(CancellationToken cancellationToken = default);
+    Task<McpTaskInfo> CreateTaskAsync(
+        JsonElement? executionIntent = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves the current state of a task.

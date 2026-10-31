@@ -9,6 +9,7 @@ using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using Moq;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace ModelContextProtocol.AspNetCore.Tests;
 
@@ -179,7 +180,7 @@ public class HttpTaskIntegrationTests(ITestOutputHelper testOutputHelper) : Kest
 
         Assert.Equal(McpErrorCode.InvalidRequest, exception.ErrorCode);
         taskStore.Verify(
-            store => store.CreateTaskAsync(It.IsAny<CancellationToken>()),
+            store => store.CreateTaskAsync(It.IsAny<JsonElement?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
