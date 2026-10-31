@@ -185,6 +185,14 @@ public sealed partial class StreamableHttpServerTransport : ITransport
                     _httpSseWriter = null;
                     writer.Dispose();
                 }
+
+                // Event-store sessions retain this state so notifications can be persisted
+                // for Last-Event-ID replay while the client is disconnected.
+                if (_storeSseWriter is null)
+                {
+                    _httpResponseTcs = null;
+                    _getHttpRequestStarted = false;
+                }
             }
         }
     }
