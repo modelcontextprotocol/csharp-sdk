@@ -16,15 +16,16 @@ public class ClientIntegrationTestFixture
 
     public ClientIntegrationTestFixture()
     {
-        const string ServerEverythingVersion = "2026.1.26";
         string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
         string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
 
         EverythingServerTransportOptions = new()
         {
-            Command = "npx",
-            // Change to Arguments = ["mcp-server-everything"] if you want to run the server locally after creating a symlink
-            Arguments = ["-y", "--verbose", $"@modelcontextprotocol/server-everything@{ServerEverythingVersion}"],
+            Command = "node",
+            // To use a local Everything server, build it, then run `npm link <path-to-server-everything>`
+            // from this repository root after `npm ci`. The linked package must contain dist/index.js;
+            // no argument changes are needed because this path resolves through the package link.
+            Arguments = [NodeHelpers.GetTestServerScriptPath("everything")],
             Name = "Everything",
         };
 
@@ -36,7 +37,6 @@ public class ClientIntegrationTestFixture
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Change to Arguments to "mcp-server-everything" if you want to run the server locally after creating a symlink
             TestServerTransportOptions.Arguments = [PlatformDetection.IsMonoRuntime ? testServerExecutable : testServerDll];
         }
     }
