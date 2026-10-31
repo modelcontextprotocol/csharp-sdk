@@ -3,7 +3,7 @@ using ModelContextProtocol.Server;
 using System.ComponentModel;
 using System.Text;
 
-namespace EverythingServer.Tools;
+namespace EverythingServer.Core.Tools;
 
 [McpServerToolType]
 public class AnnotatedMessageTool

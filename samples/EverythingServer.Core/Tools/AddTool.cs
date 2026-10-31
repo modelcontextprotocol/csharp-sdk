@@ -1,7 +1,7 @@
 ﻿using ModelContextProtocol.Server;
 using System.ComponentModel;
 
-namespace EverythingServer.Tools;
+namespace EverythingServer.Core.Tools;
 
 [McpServerToolType]
 public class AddTool
