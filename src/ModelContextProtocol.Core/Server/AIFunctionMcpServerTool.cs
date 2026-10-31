@@ -986,6 +986,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private JsonElement? GetRecoverySchema(McpServerTool? matchedTool, JsonElement? matchedSchema)
     {
+        // A recovery target carries the schema selected for the current forwarding
+        // segment. Preserve it across nested delegators instead of replacing it with
+        // the leaf tool's contract while walking custom invocation overrides.
+        if (matchedSchema is not null)
+        {
+            return matchedSchema;
+        }
+
         McpServerTool schemaTool = matchedTool ?? this;
         McpServerTool current = schemaTool;
         while (current is DelegatingMcpServerTool delegating)

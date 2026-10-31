@@ -88,6 +88,40 @@ public partial class DelegatingToolOutputSchemaTests
     }
 
     [Theory]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
+    public async Task ListTools_StackedTransformingDelegator_RecoversBeforeOuterTransformation(string protocolVersion)
+    {
+        JsonElement required = ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""");
+        JsonElement optional = ParseJson("""{"type":"object","properties":{"note":{"type":"string"}}}""");
+        McpServerTool inner = McpServerTool.Create(() => new { Note = (string?)null }, new()
+        {
+            Name = "stacked_transformed_note",
+            UseStructuredContent = true,
+            OutputSchema = optional,
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+
+        McpServerTool tool = new PayloadTool(
+            new SchemaOverrideTool(new ForwardingInvocationTool(inner, 1), required));
+
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(true, result.IsError);
+            JsonElement payload = result.StructuredContent!.Value.GetProperty("payload");
+            Assert.Equal(JsonValueKind.Null, payload.GetProperty("note").ValueKind);
+            Assert.True(ParseSchema(tool.ProtocolTool.OutputSchema!.Value).Evaluate(result.StructuredContent.Value).IsValid);
+        });
+    }
+
+    [Theory]
     [InlineData("2025-06-18", false, 0)]
     [InlineData("2025-06-18", true, 0)]
     [InlineData("2025-11-25", false, 0)]
