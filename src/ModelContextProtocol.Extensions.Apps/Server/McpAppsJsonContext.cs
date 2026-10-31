@@ -14,6 +14,13 @@ namespace ModelContextProtocol.Extensions.Apps;
 [JsonSerializable(typeof(McpUiResourceMeta))]
 [JsonSerializable(typeof(McpUiResourceCsp))]
 [JsonSerializable(typeof(McpUiResourcePermissions))]
+[JsonSerializable(typeof(McpUiElicitationCapability))]
+[JsonSerializable(typeof(McpUiServerCapabilities))]
+[JsonSerializable(typeof(McpAppElicitationMeta))]
+[JsonSerializable(typeof(string))]
+[JsonSerializable(typeof(bool))]
+[JsonSerializable(typeof(double))]
+[JsonSerializable(typeof(IList<string>))]
 internal sealed partial class McpAppsJsonContext : JsonSerializerContext
 {
 }
