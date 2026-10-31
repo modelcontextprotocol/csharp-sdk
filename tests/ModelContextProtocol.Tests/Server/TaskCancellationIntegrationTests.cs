@@ -110,6 +110,286 @@ public class TaskCancellationIntegrationTests : ClientServerTestBase
 }
 
 /// <summary>
+/// Tests for task-store runner cleanup during server disposal.
+/// </summary>
+public class TaskRunnerLifecycleTests : ClientServerTestBase
+{
+    private readonly TaskCompletionSource<bool> _toolStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _toolCancellationFired = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _releaseCancellationCleanup = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _forceToolExit = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _toolExited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _runnerRegistrationBlocked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _releaseRunnerRegistration = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly BlockingCancellationTaskStore _taskStore = new();
+    private bool _delayRunnerRegistration;
+
+    public TaskRunnerLifecycleTests(ITestOutputHelper testOutputHelper)
+        : base(testOutputHelper)
+    {
+#if !NET
+        Assert.SkipWhen(RuntimeInformation.IsOSPlatform(OSPlatform.Windows), "https://github.com/modelcontextprotocol/csharp-sdk/issues/587");
+#endif
+    }
+
+    protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
+    {
+#pragma warning disable MCPEXP002
+        services.Configure<McpServerOptions>(options =>
+            options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
+            {
+                if (_delayRunnerRegistration && request.Params?.Name == "lifecycle-tool")
+                {
+                    _runnerRegistrationBlocked.TrySetResult(true);
+                    await _releaseRunnerRegistration.Task;
+                }
+
+                return await next(request, cancellationToken);
+            }));
+#pragma warning restore MCPEXP002
+
+        mcpServerBuilder
+            .WithTasks(_taskStore)
+            .WithTools([McpServerTool.Create(
+            async (CancellationToken ct) =>
+            {
+                _toolStarted.TrySetResult(true);
+                try
+                {
+                    var cancellationTask = Task.Delay(Timeout.Infinite, ct);
+                    var completedTask = await Task.WhenAny(cancellationTask, _forceToolExit.Task);
+                    await completedTask;
+                    return "forced test cleanup";
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    _toolCancellationFired.TrySetResult(true);
+                    await _releaseCancellationCleanup.Task;
+                    throw;
+                }
+                finally
+                {
+                    _toolExited.TrySetResult(true);
+                }
+            },
+            new McpServerToolCreateOptions
+            {
+                Name = "lifecycle-tool",
+                Description = "A tool used to verify task runner lifecycle"
+            })]);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DisposesAndWaitsForRegisteredLifetimeResource()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+        var serverLifetime = Assert.IsAssignableFrom<IMcpServerLifetimeFeature>(Server);
+        var resource = new BlockingAsyncDisposable();
+        using var registration = serverLifetime.RegisterForDisposeAsync(resource);
+
+        Task disposeTask = Server.DisposeAsync().AsTask();
+
+        try
+        {
+            await resource.DisposeStarted.WaitAsync(TestConstants.DefaultTimeout, ct);
+            Assert.False(disposeTask.IsCompleted, "DisposeAsync should await the registered resource.");
+
+            resource.Release();
+            await disposeTask.WaitAsync(TestConstants.DefaultTimeout, ct);
+        }
+        finally
+        {
+            resource.Release();
+        }
+    }
+
+    [Fact]
+    public async Task LifetimeRegistration_DisposeUnregistersResource()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var serverLifetime = Assert.IsAssignableFrom<IMcpServerLifetimeFeature>(Server);
+        var resource = new RecordingAsyncDisposable();
+        using var registration = serverLifetime.RegisterForDisposeAsync(resource);
+
+        registration.Dispose();
+        await Server.DisposeAsync();
+
+        Assert.False(resource.IsDisposed);
+    }
+
+    [Fact]
+    public async Task DisposeAsync_CancelsAndWaitsForTaskStoreRunner()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+
+        var augmented = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "lifecycle-tool" }, ct);
+        Assert.True(augmented.IsTask);
+
+        await _toolStarted.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+        Task disposeTask = Server.DisposeAsync().AsTask();
+
+        try
+        {
+            Task firstCompleted = await Task.WhenAny(_toolCancellationFired.Task, disposeTask)
+                .WaitAsync(TestConstants.DefaultTimeout, ct);
+
+            Assert.Same(_toolCancellationFired.Task, firstCompleted);
+            Assert.False(disposeTask.IsCompleted, "DisposeAsync should wait for the runner's cancellation cleanup.");
+
+            _releaseCancellationCleanup.TrySetResult(true);
+            await disposeTask.WaitAsync(TestConstants.DefaultTimeout, ct);
+        }
+        finally
+        {
+            _releaseCancellationCleanup.TrySetResult(true);
+            _forceToolExit.TrySetResult(true);
+            await _toolExited.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+        }
+    }
+
+    [Fact]
+    public async Task DisposeAsync_CancelsAndWaitsForRunnerRegisteredDuringDisposal()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+        _delayRunnerRegistration = true;
+        _taskStore.PauseCancellationRecording();
+
+        var callTask = client.CallToolAsTaskAsync(
+            new CallToolRequestParams { Name = "lifecycle-tool" }, ct).AsTask();
+        _ = callTask.ContinueWith(
+            static task => _ = task.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        await _runnerRegistrationBlocked.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+
+        var serverLifetime = Assert.IsAssignableFrom<IMcpServerLifetimeFeature>(Server);
+        var serverCancellationFired = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = serverLifetime.ServerCancellationToken.Register(
+            static state => ((TaskCompletionSource<bool>)state!).TrySetResult(true), serverCancellationFired);
+
+        Task disposeTask = Server.DisposeAsync().AsTask();
+
+        try
+        {
+            await serverCancellationFired.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+            _releaseRunnerRegistration.TrySetResult(true);
+
+            await _taskStore.CancellationRecordingStarted.WaitAsync(TestConstants.DefaultTimeout, ct);
+            Assert.False(disposeTask.IsCompleted, "DisposeAsync should wait for a runner registered during disposal.");
+
+            _taskStore.ReleaseCancellationRecording();
+            await disposeTask.WaitAsync(TestConstants.DefaultTimeout, ct);
+        }
+        finally
+        {
+            _releaseRunnerRegistration.TrySetResult(true);
+            _releaseCancellationCleanup.TrySetResult(true);
+            _taskStore.ReleaseCancellationRecording();
+            _forceToolExit.TrySetResult(true);
+
+            if (_toolStarted.Task.IsCompleted)
+            {
+                await _toolExited.Task.WaitAsync(TestConstants.DefaultTimeout, ct);
+            }
+        }
+    }
+
+    private sealed class BlockingCancellationTaskStore : InMemoryMcpTaskStore, IMcpTaskStore
+    {
+        private readonly TaskCompletionSource<bool> _cancellationRecordingStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _releaseCancellationRecording = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private bool _pauseCancellationRecording;
+
+        public Task CancellationRecordingStarted => _cancellationRecordingStarted.Task;
+
+        public void PauseCancellationRecording() => _pauseCancellationRecording = true;
+
+        public void ReleaseCancellationRecording() => _releaseCancellationRecording.TrySetResult(true);
+
+        async Task<bool> IMcpTaskStore.SetCancelledAsync(string taskId, CancellationToken cancellationToken)
+        {
+            if (_pauseCancellationRecording)
+            {
+                _cancellationRecordingStarted.TrySetResult(true);
+                await _releaseCancellationRecording.Task;
+            }
+
+            return await base.SetCancelledAsync(taskId, cancellationToken);
+        }
+    }
+
+    private sealed class BlockingAsyncDisposable : IAsyncDisposable
+    {
+        private readonly TaskCompletionSource<bool> _disposeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task DisposeStarted => _disposeStarted.Task;
+
+        public void Release() => _release.TrySetResult(true);
+
+        public async ValueTask DisposeAsync()
+        {
+            _disposeStarted.TrySetResult(true);
+            await _release.Task;
+        }
+    }
+
+    private sealed class RecordingAsyncDisposable : IAsyncDisposable
+    {
+        public bool IsDisposed { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            IsDisposed = true;
+            return default;
+        }
+    }
+}
+
+public class McpServerLifetimeFeatureTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
+{
+    [Fact]
+    public async Task DisposeAsync_DoesNotCancelOrWaitForStatelessBackgroundTask()
+    {
+        await using var transport = new StreamableHttpServerTransport { Stateless = true };
+        await using var statelessServer = McpServer.Create(
+            transport,
+            new McpServerOptions
+            {
+                ServerInfo = new Implementation { Name = "test-server", Version = "1.0" },
+            },
+            LoggerFactory);
+        var serverLifetime = Assert.IsAssignableFrom<IMcpServerLifetimeFeature>(statelessServer);
+        var backgroundResource = new RecordingAsyncDisposable();
+
+        using var registration = serverLifetime.RegisterForDisposeAsync(backgroundResource);
+
+        await statelessServer.DisposeAsync().AsTask()
+            .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        Assert.False(serverLifetime.ServerCancellationToken.CanBeCanceled);
+        Assert.False(backgroundResource.IsDisposed,
+            "A stateless per-request server should not own background work that outlives the request.");
+    }
+
+    private sealed class RecordingAsyncDisposable : IAsyncDisposable
+    {
+        public bool IsDisposed { get; private set; }
+
+        public ValueTask DisposeAsync()
+        {
+            IsDisposed = true;
+            return default;
+        }
+    }
+}
+
+/// <summary>
 /// Tests for task cancellation with multiple concurrent tasks.
 /// </summary>
 public class TaskCancellationConcurrencyTests : ClientServerTestBase
