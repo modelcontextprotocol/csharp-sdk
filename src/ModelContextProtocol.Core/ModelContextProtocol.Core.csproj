@@ -63,6 +63,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="JsonSchema.Net" />
   </ItemGroup>
 
   <!-- Reference analyzers -->

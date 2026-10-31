@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -46,6 +47,16 @@ public sealed class RequestContext<TParams> : MessageContext
     /// Gets or sets the primitive that matched the request.
     /// </summary>
     public IMcpServerPrimitive? MatchedPrimitive { get; set; }
+
+    internal StructuredContentRecoveryState? StructuredContentRecoveryTarget { get; set; }
+    internal bool SupportsDeferredStructuredContentRecovery => StructuredContentRecoveryTarget is not null;
+    internal event Action<CallToolResult>? StructuredContentRecovery;
+
+    internal void RecoverStructuredContent(CallToolResult result) => StructuredContentRecovery?.Invoke(result);
+
+    internal void ClearStructuredContentRecovery() => StructuredContentRecovery = null;
+
+    internal sealed record StructuredContentRecoveryState(McpServerTool Tool, JsonElement? Schema);
 
     /// <summary>
     /// Gets the JSON-RPC request associated with this context.
