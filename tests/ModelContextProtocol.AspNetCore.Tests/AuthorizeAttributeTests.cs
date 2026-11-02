@@ -25,7 +25,8 @@ public class AuthorizeAttributeTests(ITestOutputHelper testOutputHelper) : Kestr
             Endpoint = new("http://localhost:5000"),
         }, HttpClient, LoggerFactory);
 
-        return await McpClient.CreateAsync(transport, cancellationToken: TestContext.Current.CancellationToken, loggerFactory: LoggerFactory);
+        return await TestMcpClient.CreateAsync(transport,
+            cancellationToken: TestContext.Current.CancellationToken, loggerFactory: LoggerFactory);
     }
 
     [Fact]

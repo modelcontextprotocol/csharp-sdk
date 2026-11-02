@@ -62,7 +62,7 @@ While the candidate version uses a prerelease suffix (e.g., `X.Y.Z-preview.N`, `
 
 Going to GA drops the suffix entirely: `2.0.0-rc.2` → `2.0.0`.
 
-This is purely about how to *compute* the next version. It does **not** declare any new policy about what kinds of changes are permitted between previews — refer to the existing [versioning documentation](../../../../docs/versioning.html) for breaking-change policy.
+This is purely about how to *compute* the next version. It does **not** declare any new policy about what kinds of changes are permitted between previews — refer to the existing [versioning documentation](../../../../docs/versioning.md) for breaking-change policy.
 
 ### Branch context
 

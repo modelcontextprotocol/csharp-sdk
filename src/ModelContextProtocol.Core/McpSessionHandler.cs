@@ -213,6 +213,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         int inFlightCount = 1;
         var allHandlersCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        // subscriptions/listen handlers only complete when cancelled. Once the transport stops delivering messages,
+        // no notifications/cancelled can arrive, so their requests are linked to this source and cancelled in the
+        // finally below. Other requests are left to run to completion.
+        using var subscriptionsCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         try
         {
             await foreach (var message in _transport.MessageReader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -242,11 +247,16 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                         // when subsequent messages arrive, even if the asynchronous processing happens
                         // out of order. Per spec, "The initialize request MUST NOT be cancelled by clients",
                         // so we don't track it in _handlingRequests to prevent cancellation notifications from
-                        // canceling it.
+                        // canceling it. Responses aren't tracked either: their IDs were allocated by this endpoint,
+                        // independently of the IDs the peer allocates, so tracking them could replace the entry
+                        // for an in-flight request that happens to have the same ID.
                         if (messageWithId is not null)
                         {
-                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                            if (message is not JsonRpcRequest { Method: RequestMethods.Initialize })
+                            combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                                message is JsonRpcRequest { Method: RequestMethods.SubscriptionsListen }
+                                    ? subscriptionsCts.Token
+                                    : cancellationToken);
+                            if (message is JsonRpcRequest { Method: not RequestMethods.Initialize })
                             {
                                 _handlingRequests[messageWithId.Id] = combinedCts;
                             }
@@ -337,7 +347,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     {
                         if (messageWithId is not null)
                         {
-                            _handlingRequests.TryRemove(messageWithId.Id, out _);
+                            // Only remove the entry registered above, never one belonging to another message with the same ID.
+                            ((ICollection<KeyValuePair<RequestId, CancellationTokenSource>>)_handlingRequests).Remove(new(messageWithId.Id, combinedCts!));
                             combinedCts!.Dispose();
                         }
 
@@ -359,6 +370,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // Decrement our own count. If all handlers have already completed, this will signal completion.
             if (Interlocked.Decrement(ref inFlightCount) != 0)
             {
+                await subscriptionsCts.CancelAsync().ConfigureAwait(false);
                 await allHandlersCompleted.Task.ConfigureAwait(false);
             }
 
@@ -401,14 +413,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     private async Task HandleMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken)
     {
-        // Project the 2026-07-28 protocol's per-request _meta fields onto the message context before any
-        // filters run so they (and downstream handlers) can read client info / capabilities /
-        // protocol version / log level without re-parsing.
-        if (_isServer && message is JsonRpcRequest incomingRequest)
-        {
-            PopulateContextFromMeta(incomingRequest);
-        }
-
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
 
@@ -542,65 +546,6 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         }, cancellationToken).ConfigureAwait(false);
 
         return result;
-    }
-
-    /// <summary>
-    /// Reads the 2026-07-28 protocol's per-request <c>_meta</c> fields off the request and projects them onto
-    /// <see cref="JsonRpcMessage.Context"/> so they're available without re-parsing throughout the pipeline.
-    /// </summary>
-    /// <remarks>
-    /// Per SEP-2575 the keys are <c>io.modelcontextprotocol/protocolVersion</c>,
-    /// <c>/clientInfo</c>, <c>/clientCapabilities</c>, and (optional) <c>/logLevel</c>. Any field
-    /// that's already set on the context (e.g., <see cref="JsonRpcMessageContext.ProtocolVersion"/>
-    /// populated by the HTTP transport from the <c>MCP-Protocol-Version</c> header) is left alone
-    /// unless explicitly overwritten by a non-null value parsed here.
-    /// </remarks>
-    internal static void PopulateContextFromMeta(JsonRpcRequest request)
-    {
-        if (request.Params is not JsonObject paramsObj)
-        {
-            return;
-        }
-
-        if (paramsObj["_meta"] is not JsonObject metaObj)
-        {
-            return;
-        }
-
-        var context = request.Context ??= new JsonRpcMessageContext();
-
-        if (metaObj[MetaKeys.ProtocolVersion] is JsonValue protocolVersion &&
-            protocolVersion.TryGetValue(out string? protocolVersionValue))
-        {
-            // If a transport-level header (e.g., the Streamable HTTP MCP-Protocol-Version header) already
-            // populated this, validate the body _meta matches per SEP-2575. A disagreement is reported with
-            // -32020 HeaderMismatch (the same code used for the Mcp-Method/Mcp-Name header-vs-body checks),
-            // which conformant 2026-07-28 clients recognize as a SEP-2575 signal and surface as-is rather
-            // than mistaking it for an initialize-handshake server and falling back to initialize.
-            if (context.ProtocolVersion is { } existing && !string.Equals(existing, protocolVersionValue, StringComparison.Ordinal))
-            {
-                throw new McpProtocolException(
-                    $"Header mismatch: the per-request _meta protocol version '{protocolVersionValue}' does not match the MCP-Protocol-Version header value '{existing}'.",
-                    McpErrorCode.HeaderMismatch);
-            }
-
-            context.ProtocolVersion = protocolVersionValue;
-        }
-
-        if (metaObj[MetaKeys.ClientInfo] is JsonNode clientInfoNode)
-        {
-            context.ClientInfo = JsonSerializer.Deserialize(clientInfoNode, McpJsonUtilities.JsonContext.Default.Implementation);
-        }
-
-        if (metaObj[MetaKeys.ClientCapabilities] is JsonNode clientCapabilitiesNode)
-        {
-            context.ClientCapabilities = JsonSerializer.Deserialize(clientCapabilitiesNode, McpJsonUtilities.JsonContext.Default.ClientCapabilities);
-        }
-
-        if (metaObj[MetaKeys.LogLevel] is JsonNode logLevelNode)
-        {
-            context.LogLevel = JsonSerializer.Deserialize(logLevelNode, McpJsonUtilities.JsonContext.Default.LoggingLevel);
-        }
     }
 
     /// <summary>
@@ -756,11 +701,15 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             // a cancellation request could arrive before the server knew about that request ID, in which
             // case the server could ignore it.
             // Per spec, "The initialize request MUST NOT be cancelled by clients", so skip registration for initialize.
+            // Start waiting before registering: cancellation callbacks run in reverse order of registration, so this
+            // ensures the notification callback runs first. Otherwise, the wait's continuation can run synchronously
+            // as part of canceling the token and dispose the registration before its callback has run.
             LogRequestSentAwaitingResponse(EndpointName, request.Method, request.Id);
             JsonRpcMessage? response;
+            Task<JsonRpcMessage> responseTask = tcs.Task.WaitAsync(cancellationToken);
             using (var registration = method != RequestMethods.Initialize ? RegisterCancellation(cancellationToken, request) : default)
             {
-                response = await tcs.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                response = await responseTask.ConfigureAwait(false);
             }
 
             if (response is JsonRpcError error)
@@ -962,9 +911,10 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             tags.Add("network.protocol.name", "http");
         }
 
-        if (NegotiatedProtocolVersion is not null)
+        string? protocolVersion = (message as JsonRpcRequest)?.Context?.ProtocolVersion ?? NegotiatedProtocolVersion;
+        if (protocolVersion is not null)
         {
-            tags.Add("mcp.protocol.version", NegotiatedProtocolVersion);
+            tags.Add("mcp.protocol.version", protocolVersion);
         }
 
         if (activity is { IsAllDataRequested: true })

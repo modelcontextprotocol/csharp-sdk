@@ -36,7 +36,7 @@ internal sealed partial class IdleTrackingBackgroundService : BackgroundService
     public override Task StartAsync(CancellationToken cancellationToken)
     {
         // In stateless mode there are no sessions to track, so skip starting the periodic timer entirely.
-        if (_options.Value.Stateless)
+        if (_options.Value.SessionMode is HttpServerSessionMode.Stateless)
         {
             return Task.CompletedTask;
         }

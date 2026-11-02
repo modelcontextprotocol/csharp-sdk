@@ -25,6 +25,8 @@ public abstract partial class McpServer : McpSession
 
     internal virtual Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? OutgoingRequestInterceptor => null;
 
+    internal virtual bool SupportsServerToClientRequests => true;
+
     /// <summary>
     /// Creates a non-mutating server facade that redirects server-initiated requests through an interceptor.
     /// </summary>
@@ -555,26 +557,26 @@ public abstract partial class McpServer : McpSession
 
     private void ThrowIfSamplingUnsupported()
     {
+        if (!SupportsServerToClientRequests)
+        {
+            throw new InvalidOperationException("Sampling is not supported in stateless mode.");
+        }
+
         if (ClientCapabilities?.Sampling is null)
         {
-            if (ClientCapabilities is null)
-            {
-                throw new InvalidOperationException("Sampling is not supported in stateless mode.");
-            }
-
             throw new InvalidOperationException("Client does not support sampling.");
         }
     }
 
     private void ThrowIfRootsUnsupported()
     {
+        if (!SupportsServerToClientRequests)
+        {
+            throw new InvalidOperationException("Roots are not supported in stateless mode.");
+        }
+
         if (ClientCapabilities?.Roots is null)
         {
-            if (ClientCapabilities is null)
-            {
-                throw new InvalidOperationException("Roots are not supported in stateless mode.");
-            }
-
             throw new InvalidOperationException("Client does not support roots.");
         }
     }
@@ -615,12 +617,12 @@ public abstract partial class McpServer : McpSession
 
     private void ThrowIfElicitationUnsupported(ElicitRequestParams request)
     {
-        if (ClientCapabilities is null)
+        if (!SupportsServerToClientRequests)
         {
             throw new InvalidOperationException("Elicitation is not supported in stateless mode.");
         }
 
-        var elicitationCapability = ClientCapabilities.Elicitation;
+        var elicitationCapability = ClientCapabilities?.Elicitation;
         if (elicitationCapability is null)
         {
             throw new InvalidOperationException("Client does not support elicitation requests.");

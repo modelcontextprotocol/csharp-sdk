@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -57,7 +58,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         base.Dispose();
     }
 
-    private async Task StartServerAsync(RequestDelegate handler)
+    private async Task StartServerAsync(RequestDelegate handler, bool acceptGet = false)
     {
         Builder.Services.Configure<JsonOptions>(options =>
         {
@@ -65,11 +66,72 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         });
 
         _app = Builder.Build();
-        _app.MapPost("/mcp", handler);
+        if (acceptGet)
+        {
+            _app.MapMethods("/mcp", [HttpMethods.Get, HttpMethods.Post], handler);
+        }
+        else
+        {
+            _app.MapPost("/mcp", handler);
+        }
         await _app.StartAsync(TestContext.Current.CancellationToken);
     }
 
     private static JsonTypeInfo<T> GetJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+
+    [Theory]
+    [InlineData(null, 200)]
+    [InlineData("application/json", 200)]
+    [InlineData("text/event-stream", 200)]
+    [InlineData("application/json", 400)]
+    public async Task SilentDiscoverHeadersOrBody_UseProbeBudget(string? contentType, int statusCode)
+    {
+        var timeProvider = new FakeTimeProvider();
+        var probeBudget = TimeSpan.FromSeconds(5);
+        var stalled = new AsyncGate();
+        var methods = new List<string>();
+        await StartServerAsync(async context =>
+        {
+            var message = await JsonSerializer.DeserializeAsync(context.Request.Body, GetJsonTypeInfo<JsonRpcMessage>(), context.RequestAborted);
+            if (message is not JsonRpcRequest request)
+            {
+                context.Response.StatusCode = StatusCodes.Status202Accepted;
+                return;
+            }
+            methods.Add(request.Method);
+            if (request.Method == RequestMethods.ServerDiscover)
+            {
+                if (contentType is not null)
+                {
+                    context.Response.StatusCode = statusCode;
+                    context.Response.ContentType = contentType;
+                    await context.Response.WriteAsync(contentType == "text/event-stream" ? ": waiting\n\n" : "{", context.RequestAborted);
+                    await context.Response.Body.FlushAsync(context.RequestAborted);
+                }
+                await stalled.WaitAsync(context.RequestAborted);
+                return;
+            }
+            var response = new JsonRpcResponse
+            {
+                Id = request.Id,
+                Result = JsonSerializer.SerializeToNode(new InitializeResult
+                {
+                    ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                    Capabilities = new(),
+                    ServerInfo = new() { Name = "legacy", Version = "1" },
+                }, McpJsonUtilities.DefaultOptions),
+            };
+            context.Response.ContentType = "application/json";
+            await JsonSerializer.SerializeAsync(context.Response.Body, response, GetJsonTypeInfo<JsonRpcMessage>(), context.RequestAborted);
+        });
+        await using var transport = new HttpClientTransport(new() { Endpoint = new("http://localhost:5000/mcp") }, HttpClient, LoggerFactory);
+        var connecting = McpClient.CreateAsync(transport, new() { TimeProvider = timeProvider, DiscoverProbeTimeout = probeBudget }, LoggerFactory, TestContext.Current.CancellationToken);
+        await stalled.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(probeBudget);
+        await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
+        Assert.Equal([RequestMethods.ServerDiscover, RequestMethods.Initialize], methods);
+    }
 
     private static async Task WriteJsonRpcErrorAsync(HttpContext context, HttpStatusCode statusCode, int code, string message)
     {
@@ -159,7 +221,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         }, HttpClient, LoggerFactory);
 
         // Default options prefer 2026-07-28 but allow automatic fallback to an initialize-handshake server.
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+        await using var client = await TestMcpClient.CreateAsync(transport,
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal(McpProtocolVersions.June2025ProtocolVersion, client.NegotiatedProtocolVersion);
@@ -246,7 +308,7 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
         }, HttpClient, LoggerFactory);
 
         // Default options prefer 2026-07-28 but allow automatic fallback to an initialize-handshake server.
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+        await using var client = await TestMcpClient.CreateAsync(transport,
             loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
@@ -292,14 +354,70 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
 
         var exception = await Assert.ThrowsAsync<McpProtocolException>(async () =>
         {
-            await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-            {
-                ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
-            }, loggerFactory: LoggerFactory, cancellationToken: ct);
+            var clientOptions = TestMcpClient.CreateOptions();
+            clientOptions.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+            await using var client = await McpClient.CreateAsync(transport, clientOptions,
+                loggerFactory: LoggerFactory, cancellationToken: ct);
         });
 
         Assert.Equal(McpErrorCode.HeaderMismatch, exception.ErrorCode);
         Assert.False(initializeReceived);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.Unauthorized)]
+    [InlineData(HttpStatusCode.Forbidden)]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    public async Task AutoDetect_OnNonModernJsonRpcErrorOutside400_PreservesHttpFailure_NoFallback(HttpStatusCode statusCode)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var initializeRequests = 0;
+        var sseGetRequests = 0;
+
+        await StartServerAsync(async context =>
+        {
+            if (HttpMethods.IsGet(context.Request.Method))
+            {
+                sseGetRequests++;
+                context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+                return;
+            }
+
+            var message = await JsonSerializer.DeserializeAsync(
+                context.Request.Body,
+                GetJsonTypeInfo<JsonRpcMessage>(),
+                ct);
+
+            if (message is JsonRpcRequest { Method: RequestMethods.Initialize })
+            {
+                initializeRequests++;
+            }
+
+            await WriteJsonRpcErrorAsync(
+                context,
+                statusCode,
+                code: (int)McpErrorCode.InvalidRequest,
+                message: "non-modern structured error");
+        }, acceptGet: true);
+
+        await using var transport = new HttpClientTransport(new()
+        {
+            Endpoint = new("http://localhost:5000/mcp"),
+            TransportMode = HttpTransportMode.AutoDetect,
+        }, HttpClient, LoggerFactory);
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        {
+            await using var client = await TestMcpClient.CreateAsync(
+                transport,
+                loggerFactory: LoggerFactory,
+                cancellationToken: ct);
+        });
+
+        Assert.Equal(statusCode, exception.StatusCode);
+        Assert.Contains("non-modern structured error", exception.Message);
+        Assert.Equal(0, initializeRequests);
+        Assert.Equal(0, sseGetRequests);
     }
 
     [Fact]
@@ -362,10 +480,10 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             Endpoint = new("http://localhost:5000/mcp"),
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+        await using var client = await McpClient.CreateAsync(transport, clientOptions,
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         await client.ListToolsAsync(cancellationToken: ct);
 
@@ -422,10 +540,10 @@ public class July2026ProtocolHttpFallbackTests(ITestOutputHelper outputHelper) :
             OwnsSession = false,
         }, HttpClient, LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
-        {
-            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
-        }, loggerFactory: LoggerFactory, cancellationToken: ct);
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+        await using var client = await McpClient.CreateAsync(transport, clientOptions,
+            loggerFactory: LoggerFactory, cancellationToken: ct);
 
         Assert.Equal("", discoverSessionId);
     }

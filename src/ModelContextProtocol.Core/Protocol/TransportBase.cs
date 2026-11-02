@@ -217,6 +217,9 @@ public abstract partial class TransportBase : ITransport
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} shutdown failed.")]
     private protected partial void LogTransportShutdownFailed(string endpointName, Exception exception);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} failed to close server standard input; continuing shutdown.")]
+    private protected partial void LogStandardInputCloseFailed(string endpointName, Exception exception);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} shutdown failed waiting for message reading completion.")]
     private protected partial void LogTransportCleanupReadTaskFailed(string endpointName, Exception exception);
 

@@ -307,7 +307,8 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     {
         await StartAsync();
 
-        using var response = await HttpClient.PostAsync("", JsonContent("{ this is not valid json"), TestContext.Current.CancellationToken);
+        const string body = "{ this is not valid json";
+        using var response = await HttpClient.PostAsync("", JsonContent(body), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         // The server must emit a conformant JSON-RPC error envelope (not a raw 500). Because the request
@@ -316,6 +317,47 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
         Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+
+        // The parse failure itself must be diagnosable from the response alone: the message carries the
+        // JsonException message (which already includes the parser's position) instead of an opaque one-liner (#1842).
+        var message = doc.RootElement.GetProperty("error").GetProperty("message").GetString();
+        Assert.Contains("did not contain a valid JSON-RPC message", message);
+        Assert.Contains(await GetJsonRpcMessageParseErrorAsync(body), message);
+    }
+
+    [Theory]
+    [InlineData("""{"jsonrpc":"2.0","id":1,"method":"tools/list","para""")]
+    [InlineData("""{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"a":1""")]
+    public async Task PostTruncatedJson_Returns400_WithParserDetail(string body)
+    {
+        await StartAsync();
+
+        // A body cut in half by an intermediary (proxy, gateway, or the transport itself) is the exact
+        // shape reported in #1842. The 400 response must carry the parser's message (including where
+        // parsing stopped) so the truncation is identifiable from the response without server-side logs.
+        using var response = await HttpClient.PostAsync("", JsonContent(body), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+
+        var message = doc.RootElement.GetProperty("error").GetProperty("message").GetString();
+        Assert.Contains("did not contain a valid JSON-RPC message", message);
+        Assert.Contains(await GetJsonRpcMessageParseErrorAsync(body), message);
+    }
+
+    private static async Task<string> GetJsonRpcMessageParseErrorAsync(string body)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(body));
+        var exception = await Assert.ThrowsAsync<JsonException>(async () =>
+        {
+            await JsonSerializer.DeserializeAsync(
+                stream,
+                McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>(),
+                TestContext.Current.CancellationToken);
+        });
+
+        return exception.Message;
     }
 
     [Fact]

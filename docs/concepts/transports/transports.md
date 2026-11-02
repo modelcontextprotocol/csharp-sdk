@@ -145,6 +145,52 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 });
 ```
 
+#### OAuth PKCE metadata validation
+
+When using <xref:ModelContextProtocol.Authentication.ClientOAuthOptions> with an HTTP transport, authorization server metadata must advertise `S256` in `code_challenge_methods_supported`. A document that omits that field or advertises only other methods is skipped while the client tries alternative well-known endpoints. If none supplies valid metadata with `S256`, authentication fails before requesting an authorization code or exchanging tokens.
+
+**Compatibility tightening: metadata-free legacy servers.** By default, the client also rejects authentication when authorization server metadata cannot be discovered; it no longer assumes `S256` support. For a trusted legacy deployment whose PKCE support you have independently established, you can explicitly restore the MCP 2025-03-26 default endpoint fallback at application startup:
+
+```csharp
+AppContext.SetSwitch(
+    "ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback",
+    true);
+```
+
+Alternatively, configure the same switch in the application's project file:
+
+```xml
+<ItemGroup>
+  <RuntimeHostConfigurationOption
+      Include="ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback"
+      Value="true" />
+</ItemGroup>
+```
+
+The switch is **disabled when absent or `false`**. When enabled, it restores default `/authorize`, `/token`, and `/register` paths on the MCP server's origin only when protected resource metadata is unavailable and no usable authorization server metadata document was discovered. It never bypasses PKCE or issuer validation of discovered metadata. The client still sends an `S256` challenge and a code verifier, and logs a warning whenever it uses the unverified fallback.
+
+[RFC 9700, Sections 2.1.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1) and [4.7.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.7.1) permit deployment-specific assurance of PKCE support, but synthesizing metadata is not assurance. Response `state` validation protects response correlation and CSRF; it does not prevent an intercepted authorization code from being redeemed directly. PKCE remains necessary.
+
+> [!WARNING]
+> Enabling this switch does not verify PKCE support or change state validation. Use it only after independently establishing that your trusted authorization server correctly enforces PKCE, including the [downgrade defenses in RFC 9700, Section 4.8.2](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.8.2). The setting is **process-wide**, not a per-server allowlist: it affects every OAuth client in the process. Do not enable it in a process that also connects to untrusted authorization servers, or toggle it around individual requests. Prefer fixing metadata discovery and advertising `S256` so the switch can remain disabled.
+
+#### Controlling client timeout timers in tests
+
+The short <xref:ModelContextProtocol.Client.McpClientOptions.DiscoverProbeTimeout> budget excludes time spent acquiring an OAuth token. After authorization, the discovery probe receives a fresh budget. The overall <xref:ModelContextProtocol.Client.McpClientOptions.InitializationTimeout> and caller cancellation still apply.
+
+<xref:ModelContextProtocol.Client.McpClientOptions.TimeProvider> controls
+<xref:ModelContextProtocol.Client.McpClientOptions.InitializationTimeout> and
+<xref:ModelContextProtocol.Client.McpClientOptions.DiscoverProbeTimeout>. It defaults to
+`TimeProvider.System`. Tests can set it to a `FakeTimeProvider` from the
+`Microsoft.Extensions.TimeProvider.Testing` package and advance time explicitly instead
+of waiting for real deadlines.
+
+Use synchronization signals to wait until the request or authorization phase being tested
+has started before advancing the clock. Fake time does not control HTTP processing or
+task scheduling, so keep a real-time outer test deadline as a safety bound. The client
+time provider does not change `HttpClient.Timeout`, OAuth token expiration, or
+<xref:ModelContextProtocol.Client.HttpClientTransportOptions.ConnectionTimeout>.
+
 #### Resuming sessions
 
 Streamable HTTP supports session resumption. Save the session ID, server capabilities, and server info from the original session, then use <xref:ModelContextProtocol.Client.McpClient.ResumeSessionAsync*> to reconnect:
@@ -168,13 +214,16 @@ await using var client = await McpClient.ResumeSessionAsync(transport, new Resum
 Use the `ModelContextProtocol.AspNetCore` package to host an MCP server over HTTP. The <xref:Microsoft.AspNetCore.Builder.McpEndpointRouteBuilderExtensions.MapMcp*> method maps the Streamable HTTP endpoint at the specified route (root by default).
 
 ```csharp
+using ModelContextProtocol.AspNetCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
-        // Recommended for servers that don't need server-to-client requests.
-        options.Stateless = true;
+        // Stateless mode is the default and recommended for
+        // servers that don't need server-to-client requests.
+        options.SessionMode = HttpServerSessionMode.Stateless;
     })
     .WithTools<MyTools>();
 
@@ -183,7 +232,7 @@ app.MapMcp();
 app.Run();
 ```
 
-By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `Stateless = false` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Stateless and Stateful](xref:stateless).
+By default, the HTTP transport runs **statelessly** — the server does not assign an `Mcp-Session-Id` or track transport session state in memory. This simplifies deployment, enables horizontal scaling without session affinity, and matches the `2026-07-28` Streamable HTTP wire format. Set `SessionMode = HttpServerSessionMode.Stateful` explicitly when your server needs stateful sessions for unsolicited notifications, resource subscriptions, or per-client isolation. For a detailed guide on when to use stateless vs. stateful mode, configure session options, and understand [cancellation and disposal](xref:stateless#cancellation-and-disposal) behavior during shutdown, see [Stateless and Stateful](xref:stateless).
 
 #### Host name validation
 
@@ -295,22 +344,26 @@ SSE-specific configuration options:
 | `MaxReconnectionAttempts`     | Maximum number of reconnection attempts on stream disconnect | 5        |
 | `DefaultReconnectionInterval` | Wait time between reconnection attempts                      | 1 second |
 
+SSE connections use the legacy `initialize` handshake by default, including when automatic transport detection selects SSE. To connect to a server that intentionally supports `2026-07-28` discovery over SSE, explicitly select both `HttpTransportMode.Sse` in the transport options and `ProtocolVersion = "2026-07-28"` in `McpClientOptions`. Pinning that version while leaving transport mode as `AutoDetect` does not enable modern discovery over SSE; the client rejects the legacy initialization fallback.
+
 #### SSE server (ASP.NET Core)
 
-The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9004`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `Stateless = true`.
+The ASP.NET Core integration supports SSE transport alongside Streamable HTTP. Legacy SSE endpoints (`/sse` and `/message`) are **disabled by default** and <xref:ModelContextProtocol.AspNetCore.HttpServerTransportOptions.EnableLegacySse> is marked `[Obsolete]` (diagnostic `MCP9004`). SSE always requires stateful mode; legacy SSE endpoints are never mapped when `SessionMode = HttpServerSessionMode.Stateless`.
 
 **Why SSE is disabled by default.** The SSE transport separates request and response channels: clients `POST` JSON-RPC messages to `/message` and receive all responses through a long-lived `GET` SSE stream on `/sse`. Because the `POST` endpoint returns `202 Accepted` immediately — before the handler even runs — there is **no HTTP-level backpressure** on handler concurrency. A client (or attacker) can flood the server with tool calls without waiting for prior requests to complete. In contrast, Streamable HTTP holds each `POST` response open until the handler finishes, providing natural backpressure. For a detailed comparison and mitigations if you must use SSE, see [Request backpressure](xref:stateless#request-backpressure).
 
 To enable legacy SSE, set `EnableLegacySse` to `true`:
 
 ```csharp
+using ModelContextProtocol.AspNetCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMcpServer()
     .WithHttpTransport(options =>
     {
         // SSE requires stateful mode; opt in explicitly because stateless mode is the default.
-        options.Stateless = false;
+        options.SessionMode = HttpServerSessionMode.Stateful;
 
 #pragma warning disable MCP9004 // EnableLegacySse is obsolete
         // Enable legacy SSE endpoints for clients that don't support Streamable HTTP.
@@ -384,7 +437,7 @@ Like [stdio](#stdio-transport), the in-memory transport is inherently single-ses
 
 ## Cross-application access
 
-The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
+The SDK provides built-in support for the [Identity Assertion Authorization Grant (ID-JAG) flow](https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization/2026-07-28/enterprise-managed-authorization.mdx) via `IdentityAssertionGrantProvider`. This enables non-interactive enterprise SSO scenarios where users authenticate once via their enterprise Identity Provider (IdP) and access MCP servers without per-server authorization prompts.
 
 The flow consists of two steps:
 

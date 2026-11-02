@@ -32,7 +32,7 @@ public static class McpEndpointRouteBuilderExtensions
         var options = streamableHttpHandler.HttpServerTransportOptions;
 
 #pragma warning disable MCP9004 // EnableLegacySse - reading the obsolete property to check if SSE is enabled
-        if (options.Stateless && options.EnableLegacySse)
+        if (options.SessionMode is HttpServerSessionMode.Stateless && options.EnableLegacySse)
         {
             throw new InvalidOperationException(
                 "Legacy SSE endpoints cannot be enabled in stateless mode because SSE requires in-memory session state " +
@@ -50,10 +50,12 @@ public static class McpEndpointRouteBuilderExtensions
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]))
             .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status202Accepted));
 
-        if (!options.Stateless)
+        if (options.SessionMode is not HttpServerSessionMode.Stateless)
         {
             // The GET endpoint is not mapped in Stateless mode since there's no way to send unsolicited messages.
             // Resuming streams via GET is currently not supported in Stateless mode.
+            // In StatefulForInitializeClients mode both endpoints stay mapped for initialize-handshake clients;
+            // the handlers reject 2026-07-28 and later requests with 405 Method Not Allowed.
             streamableHttpGroup.MapGet("", streamableHttpHandler.HandleGetRequestAsync)
                 .WithMetadata(new ProducesResponseTypeMetadata(StatusCodes.Status200OK, contentTypes: ["text/event-stream"]));
 

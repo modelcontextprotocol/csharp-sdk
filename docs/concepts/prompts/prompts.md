@@ -63,7 +63,7 @@ Register prompt types when building the server:
 
 ```csharp
 builder.Services.AddMcpServer()
-    .WithHttpTransport(o => o.Stateless = true)
+    .WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.Stateless)
     .WithPrompts<MyPrompts>()
     .WithPrompts<CodePrompts>();
 ```
