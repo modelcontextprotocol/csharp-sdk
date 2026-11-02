@@ -47,11 +47,34 @@ compatibility with the down-level implementation: a v2 Tasks client or server do
 
 ## Breaking changes
 
-The 2.0.0 SDK will be a stable release after its general availability release. The SDK follows Semantic Versioning, and breaking changes against stable releases require increments to the MAJOR version.
+The 2.0.0 SDK will be a stable release after its general availability release. The SDK follows Semantic Versioning, and breaking changes against stable releases require increments to the MAJOR version, except for narrowly scoped, explicitly approved corrective nullability changes as described below.
 
 If feasible, the SDK will support all versions of the MCP spec. However, if breaking changes to the spec make this infeasible, preference will be given to the most recent version of the MCP spec. This would be considered a breaking change necessitating a new MAJOR version.
 
 All releases are posted to https://github.com/modelcontextprotocol/csharp-sdk/releases with release notes. Issues and pull requests labeled with `breaking-change` are highlighted in the corresponding release notes.
+
+### Corrective nullability changes
+
+Nullable reference type annotations describe an API's intended contract.
+Correcting an annotation can introduce new compiler warnings in consuming code
+and can cause builds that treat warnings as errors to fail, even when the change
+preserves binary compatibility. Such changes are not automatically non-breaking.
+
+Maintainers may explicitly approve a narrowly scoped correction in a MINOR
+release when it makes an annotation accurately reflect the intended API or
+supported protocol contract. Approval requires reviewing the consumer impact
+and recording why an exception to the normal MAJOR-version requirement is
+appropriate. Corrective nullability changes that are breaking are not permitted
+in PATCH releases.
+
+This exception applies to nullable reference type annotations, not changes
+between value types such as `T` and `Nullable<T>`. Any accompanying runtime
+behavior change must be reviewed separately as a bug fix; correcting an
+annotation does not by itself justify changing established behavior.
+
+Approved exceptions retain the `breaking-change` label and release-note
+guidance describing the affected scenarios, possible build impact, and
+migration. Other breaking changes remain subject to the MAJOR-version rule.
 
 ### Specification schema changes
 

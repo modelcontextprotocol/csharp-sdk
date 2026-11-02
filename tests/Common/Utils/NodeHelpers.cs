@@ -396,10 +396,8 @@ public static class NodeHelpers
         return (core, prerelease);
     }
 
-
-    /// whether it succeeded along with the captured stdout/stderr. Centralizes the process
-    /// plumbing (output capture, a 5-minute timeout, and the Windows libuv-shutdown fallback)
-    /// shared by the server-side conformance tests.
+    /// <summary>
+    /// Runs the server-side conformance process and captures its output, by default within a five-minute deadline.
     /// </summary>
     /// <param name="arguments">Arguments to pass to the conformance runner.</param>
     /// <param name="onLine">Optional callback invoked for each captured stdout/stderr line.</param>
@@ -407,112 +405,214 @@ public static class NodeHelpers
     /// Forwarded to <see cref="ConformanceTestStartInfo(string, bool)"/>.
     /// </param>
     /// <param name="cancellationToken">Token used to cancel the run.</param>
+    /// <param name="processStartInfo">An alternative process for isolated process-outcome tests.</param>
+    /// <param name="timeout">The deadline for the process to exit and close its output. Defaults to five minutes.</param>
+    /// <remarks>
+    /// Success requires the process to exit with code zero and both redirected streams to reach their end, all within
+    /// one deadline. On timeout or cancellation the result is a failure, even if the process had already exited; a
+    /// process that is still running is killed with its child processes.
+    /// </remarks>
     public static async Task<(bool Success, string Output, string Error)> RunServerConformanceAsync(
         string arguments,
         Action<string>? onLine = null,
         bool appendProtocolVersionFromEnv = true,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ProcessStartInfo? processStartInfo = null,
+        TimeSpan? timeout = null)
     {
-        var startInfo = ConformanceTestStartInfo(arguments, appendProtocolVersionFromEnv);
+        var startInfo = processStartInfo ?? ConformanceTestStartInfo(arguments, appendProtocolVersionFromEnv);
+        var deadline = timeout ?? TimeSpan.FromMinutes(5);
 
         var outputBuilder = new StringBuilder();
         var errorBuilder = new StringBuilder();
+        var bufferLock = new object();
+        bool capturing = true;
 
         using var process = new Process { StartInfo = startInfo };
 
-        // Protect callbacks with try/catch so a callback that throws on a background thread
-        // (e.g. ITestOutputHelper after the test completes) does not crash the test host.
-        DataReceivedEventHandler outputHandler = (sender, e) =>
+        void Capture(string line, StringBuilder builder)
         {
-            if (e.Data != null)
+            // The lock keeps a late line from changing the buffers after the final snapshot.
+            lock (bufferLock)
             {
-                try { onLine?.Invoke(e.Data); } catch { }
-                outputBuilder.AppendLine(e.Data);
-            }
-        };
+                if (!capturing)
+                {
+                    return;
+                }
 
-        DataReceivedEventHandler errorHandler = (sender, e) =>
-        {
-            if (e.Data != null)
+                builder.AppendLine(line);
+            }
+
+            // Protect callbacks with try/catch so a callback that throws (e.g. ITestOutputHelper after the test
+            // completes) does not stop the reader.
+            try { onLine?.Invoke(line); } catch { }
+        }
+
+        // Each stream is read on its own thread. On Windows, Begin*ReadLine block a pool thread per stream while the
+        // pipe is open; with a descendant holding both pipes, a busy pool can have no thread left for the deadline.
+        Task ReadLinesAsync(StreamReader reader, StringBuilder builder) => Task.Factory.StartNew(
+            () =>
             {
-                try { onLine?.Invoke(e.Data); } catch { }
-                errorBuilder.AppendLine(e.Data);
-            }
-        };
+                using (reader)
+                {
+                    string? line;
+                    while ((line = reader.ReadLine()) is not null)
+                    {
+                        Capture(line, builder);
+                    }
+                }
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
 
-        process.OutputDataReceived += outputHandler;
-        process.ErrorDataReceived += errorHandler;
+#if !NET
+        // .NET Framework has no cancellable WaitForExitAsync. Register the exit before the process starts, so the wait
+        // below can cover it and the end of both streams under one deadline, as on .NET.
+        var exited = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler exitedHandler = (sender, e) => exited.TrySetResult(true);
+
+        process.EnableRaisingEvents = true;
+        process.Exited += exitedHandler;
+#endif
 
         process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        var outputRead = ReadLinesAsync(process.StandardOutput, outputBuilder);
+        var errorRead = ReadLinesAsync(process.StandardError, errorBuilder);
 
+        // One deadline covers the exit and both streams, so output held open by another process cannot extend it.
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(TimeSpan.FromMinutes(5));
+        cts.CancelAfter(deadline);
+        bool completed;
+#if NET
         try
         {
-#if NET
+            // Waits for the exit and then for both redirected streams to end, all under the same token.
             await process.WaitForExitAsync(cts.Token);
-#else
-            // net472 lacks the CancellationToken overload; fall back to the timeout-based polyfill
-            // extension and surface a timeout the same way the current target-framework path does.
-            await process.WaitForExitAsync(TimeSpan.FromMinutes(5));
-            if (!process.HasExited)
-            {
-                throw new OperationCanceledException();
-            }
-#endif
+            await Task.WhenAll(outputRead, errorRead).WaitAsync(cts.Token);
+            completed = true;
         }
         catch (OperationCanceledException)
         {
-#if NET
-            process.Kill(entireProcessTree: true);
+            completed = false;
+        }
 #else
-            process.Kill();
+        var stopped = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using (cts.Token.Register(() => stopped.TrySetResult(true)))
+        {
+            var finished = Task.WhenAll(exited.Task, outputRead, errorRead);
+            completed = await Task.WhenAny(finished, stopped.Task) == finished;
+        }
 #endif
-            process.OutputDataReceived -= outputHandler;
-            process.ErrorDataReceived -= errorHandler;
-            return (
-                false,
-                outputBuilder.ToString(),
-                errorBuilder.ToString() + "\nProcess timed out after 5 minutes and was killed.");
+
+        bool killed = false;
+        if (!completed)
+        {
+            // Only a process that is still running is killed, with its child processes; it can still exit between the
+            // check and the kill.
+            try
+            {
+                if (!process.HasExited)
+                {
+#if NET
+                    process.Kill(entireProcessTree: true);
+#else
+                    KillProcessTree(process);
+#endif
+                    killed = true;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // It exited before the kill.
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // It was already exiting.
+            }
         }
 
-        process.OutputDataReceived -= outputHandler;
-        process.ErrorDataReceived -= errorHandler;
+#if !NET
+        process.Exited -= exitedHandler;
+#endif
 
-        var stdoutText = outputBuilder.ToString();
-        var stderrText = errorBuilder.ToString();
+        string stdoutText;
+        string stderrText;
+        lock (bufferLock)
+        {
+            capturing = false;
+            stdoutText = outputBuilder.ToString();
+            stderrText = errorBuilder.ToString();
+        }
 
-        // The Node.js conformance runner can crash during cleanup on Windows with a libuv
-        // assertion ("!(handle->flags & UV_HANDLE_CLOSING)") that produces a non-zero exit
-        // code even though every conformance check passed. When that happens, fall back to
-        // parsing the "Test Results:" summary in stdout to decide success.
-        bool success = process.ExitCode == 0 || ConformanceOutputIndicatesSuccess(stdoutText);
+        if (!completed)
+        {
+            stderrText += $"{Environment.NewLine}Process timed out after {deadline.TotalSeconds} seconds before it exited and closed its output" +
+                (killed ? " and was killed." : ".");
+            return (false, stdoutText, stderrText);
+        }
+
+        bool success = process.ExitCode == 0;
+        if (!success)
+        {
+            stderrText += $"{Environment.NewLine}Conformance runner exited with code {process.ExitCode}.";
+        }
 
         return (success, stdoutText, stderrText);
     }
 
+#if !NET
     /// <summary>
-    /// Parses the conformance runner output for a "Test Results:" line such as
-    /// "Passed: 3/3, 0 failed, 0 warnings" and returns true when all checks passed
-    /// and none failed.
+    /// Kills a process and its child processes, like <c>Process.Kill(entireProcessTree: true)</c> on .NET. On Windows
+    /// this runs <c>taskkill /T /F</c> for at most ten seconds; if that cannot run, does not finish, or fails, only
+    /// the process itself is killed.
     /// </summary>
-    private static bool ConformanceOutputIndicatesSuccess(string output)
+    private static void KillProcessTree(Process process)
     {
-        // Match lines like "Passed: 3/3, 0 failed, 0 warnings"
-        var match = Regex.Match(output, @"Passed:\s*(\d+)/(\d+),\s*(\d+)\s*failed");
-        if (!match.Success)
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return false;
+            try
+            {
+                using var taskkill = new Process
+                {
+                    StartInfo = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "taskkill.exe"), $"/T /F /PID {process.Id}")
+                    {
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                    },
+                };
+                taskkill.Start();
+                taskkill.BeginOutputReadLine();
+                taskkill.BeginErrorReadLine();
+                if (taskkill.WaitForExit(10_000) &&
+                    taskkill.ExitCode == 0)
+                {
+                    return;
+                }
+
+                if (!taskkill.HasExited)
+                {
+                    taskkill.Kill();
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // taskkill exited before it could be stopped.
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // taskkill could not be started or stopped.
+            }
         }
 
-        int passed = int.Parse(match.Groups[1].Value);
-        int total = int.Parse(match.Groups[2].Value);
-        int failed = int.Parse(match.Groups[3].Value);
-
-        return passed == total && failed == 0 && total > 0;
+        if (!process.HasExited)
+        {
+            process.Kill();
+        }
     }
+#endif
 
     /// <summary>
     /// Checks whether the SEP-2322 (Multi Round-Trip Requests / InputRequiredResult)

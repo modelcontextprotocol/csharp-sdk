@@ -81,13 +81,13 @@ internal sealed class StreamableHttpHandler(
         {
             message = await ReadJsonRpcMessageAsync(context);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
             // The POST body was not a well-formed JSON-RPC message (malformed JSON, or a request whose
             // id was explicitly null, which MCP forbids). Surface a conformant JSON-RPC error response
             // with a null id rather than letting the exception bubble up as an opaque 500.
             await WriteJsonRpcErrorAsync(context,
-                "Bad Request: The POST body did not contain a valid JSON-RPC message.",
+                $"Bad Request: The POST body did not contain a valid JSON-RPC message: {ex.Message}",
                 StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidRequest);
             return;
         }
@@ -714,7 +714,7 @@ internal sealed class StreamableHttpHandler(
         return null;
     }
 
-    internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+    internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.ProtocolOptions.GetTypeInfo(typeof(T));
 
     /// <summary>
     /// Validates that a request riding a per-request-metadata protocol revision carries the required

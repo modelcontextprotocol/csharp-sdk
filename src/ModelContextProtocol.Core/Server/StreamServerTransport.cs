@@ -117,7 +117,7 @@ public class StreamServerTransport : TransportBase
 
                 try
                 {
-                    if (JsonSerializer.Deserialize(line, McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage))) is JsonRpcMessage message)
+                    if (JsonSerializer.Deserialize(line, McpJsonUtilities.ProtocolOptions.GetTypeInfo(typeof(JsonRpcMessage))) is JsonRpcMessage message)
                     {
                         await WriteMessageAsync(message, shutdownToken).ConfigureAwait(false);
                     }

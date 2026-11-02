@@ -45,7 +45,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
 
         await using var mcpClient = await ConnectAsync(requestPath);
 
-        Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo.Name);
+        Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo?.Name);
     }
 
     // 2025-11-25 is negotiated through the initialize handshake, so in the (default) stateful configuration
@@ -125,7 +125,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             TransportMode = HttpTransportMode.AutoDetect
         });
 
-        Assert.Equal("StreamableHttpTestServer", mcpClient.ServerInfo.Name);
+        Assert.Equal("StreamableHttpTestServer", mcpClient.ServerInfo?.Name);
     }
 
     [Fact]
@@ -151,7 +151,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             TransportMode = HttpTransportMode.AutoDetect
         });
 
-        Assert.Equal("AutoDetectTestServer", mcpClient.ServerInfo.Name);
+        Assert.Equal("AutoDetectTestServer", mcpClient.ServerInfo?.Name);
     }
 
     [Fact]
@@ -347,7 +347,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             TransportMode = HttpTransportMode.AutoDetect
         });
 
-        Assert.Equal("AutoDetectSseTestServer", mcpClient.ServerInfo.Name);
+        Assert.Equal("AutoDetectSseTestServer", mcpClient.ServerInfo?.Name);
     }
 
     [Fact]
@@ -375,7 +375,7 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
             TransportMode = HttpTransportMode.Sse
         });
 
-        Assert.Equal("SseTestServer", mcpClient.ServerInfo.Name);
+        Assert.Equal("SseTestServer", mcpClient.ServerInfo?.Name);
     }
 
     [Fact]

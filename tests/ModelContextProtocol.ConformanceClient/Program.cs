@@ -20,6 +20,12 @@ if (args.Length < 2)
 var scenario = args[0];
 var endpoint =  args[1];
 
+if (scenario == "auth/2025-03-26-oauth-endpoint-fallback")
+{
+    // Only the trusted legacy conformance fixture opts into metadata-free endpoint discovery.
+    AppContext.SetSwitch("ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback", true);
+}
+
 McpClientOptions options = new()
 {
     ClientInfo = new()

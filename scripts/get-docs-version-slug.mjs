@@ -4,18 +4,22 @@
 //   node scripts/get-docs-version-slug.mjs <src/Directory.Build.props>
 
 import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
-const propsPath = process.argv[2];
-if (!propsPath) {
-  console.error("usage: get-docs-version-slug.mjs <src/Directory.Build.props>");
-  process.exit(2);
+export function getDocsVersionSlug(props, source) {
+  const match = props.match(/<VersionPrefix>\s*([1-9][0-9]*)\.\d+\.\d+\s*<\/VersionPrefix>/);
+  if (!match) {
+    throw new Error(`unable to determine VersionPrefix from ${source}`);
+  }
+  return `v${match[1]}`;
 }
 
-const props = await readFile(propsPath, "utf8");
-const match = props.match(/<VersionPrefix>\s*([1-9][0-9]*)\.\d+\.\d+\s*<\/VersionPrefix>/);
-if (!match) {
-  console.error(`error: unable to determine VersionPrefix from ${propsPath}`);
-  process.exit(1);
-}
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const propsPath = process.argv[2];
+  if (!propsPath) {
+    console.error("usage: get-docs-version-slug.mjs <src/Directory.Build.props>");
+    process.exit(2);
+  }
 
-process.stdout.write(`v${match[1]}\n`);
+  process.stdout.write(`${getDocsVersionSlug(await readFile(propsPath, "utf8"), propsPath)}\n`);
+}

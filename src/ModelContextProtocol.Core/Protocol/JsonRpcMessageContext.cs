@@ -130,4 +130,9 @@ public sealed class JsonRpcMessageContext
     /// log notifications for the request. Legacy requests continue to use their negotiated logging behavior.
     /// </remarks>
     public LoggingLevel? LogLevel { get; set; }
+
+    /// <summary>
+    /// Gets or sets the discovery-owned timer, allowing awaited OAuth work to suspend only the probe deadline.
+    /// </summary>
+    internal RequestTimeout? RequestTimeout { get; set; }
 }
