@@ -1,6 +1,7 @@
 ﻿using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using OpenTelemetry.Trace;
 using System.Diagnostics;
 using System.IO.Pipelines;
@@ -245,7 +246,7 @@ public class DiagnosticTests
         {
             serverTask = server.RunAsync(TestContext.Current.CancellationToken);
 
-            await using (McpClient client = await McpClient.CreateAsync(
+            await using (McpClient client = await TestMcpClient.CreateAsync(
                 clientTransport,
                 cancellationToken: TestContext.Current.CancellationToken))
             {

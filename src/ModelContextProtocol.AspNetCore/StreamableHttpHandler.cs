@@ -714,7 +714,7 @@ internal sealed class StreamableHttpHandler(
         return null;
     }
 
-    internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(T));
+    internal static JsonTypeInfo<T> GetRequiredJsonTypeInfo<T>() => (JsonTypeInfo<T>)McpJsonUtilities.ProtocolOptions.GetTypeInfo(typeof(T));
 
     /// <summary>
     /// Validates that a request riding a per-request-metadata protocol revision carries the required

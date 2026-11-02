@@ -49,6 +49,8 @@
     <Project Path="samples/ProtectedMcpServer/ProtectedMcpServer.csproj" />
     <Project Path="samples/QuickstartClient/QuickstartClient.csproj" />
     <Project Path="samples/QuickstartWeatherServer/QuickstartWeatherServer.csproj" />
+    <Project Path="samples/SkillsClient/SkillsClient.csproj" />
+    <Project Path="samples/SkillsServer/SkillsServer.csproj" />
     <Project Path="samples/TasksExtension/TasksExtension.csproj" />
     <Project Path="samples/TestServerWithHosting/TestServerWithHosting.csproj" />
     <Project Path="samples/WeatherAppServer/WeatherAppServer.csproj" />
@@ -69,6 +71,7 @@
     <Project Path="src/ModelContextProtocol.AspNetCore/ModelContextProtocol.AspNetCore.csproj" />
     <Project Path="src/ModelContextProtocol.Core/ModelContextProtocol.Core.csproj" />
     <Project Path="src/ModelContextProtocol.Extensions.Apps/ModelContextProtocol.Extensions.Apps.csproj" />
+    <Project Path="src/ModelContextProtocol.Extensions.Skills/ModelContextProtocol.Extensions.Skills.csproj" />
     <Project Path="src/ModelContextProtocol.Extensions.Tasks/ModelContextProtocol.Extensions.Tasks.csproj" />
     <Project Path="src/ModelContextProtocol/ModelContextProtocol.csproj" />
   </Folder>

@@ -1,4 +1,5 @@
 using ModelContextProtocol.Tests.Utils;
+using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.ConformanceTests;
 
@@ -15,6 +16,67 @@ public class ServerConformanceTests(
     ConformanceServerFixture fixture,
     ITestOutputHelper output)
 {
+    [Theory]
+    [InlineData("sep-2640-skills-enumeration", "2026-07-28")]
+    [InlineData("sep-2640-skills-manifest", "2026-07-28")]
+    [InlineData("sep-2640-skills-directory", "2026-07-28")]
+    [InlineData("sep-2640-skills-enumeration", "2025-11-25")]
+    [InlineData("sep-2640-skills-manifest", "2025-11-25")]
+    [InlineData("sep-2640-skills-directory", "2025-11-25")]
+    public async Task RunSkillsConformanceTest(string scenario, string protocolVersion)
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed. Skipping conformance tests.");
+        var url = protocolVersion == "2026-07-28" ? fixture.StatelessServerUrl : fixture.ServerUrl;
+
+        var result = await RunConformanceTestsAsync(
+            $"server --url {url} --scenario {scenario} --spec-version {protocolVersion} --force",
+            appendProtocolVersionFromEnv: false);
+
+        Assert.True(result.Success,
+            $"Skills scenario '{scenario}' for '{protocolVersion}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
+        Assert.DoesNotContain("SKIPPED: scenario", result.Output);
+        AssertSkillsSummary(result.Output);
+    }
+
+    [Fact]
+    public async Task InstalledRunnerListsAllRequiredSkillsScenarios()
+    {
+        Assert.SkipWhen(!NodeHelpers.IsNodeInstalled(), "Node.js is not installed.");
+
+        var result = await NodeHelpers.RunServerConformanceAsync(
+            "list --server",
+            appendProtocolVersionFromEnv: false,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.Success, $"Runner failed.\n{result.Output}\n{result.Error}");
+        Assert.Contains("sep-2640-skills-enumeration", result.Output);
+        Assert.Contains("sep-2640-skills-manifest", result.Output);
+        Assert.Contains("sep-2640-skills-directory", result.Output);
+    }
+
+    [Theory]
+    [InlineData("Passed: 1/1, 0 failed", true)]
+    [InlineData("Test Results:\nPassed: 32/32, 0 failed, 0 warnings\n", true)]
+    [InlineData("Test Results:\r\n  Passed:\t6/6, 0 failed, 0 warnings\r\n", true)]
+    [InlineData("Passed: 0/0, 0 failed", false)]
+    [InlineData("Passed: 1/2, 0 failed", false)]
+    [InlineData("Passed: 2/2, 1 failed", false)]
+    [InlineData("Log: Passed: 1/1, 0 failed", false)]
+    [InlineData("Passed: 1/1, 0 failed unexpectedly", false)]
+    [InlineData("Passed: 1/1, 0 failed\nPassed: 0/0, 0 failed", false)]
+    [InlineData("", false)]
+    public void SkillsSummaryRequiresExactlyOnePositiveSuccessfulSummary(string output, bool valid)
+    {
+        if (valid)
+        {
+            AssertSkillsSummary(output);
+        }
+        else
+        {
+            Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertSkillsSummary(output));
+        }
+    }
+
     [Fact]
     public async Task RunConformanceTests()
     {
@@ -152,11 +214,25 @@ public class ServerConformanceTests(
             $"Tasks extension conformance test '{scenario}' failed.\n\nStdout:\n{result.Output}\n\nStderr:\n{result.Error}");
     }
 
-    private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(string arguments)
+    private void AssertSkillsSummary(string output)
+    {
+        var pattern = new Regex(
+            @"^[ \t]*Passed:[ \t]*(?<passed>0|[1-9][0-9]*)/(?<total>0|[1-9][0-9]*),[ \t]*(?<failed>0|[1-9][0-9]*)[ \t]+failed(?:,[^\r\n]*)?\r?$",
+            RegexOptions.Multiline | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
+            TimeSpan.FromSeconds(1));
+        var summary = Assert.Single(pattern.Matches(output).Cast<Match>());
+        Assert.NotEqual("0", summary.Groups["passed"].Value);
+        Assert.Equal(summary.Groups["total"].Value, summary.Groups["passed"].Value);
+        Assert.Equal("0", summary.Groups["failed"].Value);
+    }
+
+    private async Task<(bool Success, string Output, string Error)> RunConformanceTestsAsync(
+        string arguments, bool appendProtocolVersionFromEnv = true)
     {
         return await NodeHelpers.RunServerConformanceAsync(
             arguments,
             line => { try { output.WriteLine(line); } catch { } },
+            appendProtocolVersionFromEnv: appendProtocolVersionFromEnv,
             cancellationToken: TestContext.Current.CancellationToken);
     }
 

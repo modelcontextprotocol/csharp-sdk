@@ -17,7 +17,14 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public abstract class PaginatedResult : Result
 {
-    private protected PaginatedResult()
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PaginatedResult"/> class.
+    /// </summary>
+    /// <remarks>
+    /// This constructor is <see langword="protected"/> rather than <c>private protected</c> so that extension
+    /// packages implementing paginated methods defined outside the core specification can derive from it.
+    /// </remarks>
+    protected PaginatedResult()
     {
     }
 
