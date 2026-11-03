@@ -9,6 +9,8 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
+using System.Net;
+using System.Security.Claims;
 using System.Text.Json.Serialization;
 using TestServerWithHosting.Tools;
 
@@ -42,6 +44,128 @@ public partial class SseIntegrationTests(ITestOutputHelper outputHelper) : Kestr
         await mcpClient.SendNotificationAsync("test/message", new Envelope { Message = "Hello, SSE!" }, serializerOptions: JsonContext.Default.Options, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(true);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task Connect_AuthenticatedPrincipalWithoutStableIdentity_IsRejected(string? userId)
+    {
+        Builder.Services.AddAuthorization();
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            options.EnableLegacySse = true;
+            options.Stateless = false;
+        });
+
+        await using var app = Builder.Build();
+        app.UseRouting();
+        app.Use(next => async context =>
+        {
+            List<Claim> claims = [new Claim("custom-user-id", "Alice")];
+            if (userId is not null)
+            {
+                claims.Add(new Claim(ClaimTypes.NameIdentifier, userId));
+            }
+            context.User = new ClaimsPrincipal([
+                new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "untrusted")]),
+                new ClaimsIdentity(claims, "TestAuthType"),
+            ]);
+            await next(context);
+        });
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var response = await HttpClient.GetAsync(
+            "http://localhost:5000/sse",
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var error = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("ClaimTypes.NameIdentifier, 'sub', or ClaimTypes.Upn", error);
+        Assert.Contains("Configure authentication", error);
+    }
+
+    [Theory]
+    [InlineData("Alice", "Bob")]
+    [InlineData(null, null)]
+    [InlineData(null, "")]
+    public async Task Message_FromDifferentOrUnidentifiedUser_IsRejected_AndSessionSurvives(string? ownerUser, string? otherUser)
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+        {
+            options.EnableLegacySse = true;
+            options.Stateless = false;
+        });
+
+        await using var app = Builder.Build();
+        app.Use(next => async context =>
+        {
+            List<Claim> claims = [];
+            if (context.Request.Headers.TryGetValue("X-Test-User", out var user))
+            {
+                claims.Add(new Claim(ClaimTypes.NameIdentifier, user.ToString()));
+            }
+            if (context.Request.Headers.ContainsKey("X-Test-Authenticated") || user.Count > 0)
+            {
+                context.User = new ClaimsPrincipal([
+                    new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "untrusted")]),
+                    new ClaimsIdentity(claims, "TestAuthType"),
+                ]);
+            }
+            await next(context);
+        });
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var connectRequest = new HttpRequestMessage(HttpMethod.Get, "http://localhost:5000/sse");
+        if (ownerUser is not null)
+        {
+            connectRequest.Headers.Add("X-Test-User", ownerUser);
+        }
+        using var connectResponse = await HttpClient.SendAsync(
+            connectRequest, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        connectResponse.EnsureSuccessStatusCode();
+        using var stream = await connectResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        using var reader = new StreamReader(stream);
+        Assert.Equal("event: endpoint", await reader.ReadLineAsync(TestContext.Current.CancellationToken));
+        var endpointData = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(endpointData);
+        Assert.StartsWith("data: ", endpointData);
+        var messageEndpoint = endpointData["data: ".Length..];
+
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
+            """;
+        using var unauthorizedRequest = new HttpRequestMessage(HttpMethod.Post, messageEndpoint)
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        unauthorizedRequest.Headers.Add("X-Test-Authenticated", "true");
+        if (otherUser is not null)
+        {
+            unauthorizedRequest.Headers.Add("X-Test-User", otherUser);
+        }
+        using var unauthorizedResponse = await HttpClient.SendAsync(unauthorizedRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, unauthorizedResponse.StatusCode);
+        if (string.IsNullOrEmpty(otherUser))
+        {
+            var error = await unauthorizedResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            Assert.Contains("ClaimTypes.NameIdentifier, 'sub', or ClaimTypes.Upn", error);
+            Assert.Contains("Configure authentication", error);
+        }
+
+        using var ownerRequest = new HttpRequestMessage(HttpMethod.Post, messageEndpoint)
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        if (ownerUser is not null)
+        {
+            ownerRequest.Headers.Add("X-Test-User", ownerUser);
+        }
+        using var ownerResponse = await HttpClient.SendAsync(ownerRequest, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Accepted, ownerResponse.StatusCode);
     }
 
     [Fact]

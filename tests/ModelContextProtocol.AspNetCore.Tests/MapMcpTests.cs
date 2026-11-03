@@ -114,32 +114,47 @@ public abstract class MapMcpTests(ITestOutputHelper testOutputHelper) : KestrelI
         Assert.Equal(HttpStatusCode.Forbidden, httpRequestException.StatusCode);
     }
 
-    [Fact]
-    public async Task ClaimsPrincipal_CanBeInjected_IntoToolMethod()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClaimsPrincipal_CanBeInjected_IntoToolMethod(bool secondaryIdentity)
     {
-        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
+        var principal = CreateUser("TestUser");
+        if (secondaryIdentity)
+        {
+            principal = new ClaimsPrincipal([
+                new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "untrusted")]),
+                .. principal.Identities,
+            ]);
+        }
+        Builder.Services.AddAuthorization();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless)
+            .WithTools([McpServerTool.Create((ClaimsPrincipal user) =>
+            {
+                Assert.Same(principal, user);
+                return user.Identities.Single(identity => identity.IsAuthenticated).Name;
+            }, new() { Name = "echo_user" })]);
 
         await using var app = Builder.Build();
 
+        app.UseRouting();
         app.Use(next => async context =>
         {
-            context.User = CreateUser("TestUser");
+            context.User = principal;
             await next(context);
         });
-
-        app.MapMcp();
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         await using var client = await ConnectAsync();
 
-        var response = await client.CallToolAsync(
-            "echo_claims_principal",
-            new Dictionary<string, object?>() { ["message"] = "Hello world!" },
-            cancellationToken: TestContext.Current.CancellationToken);
+        var response = await client.CallToolAsync("echo_user", cancellationToken: TestContext.Current.CancellationToken);
 
+        Assert.False(response.IsError ?? false);
         var content = Assert.Single(response.Content.OfType<TextContentBlock>());
-        Assert.Equal("TestUser: Hello world!", content.Text);
+        Assert.Equal("TestUser", content.Text);
     }
 
     [Fact]

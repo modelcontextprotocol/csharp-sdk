@@ -27,6 +27,10 @@ internal sealed class StreamableHttpHandler(
     private const string McpProtocolVersionHeaderName = "MCP-Protocol-Version";
     private const string LastEventIdHeaderName = "Last-Event-ID";
 
+    internal const string MissingUserIdClaimMessage =
+        "Forbidden: Authenticated users need a ClaimTypes.NameIdentifier, 'sub', or ClaimTypes.Upn claim " +
+        "to use stateful MCP sessions. Configure authentication to provide one.";
+
     /// <summary>
     /// All protocol versions supported by this implementation.
     /// Keep in sync with McpSessionHandler.SupportedProtocolVersions in ModelContextProtocol.Core.
@@ -214,7 +218,14 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        if (!session.HasSameUserId(context.User))
+        var (isValid, requestUserId) = GetSessionIdentity(context.User);
+        if (!isValid)
+        {
+            await WriteJsonRpcErrorAsync(context, MissingUserIdClaimMessage, StatusCodes.Status403Forbidden);
+            return;
+        }
+
+        if (session.UserId != requestUserId)
         {
             await WriteJsonRpcErrorAsync(context,
                 "Forbidden: The currently authenticated user does not match the user who initiated the session.",
@@ -240,10 +251,17 @@ internal sealed class StreamableHttpHandler(
             return null;
         }
 
+        var (isValid, requestUserId) = GetSessionIdentity(context.User);
+        if (!isValid)
+        {
+            await WriteJsonRpcErrorAsync(context, MissingUserIdClaimMessage, StatusCodes.Status403Forbidden);
+            return null;
+        }
+
         if (!sessionManager.TryGetValue(sessionId, out var session))
         {
             // Session not found locally. Attempt migration if a handler is registered.
-            session = await TryMigrateSessionAsync(context, sessionId);
+            session = await TryMigrateSessionAsync(context, sessionId, requestUserId);
 
             if (session is null)
             {
@@ -256,7 +274,7 @@ internal sealed class StreamableHttpHandler(
             }
         }
 
-        if (!session.HasSameUserId(context.User))
+        if (session.UserId != requestUserId)
         {
             await WriteJsonRpcErrorAsync(context,
                 "Forbidden: The currently authenticated user does not match the user who initiated the session.",
@@ -269,7 +287,10 @@ internal sealed class StreamableHttpHandler(
         return session;
     }
 
-    private async ValueTask<StreamableHttpSession?> TryMigrateSessionAsync(HttpContext context, string sessionId)
+    private async ValueTask<StreamableHttpSession?> TryMigrateSessionAsync(
+        HttpContext context,
+        string sessionId,
+        UserIdClaim? requestUserId)
     {
         if (HttpServerTransportOptions.SessionMigrationHandler is not { } handler)
         {
@@ -292,7 +313,7 @@ internal sealed class StreamableHttpHandler(
                 return null;
             }
 
-            var migratedSession = await MigrateSessionAsync(context, sessionId, initParams);
+            var migratedSession = await MigrateSessionAsync(context, sessionId, initParams, requestUserId);
 
             // Register the session with the session manager while still holding the lock
             // so concurrent requests for the same session ID find it via sessionManager.TryGetValue.
@@ -326,7 +347,19 @@ internal sealed class StreamableHttpHandler(
                 return null;
             }
 
-            return await StartNewSessionAsync(context);
+            if (HttpServerTransportOptions.Stateless)
+            {
+                return await StartNewSessionAsync(context, userId: null);
+            }
+
+            var (isValid, requestUserId) = GetSessionIdentity(context.User);
+            if (!isValid)
+            {
+                await WriteJsonRpcErrorAsync(context, MissingUserIdClaimMessage, StatusCodes.Status403Forbidden);
+                return null;
+            }
+
+            return await StartNewSessionAsync(context, userId: requestUserId);
         }
         else if (HttpServerTransportOptions.Stateless)
         {
@@ -341,7 +374,9 @@ internal sealed class StreamableHttpHandler(
         }
     }
 
-    private async ValueTask<StreamableHttpSession> StartNewSessionAsync(HttpContext context)
+    private async ValueTask<StreamableHttpSession> StartNewSessionAsync(
+        HttpContext context,
+        UserIdClaim? userId)
     {
         string sessionId;
         StreamableHttpServerTransport transport;
@@ -373,13 +408,14 @@ internal sealed class StreamableHttpHandler(
             };
         }
 
-        return await CreateSessionAsync(context, transport, sessionId);
+        return await CreateSessionAsync(context, transport, sessionId, userId);
     }
 
     private async ValueTask<StreamableHttpSession> CreateSessionAsync(
         HttpContext context,
         StreamableHttpServerTransport transport,
         string sessionId,
+        UserIdClaim? userId,
         Action<McpServerOptions>? configureOptions = null)
     {
         var mcpServerServices = applicationServices;
@@ -406,8 +442,7 @@ internal sealed class StreamableHttpHandler(
         var server = McpServer.Create(transport, mcpServerOptions, loggerFactory, mcpServerServices);
         context.Features.Set(server);
 
-        var userIdClaim = GetUserIdClaim(context.User);
-        var session = new StreamableHttpSession(sessionId, transport, server, userIdClaim, sessionManager);
+        var session = new StreamableHttpSession(sessionId, transport, server, userId, sessionManager);
 
 #pragma warning disable MCPEXP002 // RunSessionHandler is experimental
         var runSessionAsync = HttpServerTransportOptions.RunSessionHandler ?? RunSessionAsync;
@@ -420,7 +455,8 @@ internal sealed class StreamableHttpHandler(
     private async ValueTask<StreamableHttpSession> MigrateSessionAsync(
         HttpContext context,
         string sessionId,
-        InitializeRequestParams initializeParams)
+        InitializeRequestParams initializeParams,
+        UserIdClaim? userId)
     {
         var transport = new StreamableHttpServerTransport(loggerFactory)
         {
@@ -434,7 +470,12 @@ internal sealed class StreamableHttpHandler(
 
         context.Response.Headers[McpSessionIdHeaderName] = sessionId;
 
-        return await CreateSessionAsync(context, transport, sessionId, options =>
+        return await CreateSessionAsync(
+            context,
+            transport,
+            sessionId,
+            userId,
+            options =>
         {
             options.KnownClientInfo = initializeParams.ClientInfo;
             options.KnownClientCapabilities = initializeParams.Capabilities;
@@ -499,7 +540,7 @@ internal sealed class StreamableHttpHandler(
         // Implementation for reading a JSON-RPC message from the request body
         var message = await context.Request.ReadFromJsonAsync(s_messageTypeInfo, context.RequestAborted);
 
-        if (context.User?.Identity?.IsAuthenticated == true && message is not null)
+        if (context.User.Identities.Any(static identity => identity.IsAuthenticated) && message is not null)
         {
             message.Context = new()
             {
@@ -513,21 +554,36 @@ internal sealed class StreamableHttpHandler(
     internal static Task RunSessionAsync(HttpContext httpContext, McpServer session, CancellationToken requestAborted)
         => session.RunAsync(requestAborted);
 
-    // SignalR only checks for ClaimTypes.NameIdentifier in HttpConnectionDispatcher, but AspNetCore.Antiforgery checks that plus the sub and UPN claims.
-    // However, we short-circuit unlike antiforgery since we expect to call this to verify MCP messages a lot more frequently than
-    // verifying antiforgery tokens from <form> posts.
-    internal static UserIdClaim? GetUserIdClaim(ClaimsPrincipal user)
+    internal static (bool IsValid, UserIdClaim? UserId) GetSessionIdentity(ClaimsPrincipal user)
     {
-        if (user?.Identity?.IsAuthenticated != true)
+        var authenticatedIdentities = user.Identities.Where(static identity => identity.IsAuthenticated).ToArray();
+        if (authenticatedIdentities.Length == 0)
         {
-            return null;
+            return (true, null);
         }
 
-        var claim = user.FindFirst(ClaimTypes.NameIdentifier) ?? user.FindFirst("sub") ?? user.FindFirst(ClaimTypes.Upn);
-
-        if (claim is { } idClaim)
+        // Prefer SignalR's NameIdentifier claim, with sub and UPN as fallbacks.
+        // Antiforgery checks sub first; preserve our existing order for compatibility.
+        var claim = FindFirstClaim(authenticatedIdentities, ClaimTypes.NameIdentifier)
+            ?? FindFirstClaim(authenticatedIdentities, "sub")
+            ?? FindFirstClaim(authenticatedIdentities, ClaimTypes.Upn);
+        if (claim is null || string.IsNullOrEmpty(claim.Value))
         {
-            return new(idClaim.Type, idClaim.Value, idClaim.Issuer);
+            return (false, null);
+        }
+
+        return (true, new(claim.Type, claim.Value, claim.Issuer));
+    }
+
+    private static Claim? FindFirstClaim(IEnumerable<ClaimsIdentity> authenticatedIdentities, string claimType)
+    {
+        foreach (var identity in authenticatedIdentities)
+        {
+            var claim = identity.FindFirst(claimType);
+            if (claim is not null)
+            {
+                return claim;
+            }
         }
 
         return null;
