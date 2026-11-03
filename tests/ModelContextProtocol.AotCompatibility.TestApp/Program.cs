@@ -3,6 +3,7 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
 
 Pipe clientToServerPipe = new(), serverToClientPipe = new();
@@ -18,7 +19,7 @@ var server = serviceProvider.GetRequiredService<McpServer>();
 _ = server.RunAsync();
 
 // Connect a client using a stream-based transport over the same in-memory pipe.
-await using McpClient client = await McpClient.CreateAsync(
+await using McpClient client = await TestMcpClient.CreateAsync(
     new StreamClientTransport(clientToServerPipe.Writer.AsStream(), serverToClientPipe.Reader.AsStream()));
 
 // List all tools.

@@ -527,15 +527,46 @@ When authentication is configured, the server automatically binds sessions to th
 
 ##### How it works
 
-1. When a session is created, the server captures the authenticated user's identity from `HttpContext.User`.
-2. The server extracts a user ID claim in priority order:
+1. When a session is created, the server captures the authenticated user's identity from `HttpContext.User`. A principal is authenticated if any of its identities is authenticated; claims on unauthenticated identities are ignored for session ownership.
+2. Across all authenticated identities, the server selects the first available user ID claim in priority order:
    - `ClaimTypes.NameIdentifier` (`http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier`)
    - `"sub"` (OpenID Connect subject claim)
    - `ClaimTypes.Upn` (`http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn`)
-3. On each subsequent request, the server validates that the current user matches the session's original user.
+3. On each subsequent request, the server validates that the selected claim's type, value, and issuer match the session's original user. Values and issuers are compared ordinally.
 4. If there's a mismatch, the server responds with `403 Forbidden`.
 
-This binding is automatic — no configuration is needed. If no authentication middleware is configured, user binding is skipped (the session is not bound to any user).
+An authenticated principal whose selected claim is missing or empty receives `403 Forbidden` with an error explaining how to add a supported identifier. An empty higher-priority claim is rejected rather than falling back to another claim. This applies to stateful Streamable HTTP and legacy SSE sessions.
+
+Anonymous and stateless requests do not require a session identity, but anonymous users cannot access authenticated sessions. Session binding does not replace authorization; use `.RequireAuthorization()` to prohibit anonymous access.
+
+##### Adding a supported claim with `IClaimsTransformation`
+
+Use this mapping if your authentication handler supplies `custom-user-id` instead of `NameIdentifier`, `sub`, or UPN. This example assumes a single identity. With authentication and `UseAuthentication()` already configured, register an ASP.NET Core [IClaimsTransformation](https://learn.microsoft.com/dotnet/api/microsoft.aspnetcore.authentication.iclaimstransformation):
+
+```csharp
+using Microsoft.AspNetCore.Authentication;
+using System.Security.Claims;
+
+builder.Services.AddTransient<IClaimsTransformation, McpUserIdClaimsTransformation>();
+
+public sealed class McpUserIdClaimsTransformation : IClaimsTransformation
+{
+    public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
+    {
+        if (principal.Identity is ClaimsIdentity identity &&
+            identity.FindFirst(ClaimTypes.NameIdentifier) is null &&
+            identity.FindFirst("custom-user-id") is { } userId)
+        {
+            identity.AddClaim(new Claim(
+                ClaimTypes.NameIdentifier, userId.Value, userId.ValueType, userId.Issuer));
+        }
+
+        return Task.FromResult(principal);
+    }
+}
+```
+
+The custom claim must come from your validated authentication scheme, not raw request headers. Its value must be stable across requests and unique between users who must not share sessions. The transformation preserves its issuer, leaves an existing `NameIdentifier` unchanged, and is safe to run repeatedly.
 
 ## Service lifetimes and DI scopes
 
