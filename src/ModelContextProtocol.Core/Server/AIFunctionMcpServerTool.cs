@@ -341,13 +341,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         JsonElement? matchedSchema = isSerializedJson ? null :
             recoveryTarget is { } target ? target.Schema : matchedTool?.ProtocolTool.OutputSchema;
         JsonElement? recoverySchema = isSerializedJson ? null : GetRecoverySchema(matchedTool, matchedSchema);
-        JsonElement? effectiveSchema = recoveryTarget is not null ? matchedSchema : null;
-        bool deferOuterRecovery = effectiveSchema is not null && !Nullable.Equals(recoverySchema, effectiveSchema);
-        RepairTraversalBudget? sharedBudget = deferOuterRecovery ? new() : null;
+        RepairTraversalBudget? sharedBudget = !isSerializedJson && recoveryTarget is not null ? new() : null;
         string? protocolVersion = request.Server.NegotiatedProtocolVersion;
         JsonElement? structuredContent = CreateStructuredResponse(
             result, protocolVersion, recoverySchema, out JsonElement? originalContent,
             out JsonElement? naturalContent, sharedBudget);
+        Action<McpServerTool, CallToolResult>? recovery =
+            sharedBudget is not null && originalContent is not null && structuredContent is not null
+                ? CreateStructuredContentRecovery(
+                    result, originalContent, naturalContent, structuredContent, recoveryTarget!, protocolVersion, sharedBudget)
+                : null;
         CallToolResult response = result switch
         {
             AIContent aiContent => new()
@@ -390,12 +393,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             },
         };
 
-        if (deferOuterRecovery && originalContent is not null && structuredContent is not null)
+        if (recovery is not null)
         {
-            Action<CallToolResult> recovery = CreateStructuredContentRecovery(
-                result, originalContent, naturalContent, structuredContent, effectiveSchema, protocolVersion, sharedBudget);
             request.StructuredContentRecovery += recovery;
-            if (!request.SupportsDeferredStructuredContentRecovery)
+            if (!ReferenceEquals(request.StructuredContentRecoveryTarget, recoveryTarget))
             {
                 request.StructuredContentRecovery -= recovery;
             }
@@ -404,23 +405,95 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return response;
     }
 
-    private Action<CallToolResult> CreateStructuredContentRecovery(
+    private Action<McpServerTool, CallToolResult>? CreateStructuredContentRecovery(
         object? originalResult, JsonElement? originalContent, JsonElement? naturalContent,
-        JsonElement? structuredContent, JsonElement? effectiveSchema, string? protocolVersion,
-        RepairTraversalBudget? sharedBudget) =>
-        finalResult =>
+        JsonElement? structuredContent,
+        RequestContext<CallToolRequestParams>.StructuredContentRecoveryState recoveryTarget,
+        string? protocolVersion, RepairTraversalBudget sharedBudget)
+    {
+        const int maxRecoveryTargets = 128;
+        List<(McpServerTool Tool, JsonElement? Schema)> targets = [(recoveryTarget.Tool, recoveryTarget.Schema)];
+        List<(McpServerTool Tool, JsonElement? Content)> projections = [];
+        try
         {
-            // Only unchanged JSON elements prove that the wrapper retained the inner projection.
-            if (finalResult.IsError != true && Nullable.Equals(finalResult.StructuredContent, structuredContent))
+            bool hasCustomInvocation = false;
+            McpServerTool current = recoveryTarget.Tool;
+            while (current is DelegatingMcpServerTool delegating)
             {
-                JsonElement? recovered = AddMissingRequiredNullableProperties(
-                    originalContent, originalResult, effectiveSchema, sharedBudget, naturalContent);
-                if (!Nullable.Equals(recovered, naturalContent))
+                sharedBudget.Spend(1);
+                if (delegating.HasCustomInvocation)
                 {
-                    finalResult.StructuredContent = ShapeStructuredResponse(recovered, protocolVersion);
+                    hasCustomInvocation = true;
+                    if (targets.Count == maxRecoveryTargets)
+                    {
+                        targets.RemoveRange(1, targets.Count - 1);
+                        break;
+                    }
+                    targets.Add((delegating.InnerTool, delegating.InnerTool.ProtocolTool.OutputSchema));
+                }
+                current = delegating.InnerTool;
+            }
+            if (!hasCustomInvocation)
+            {
+                return null;
+            }
+
+            JsonElement? preferredContent = naturalContent;
+            JsonElement? preferredStructuredContent = structuredContent;
+            // Capture repairs while the CLR source still belongs to this invocation.
+            for (int i = targets.Count - 1; i >= 0 && !sharedBudget.IsRecoveryStopped; i--)
+            {
+                var target = targets[i];
+                JsonElement? recovered = AddMissingRequiredNullableProperties(
+                    originalContent, originalResult, target.Schema, out bool isValid, sharedBudget, preferredContent);
+                if (isValid)
+                {
+                    if (!Nullable.Equals(recovered, preferredContent))
+                    {
+                        if (recovered is { } content)
+                        {
+                            sharedBudget.SpendCopy(content);
+                        }
+                        preferredStructuredContent = ShapeStructuredResponse(recovered, protocolVersion);
+                    }
+                    projections.Add((target.Tool, preferredStructuredContent));
+                    preferredContent = recovered;
                 }
             }
+        }
+        catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
+        {
+            sharedBudget.IsRecoveryStopped = true;
+        }
+        if (projections.Count == 0)
+        {
+            return null;
+        }
+
+        return (tool, finalResult) =>
+        {
+            if (finalResult.IsError == true)
+            {
+                return;
+            }
+
+            // Accept only this invocation's retained projections, never replaced or reserialized JSON.
+            bool retained = Nullable.Equals(finalResult.StructuredContent, structuredContent);
+            JsonElement? recovered = null;
+            foreach (var projection in projections)
+            {
+                retained |= Nullable.Equals(finalResult.StructuredContent, projection.Content);
+                if (ReferenceEquals(projection.Tool, tool))
+                {
+                    recovered = projection.Content;
+                }
+            }
+            if (retained && recovered is not null)
+            {
+                finalResult.StructuredContent = recovered;
+            }
         };
+    }
 
     /// <summary>Creates a name to use based on the supplied method and naming policy.</summary>
     internal static string DeriveName(MethodInfo method, JsonNamingPolicy? policy = null)
@@ -853,7 +926,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         originalContent = elementResult;
-        naturalContent = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult, recoverySchema, sharedBudget);
+        naturalContent = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult, recoverySchema, out _, sharedBudget);
         return ShapeStructuredResponse(naturalContent, negotiatedProtocolVersion);
     }
 
@@ -882,9 +955,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         JsonElement? elementResult,
         object? originalResult,
         JsonElement? recoverySchema,
+        out bool isValid,
         RepairTraversalBudget? sharedBudget = null,
         JsonElement? preferredContent = null)
     {
+        isValid = false;
         JsonElement? fallbackContent = preferredContent ?? elementResult;
         if (sharedBudget?.IsRecoveryStopped == true ||
             elementResult is not { } result ||
@@ -908,11 +983,17 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             // A wrapper may mutate the CLR source after serialization. Keep an already-valid projection.
             if (preferredContent is { } preferred && !preferred.Equals(result) && IsSchemaValid(schema, preferred, budget))
             {
+                isValid = true;
                 return preferred;
             }
-            if (IsSchemaValid(schema, result, budget) || HasDuplicatePropertyNames(result))
+            if (IsSchemaValid(schema, result, budget))
             {
+                isValid = true;
                 return elementResult;
+            }
+            if (HasDuplicatePropertyNames(result))
+            {
+                return fallbackContent;
             }
             budget.SpendCopy(result);
             JsonNode? resultNode = JsonSerializer.SerializeToNode(result, McpJsonUtilities.JsonContext.Default.JsonElement);
@@ -937,7 +1018,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             }
 
             budget.SpendCopy(repairedResult);
-            return JsonSerializer.SerializeToElement(repairedResult, McpJsonUtilities.JsonContext.Default.JsonNode);
+            JsonElement repaired = JsonSerializer.SerializeToElement(repairedResult, McpJsonUtilities.JsonContext.Default.JsonNode);
+            isValid = true;
+            return repaired;
         }
         catch (TargetInvocationException exception) when (
             exception.InnerException is { } inner && !IsNonFatalRecoveryFailure(inner))
@@ -986,14 +1069,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private JsonElement? GetRecoverySchema(McpServerTool? matchedTool, JsonElement? matchedSchema)
     {
-        // A recovery target carries the schema selected for the current forwarding
-        // segment. Preserve it across nested delegators instead of replacing it with
-        // the leaf tool's contract while walking custom invocation overrides.
-        if (matchedSchema is not null)
-        {
-            return matchedSchema;
-        }
-
         McpServerTool schemaTool = matchedTool ?? this;
         McpServerTool current = schemaTool;
         while (current is DelegatingMcpServerTool delegating)

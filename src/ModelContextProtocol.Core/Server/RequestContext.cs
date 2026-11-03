@@ -49,10 +49,9 @@ public sealed class RequestContext<TParams> : MessageContext
     public IMcpServerPrimitive? MatchedPrimitive { get; set; }
 
     internal StructuredContentRecoveryState? StructuredContentRecoveryTarget { get; set; }
-    internal bool SupportsDeferredStructuredContentRecovery => StructuredContentRecoveryTarget is not null;
-    internal event Action<CallToolResult>? StructuredContentRecovery;
+    internal event Action<McpServerTool, CallToolResult>? StructuredContentRecovery;
 
-    internal void RecoverStructuredContent(CallToolResult result) => StructuredContentRecovery?.Invoke(result);
+    internal void RecoverStructuredContent(McpServerTool tool, CallToolResult result) => StructuredContentRecovery?.Invoke(tool, result);
 
     internal void ClearStructuredContentRecovery() => StructuredContentRecovery = null;
 

@@ -230,6 +230,11 @@ foreach (bool required in new[] { false, true })
             OutputSchema = required ? optionalSchema : requiredSchema,
         });
         forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(inner, required ? requiredSchema : optionalSchema, rebindMatch));
+        if (!rebindMatch)
+        {
+            forwardingRecoveryTools.Add(new PayloadAotTool(
+                new ForwardingSchemaAotTool(inner, required ? requiredSchema : optionalSchema)));
+        }
     }
 }
 var mutableNote = new AotMutableNote();
@@ -243,6 +248,18 @@ McpServerTool mutableNoteTool = McpServerTool.Create(() => mutableNote, new()
 forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(
     mutableNoteTool, JsonDocument.Parse(mutableNoteTool.ProtocolTool.OutputSchema!.Value.GetRawText()).RootElement,
     afterInvocation: () => mutableNote.Note = "changed after serialization"));
+var mutableCount = new AotMutableCount();
+McpServerTool mutableCountTool = McpServerTool.Create(() => mutableCount, new()
+{
+    Name = "ForwardingMutableCount",
+    UseStructuredContent = true,
+    SerializerOptions = structuredOptions,
+    OutputSchema = JsonDocument.Parse("""{"type":"object"}""").RootElement,
+});
+forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(
+    mutableCountTool,
+    JsonDocument.Parse("""{"type":"object","required":["count"],"properties":{"count":{"type":"integer"}}}""").RootElement,
+    afterInvocation: () => mutableCount.Count = 42));
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
@@ -413,6 +430,14 @@ foreach (bool required in new[] { false, true })
             throw new Exception($"Unexpected forwarding recovery output: {forwardingResult.StructuredContent}");
         }
     }
+    var payloadResult = await client.CallToolAsync(required ? "PayloadForwardingRequiredNote" : "PayloadForwardingOptionalNote");
+    if (payloadResult.IsError == true ||
+        payloadResult.StructuredContent is not { } payload ||
+        payload.GetProperty("payload").TryGetProperty("note", out JsonElement payloadNote) != required ||
+        (required && payloadNote.ValueKind != JsonValueKind.Null))
+    {
+        throw new Exception($"Unexpected stacked forwarding recovery output: {payloadResult.StructuredContent}");
+    }
 }
 var mutableNoteResult = await client.CallToolAsync("ForwardingMutableNote");
 if (mutableNoteResult.IsError == true ||
@@ -422,6 +447,15 @@ if (mutableNoteResult.IsError == true ||
     mutableNote.Note != "changed after serialization")
 {
     throw new Exception($"Unexpected mutable forwarding recovery output: {mutableNoteResult.StructuredContent}");
+}
+var mutableCountResult = await client.CallToolAsync("ForwardingMutableCount");
+if (mutableCountResult.IsError == true ||
+    mutableCountResult.StructuredContent is not { } mutableCountContent ||
+    !mutableCountContent.TryGetProperty("count", out JsonElement mutableCountValue) ||
+    mutableCountValue.GetInt32() != 0 ||
+    mutableCount.Count != 42)
+{
+    throw new Exception($"Unexpected captured forwarding recovery output: {mutableCountResult.StructuredContent}");
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");
@@ -619,6 +653,12 @@ internal sealed class AotMutableNote
     public string? Note { get; set; }
 }
 
+internal sealed class AotMutableCount
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int Count { get; set; }
+}
+
 internal sealed class AotUnevaluatedOutput
 {
     [JsonPropertyName("evaluated\0path")]
@@ -792,9 +832,28 @@ internal sealed class AotCallbackOutput : IJsonOnSerializing, IJsonOnSerialized
 [JsonSerializable(typeof(AotReadOnlyOutput))]
 [JsonSerializable(typeof(AotCallbackOutput))]
 [JsonSerializable(typeof(AotMutableNote))]
+[JsonSerializable(typeof(AotMutableCount))]
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
+
+internal sealed class PayloadAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner)
+{
+    public override Tool ProtocolTool { get; } = new()
+    {
+        Name = "Payload" + inner.ProtocolTool.Name,
+        InputSchema = inner.ProtocolTool.InputSchema,
+        OutputSchema = JsonDocument.Parse($$$$"""{"type":"object","required":["payload"],"properties":{"payload":{{{{inner.ProtocolTool.OutputSchema!.Value.GetRawText()}}}}}}""").RootElement,
+    };
+
+    public override async ValueTask<CallToolResult> InvokeAsync(
+        RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+    {
+        CallToolResult result = await base.InvokeAsync(request, cancellationToken);
+        result.StructuredContent = JsonDocument.Parse($$"""{"payload":{{result.StructuredContent!.Value.GetRawText()}}}""").RootElement;
+        return result;
+    }
+}
 
 internal sealed class ForwardingSchemaAotTool(
     McpServerTool inner, JsonElement schema, bool rebindMatch = false, Action? afterInvocation = null)

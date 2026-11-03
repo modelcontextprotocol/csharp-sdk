@@ -18,6 +18,269 @@ public partial class DelegatingToolOutputSchemaTests
     [InlineData("2025-06-18")]
     [InlineData("2025-11-25")]
     [InlineData("2026-07-28")]
+    public async Task ListTools_DeferredRecovery_PreservesWrapperOwnedResults(string protocolVersion)
+    {
+        foreach (int mode in new[] { 0, 1, 2 })
+        {
+            foreach (bool alternateHandler in new[] { false, true })
+            {
+                McpServerTool inner = McpServerTool.Create(() => new MutableCount(), new()
+                {
+                    Name = "owned_count",
+                    UseStructuredContent = true,
+                    OutputSchema = ParseJson("""{"type":"object"}"""),
+                    SerializerOptions = new(JsonSerializerDefaults.Web)
+                    {
+                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+                        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                    },
+                });
+                McpServerTool tool = new SchemaOverrideTool(
+                    new OwnedResultTool(inner, mode), ParseJson("""{"required":["count"]}"""));
+                await WithClientAsync(tool, protocolVersion, async client =>
+                {
+                    var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+                    Assert.Equal(mode == 0, result.IsError == true);
+                    Assert.Equal(mode == 1 ? """{"count":99}""" : "{}", result.StructuredContent!.Value.GetRawText());
+                }, alternateHandler);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
+    public async Task ListTools_DeferredRecovery_DoesNotReadSourceOrRunConvertersAfterWrapperCompletion(string protocolVersion)
+    {
+        var source = new ExpiringOutput();
+        var converter = new ExpiringIntConverter();
+        JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        options.Converters.Add(converter);
+        McpServerTool inner = McpServerTool.Create(() => source, new()
+        {
+            Name = "expired_count",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object"}"""),
+            SerializerOptions = options,
+        });
+        McpServerTool tool = new SchemaOverrideTool(new RequestStateTool(inner, null, () =>
+        {
+            source.Expired = true;
+            converter.Expired = true;
+        }), ParseJson("""{"required":["count"],"properties":{"count":{"const":"zero"}}}"""));
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(source.Expired);
+            Assert.True(converter.Expired);
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal("zero", result.StructuredContent!.Value.GetProperty("count").GetString());
+        });
+    }
+
+    [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
+    public async Task ListTools_ForwardingSegment_RecoversBeforeTransformingWrapper(
+        string protocolVersion, bool requiresNull)
+    {
+        JsonElement required = ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""");
+        JsonElement optional = ParseJson("""{"type":"object","properties":{"note":{"type":"string"}}}""");
+        foreach (int forwardingMode in new[] { 1, 2, 5 })
+        {
+            foreach (bool alternateHandler in new[] { false, true })
+            {
+                McpServerTool inner = McpServerTool.Create(() => new { Note = (string?)null }, new()
+                {
+                    Name = "stacked_note",
+                    UseStructuredContent = true,
+                    OutputSchema = requiresNull ? optional : required,
+                    SerializerOptions = new(JsonSerializerDefaults.Web)
+                    {
+                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                    },
+                });
+                McpServerTool tool = new PayloadTool(new SchemaOverrideTool(
+                    new ForwardingInvocationTool(inner, forwardingMode), requiresNull ? required : optional));
+                tool = new PayloadTool(new ForwardingInvocationTool(tool, 2));
+                await WithClientAsync(tool, protocolVersion, async client =>
+                {
+                    var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+                    var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+                    Assert.NotEqual(true, result.IsError);
+                    Assert.True(ParseSchema(listed.ProtocolTool.OutputSchema!.Value).Evaluate(result.StructuredContent!.Value).IsValid);
+                    JsonElement content = result.StructuredContent.Value.GetProperty("payload").GetProperty("payload");
+                    Assert.Equal(requiresNull, content.TryGetProperty("note", out _));
+                }, alternateHandler);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("2025-06-18", "object")]
+    [InlineData("2025-06-18", "array")]
+    [InlineData("2025-06-18", "nested")]
+    [InlineData("2025-11-25", "object")]
+    [InlineData("2025-11-25", "array")]
+    [InlineData("2025-11-25", "nested")]
+    [InlineData("2026-07-28", "object")]
+    [InlineData("2026-07-28", "array")]
+    [InlineData("2026-07-28", "nested")]
+    public async Task ListTools_ForwardingInvocation_CapturesOmittedValuesBeforeSourceMutation(
+        string protocolVersion, string shape)
+    {
+        const string requiredCount = """{"type":"object","required":["count"],"properties":{"count":{"type":"integer"}}}""";
+        string schema = shape switch
+        {
+            "array" => $$"""{"type":"array","items":{{requiredCount}}}""",
+            "nested" => $$$$"""{"type":"object","required":["child"],"properties":{"child":{{{{requiredCount}}}}}}""",
+            _ => requiredCount,
+        };
+        foreach (int forwardingMode in new[] { 1, 2, 5 })
+        {
+            foreach (bool alternateHandler in new[] { false, true })
+            {
+                var source = new MutableCount();
+                object value = shape switch
+                {
+                    "array" => new[] { source },
+                    "nested" => new { Child = source },
+                    _ => source,
+                };
+                McpServerTool inner = McpServerTool.Create(() => value, new()
+                {
+                    Name = "captured_count",
+                    UseStructuredContent = true,
+                    OutputSchema = ParseJson(shape == "array" ? """{"type":"array"}""" : """{"type":"object"}"""),
+                    SerializerOptions = new(JsonSerializerDefaults.Web)
+                    {
+                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+                        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                    },
+                });
+                McpServerTool tool = new SchemaOverrideTool(new RequestStateTool(
+                    new ForwardingInvocationTool(inner, forwardingMode), null, () => source.Count = 42), ParseJson(schema));
+                await WithClientAsync(tool, protocolVersion, async client =>
+                {
+                    var listed = Assert.Single(await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken));
+                    var result = await client.CallToolAsync(listed.Name, cancellationToken: TestContext.Current.CancellationToken);
+                    JsonElement content = result.StructuredContent!.Value;
+
+                    Assert.Equal(42, source.Count);
+                    Assert.NotEqual(true, result.IsError);
+                    Assert.True(ParseSchema(listed.ProtocolTool.OutputSchema!.Value).Evaluate(content).IsValid);
+                    if (shape == "array")
+                    {
+                        if (protocolVersion != "2026-07-28")
+                        {
+                            content = content.GetProperty("result");
+                        }
+                        content = content[0];
+                    }
+                    else if (shape == "nested")
+                    {
+                        content = content.GetProperty("child");
+                    }
+                    Assert.Equal(0, content.GetProperty("count").GetInt32());
+                }, alternateHandler);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
+    public async Task ListTools_ConcurrentForwardingInvocation_CapturesEachResultBeforeMutation(
+        string protocolVersion, bool returnSecond)
+    {
+        var source = new MutableCount();
+        int started = 0;
+        var bothStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        McpServerTool inner = McpServerTool.Create(async () =>
+        {
+            if (Interlocked.Increment(ref started) == 2)
+            {
+                bothStarted.TrySetResult(true);
+            }
+            await bothStarted.Task.WaitAsync(TestContext.Current.CancellationToken);
+            return source;
+        }, new()
+        {
+            Name = "concurrent_captured_count",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object"}"""),
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        McpServerTool tool = new SchemaOverrideTool(
+            new ConcurrentInvocationTool(inner, returnSecond, () => source.Count = 42),
+            ParseJson("""{"type":"object","required":["count"],"properties":{"count":{"type":"integer"}}}"""));
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.Equal(2, started);
+            Assert.Equal(42, source.Count);
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal(0, result.StructuredContent!.Value.GetProperty("count").GetInt32());
+        });
+    }
+
+    [Theory]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
+    public async Task ListTools_ForwardingInvocation_RecoversRegisteredSchemaWhenSegmentLimitIsExceeded(string protocolVersion)
+    {
+        McpServerTool tool = McpServerTool.Create(() => new MutableCount(), new()
+        {
+            Name = "bounded_forwarding",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object"}"""),
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        for (int i = 0; i < 129; i++)
+        {
+            tool = new ForwardingInvocationTool(tool, 1);
+        }
+        tool = new SchemaOverrideTool(tool, ParseJson("""{"required":["count"]}"""));
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal(0, result.StructuredContent!.Value.GetProperty("count").GetInt32());
+        });
+    }
+
+    [Theory]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
     public async Task ListTools_ForwardingInvocation_CapturesSchemaBeforeUserCodeRuns(string protocolVersion)
     {
         JsonElement required = ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""");
@@ -1368,6 +1631,54 @@ public partial class DelegatingToolOutputSchemaTests
         public string? Note { get; set; }
     }
 
+    private sealed class MutableCount
+    {
+        public int Count { get; set; }
+    }
+
+    private sealed class ExpiringOutput
+    {
+        [JsonIgnore]
+        public bool Expired { get; set; }
+
+        public int Count => Expired ? throw new InvalidOperationException("Source is no longer owned by the inner invocation.") : 0;
+    }
+
+    private sealed class ExpiringIntConverter : JsonConverter<int>
+    {
+        public bool Expired { get; set; }
+
+        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
+        {
+            if (Expired)
+            {
+                throw new InvalidOperationException("Converter is no longer owned by the inner invocation.");
+            }
+            writer.WriteStringValue(value == 0 ? "zero" : "changed");
+        }
+    }
+
+    private sealed class OwnedResultTool(McpServerTool inner, int mode) : DelegatingMcpServerTool(inner)
+    {
+        public override async ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        {
+            CallToolResult result = await base.InvokeAsync(request, cancellationToken);
+            if (mode == 0)
+            {
+                result.IsError = true;
+            }
+            else
+            {
+                result.StructuredContent = ParseJson(mode == 1 ? """{"count":99}""" : result.StructuredContent!.Value.GetRawText());
+            }
+            return result;
+        }
+    }
+
     private sealed class RequestStateTool(McpServerTool inner, McpServerTool? temporaryMatch, Action? afterInvocation)
         : DelegatingMcpServerTool(inner)
     {
@@ -1414,6 +1725,20 @@ public partial class DelegatingToolOutputSchemaTests
                 IsError = result.IsError,
                 Meta = result.Meta,
             };
+        }
+    }
+
+    private sealed class ConcurrentInvocationTool(McpServerTool inner, bool returnSecond, Action afterInvocation)
+        : DelegatingMcpServerTool(inner)
+    {
+        public override async ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        {
+            Task<CallToolResult> first = base.InvokeAsync(request, cancellationToken).AsTask();
+            Task<CallToolResult> second = base.InvokeAsync(request, cancellationToken).AsTask();
+            CallToolResult[] results = await Task.WhenAll(first, second);
+            afterInvocation();
+            return results[returnSecond ? 1 : 0];
         }
     }
 

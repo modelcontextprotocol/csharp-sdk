@@ -1652,21 +1652,12 @@ internal sealed partial class McpServerImpl : McpServer
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken)
     {
-        // Custom delegators may transform the result or mutate the source object after
-        // invoking their inner tool. Recover against the immediate inner contract before
-        // those transformations so omitted values come from the original invocation.
-        bool hasCustomInvocation = tool is DelegatingMcpServerTool delegatingTool && delegatingTool.HasCustomInvocation;
-        McpServerTool recoveryTool = hasCustomInvocation ? delegatingTool!.InnerTool : tool;
-
         request.ClearStructuredContentRecovery();
-        request.StructuredContentRecoveryTarget = new(recoveryTool, recoveryTool.ProtocolTool.OutputSchema);
+        request.StructuredContentRecoveryTarget = new(tool, tool.ProtocolTool.OutputSchema);
         try
         {
             CallToolResult result = await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
-            if (!hasCustomInvocation)
-            {
-                request.RecoverStructuredContent(result);
-            }
+            request.RecoverStructuredContent(tool, result);
             return result;
         }
         finally
