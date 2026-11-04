@@ -36,11 +36,12 @@ internal class StreamClientSessionTransport : TransportBase
     /// <param name="loggerFactory">
     /// Optional factory for creating loggers. If null, a NullLogger is used.
     /// </param>
+    /// <param name="startReading">Whether to start reading immediately rather than after derived initialization.</param>
     /// <remarks>
-    /// This constructor starts a background task to read messages from the server output stream.
+    /// By default, this constructor starts a background task to read messages from the server output stream.
     /// The transport will be marked as connected once initialized.
     /// </remarks>
-    public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, Encoding? encoding, string endpointName, ILoggerFactory? loggerFactory)
+    public StreamClientSessionTransport(Stream serverInput, Stream serverOutput, Encoding? encoding, string endpointName, ILoggerFactory? loggerFactory, bool startReading = true)
         : base(endpointName, loggerFactory)
     {
         Throw.IfNull(serverInput);
@@ -55,6 +56,15 @@ internal class StreamClientSessionTransport : TransportBase
 
         SetConnected();
 
+        if (startReading)
+        {
+            StartReading();
+        }
+    }
+
+    /// <summary>Starts reading after state used by overridden cleanup methods has been initialized.</summary>
+    protected void StartReading()
+    {
         // Start reading messages in the background. We use the rarer pattern of new Task + Start
         // in order to ensure that the body of the task will always see _readTask initialized.
         // It is then able to reliably null it out on completion.

@@ -346,7 +346,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         JsonElement? structuredContent = CreateStructuredResponse(
             result, protocolVersion, recoverySchema, out JsonElement? originalContent,
             out JsonElement? naturalContent, sharedBudget);
-        Action<McpServerTool, CallToolResult>? recovery =
+        (List<JsonElement> Identities, Action<McpServerTool, CallToolResult> Callback)? recovery =
             sharedBudget is not null && originalContent is not null && structuredContent is not null
                 ? CreateStructuredContentRecovery(
                     result, originalContent, naturalContent, structuredContent, recoveryTarget!, protocolVersion, sharedBudget)
@@ -393,19 +393,15 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             },
         };
 
-        if (recovery is not null)
+        if (recovery is { } plan)
         {
-            request.StructuredContentRecovery += recovery;
-            if (!ReferenceEquals(request.StructuredContentRecoveryTarget, recoveryTarget))
-            {
-                request.StructuredContentRecovery -= recovery;
-            }
+            recoveryTarget!.Register(plan.Identities, plan.Callback);
         }
 
         return response;
     }
 
-    private Action<McpServerTool, CallToolResult>? CreateStructuredContentRecovery(
+    private (List<JsonElement> Identities, Action<McpServerTool, CallToolResult> Callback)? CreateStructuredContentRecovery(
         object? originalResult, JsonElement? originalContent, JsonElement? naturalContent,
         JsonElement? structuredContent,
         RequestContext<CallToolRequestParams>.StructuredContentRecoveryState recoveryTarget,
@@ -470,7 +466,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return null;
         }
 
-        return (tool, finalResult) =>
+        List<JsonElement> identities = [structuredContent!.Value];
+        foreach (var projection in projections)
+        {
+            if (projection.Content is { } content)
+            {
+                identities.Add(content);
+            }
+        }
+
+        return (identities, (tool, finalResult) =>
         {
             if (finalResult.IsError == true)
             {
@@ -492,7 +497,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             {
                 finalResult.StructuredContent = recovered;
             }
-        };
+        }
+        );
     }
 
     /// <summary>Creates a name to use based on the supplied method and naming policy.</summary>

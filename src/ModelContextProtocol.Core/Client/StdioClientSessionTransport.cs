@@ -15,13 +15,14 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     private readonly int? _processId;
 
     public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, DataReceivedEventHandler errorHandler, ILoggerFactory? loggerFactory) :
-        base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
+        base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory, startReading: false)
     {
         _options = options;
         _process = process;
         _stderrRollingLog = stderrRollingLog;
         _errorHandler = errorHandler;
         try { _processId = process.Id; } catch { }
+        StartReading();
     }
 
     /// <inheritdoc/>
@@ -91,7 +92,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         try
         {
             StdioClientTransport.DisposeProcess(
-                _process, 
+                _process,
                 processRunning: true,
                 _options.ShutdownTimeout,
                 beforeDispose: () => SetDisconnected(new ClientTransportClosedException(BuildCompletionDetails(error))));
@@ -178,7 +179,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
             Exception = error,
             ProcessId = _processId,
         };
-        
+
         try
         {
             if (StdioClientTransport.HasExited(_process))

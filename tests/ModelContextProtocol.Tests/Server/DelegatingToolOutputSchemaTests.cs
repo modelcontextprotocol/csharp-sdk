@@ -18,6 +18,104 @@ public partial class DelegatingToolOutputSchemaTests
     [InlineData("2025-06-18")]
     [InlineData("2025-11-25")]
     [InlineData("2026-07-28")]
+    public async Task CallTool_RepeatedInnerInvocations_VisitOnlyTheRetainedResultPlan(string protocolVersion)
+    {
+        McpServerTool inner = McpServerTool.Create(() => new MutableNote(), new()
+        {
+            Name = "indexed_note",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object"}"""),
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        var repeated = new ObservedRecoveryTool(inner);
+        McpServerTool tool = new SchemaOverrideTool(repeated, ParseJson("""{"required":["note"]}"""));
+        await WithClientAsync(tool, protocolVersion, async client =>
+        {
+            var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal(JsonValueKind.Null, result.StructuredContent!.Value.GetProperty("note").ValueKind);
+            Assert.Equal(1, repeated.EarlierPlanVisits);
+        });
+    }
+
+    [Theory]
+    [InlineData("2025-06-18", false)]
+    [InlineData("2025-06-18", true)]
+    [InlineData("2025-11-25", false)]
+    [InlineData("2025-11-25", true)]
+    [InlineData("2026-07-28", false)]
+    [InlineData("2026-07-28", true)]
+    public async Task CallTool_OverlappingFilterDispatches_KeepIndependentRecovery(
+        string protocolVersion, bool suspendAfterInner)
+    {
+        foreach (bool alternateHandler in new[] { false, true })
+        {
+            foreach (bool secondThrows in new[] { false, true })
+            {
+                var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                McpServerTool inner = McpServerTool.Create(() => new MutableNote(), new()
+                {
+                    Name = "overlapping_note",
+                    UseStructuredContent = true,
+                    OutputSchema = ParseJson("""{"type":"object"}"""),
+                    SerializerOptions = new(JsonSerializerDefaults.Web)
+                    {
+                        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                        TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                    },
+                });
+                McpServerTool tool = new SchemaOverrideTool(
+                    new GatedInvocationTool(inner, entered, release, suspendAfterInner, secondThrows),
+                    ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}"""));
+                await WithClientAsync(tool, protocolVersion, async client =>
+                {
+                    var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+                    Assert.NotEqual(true, result.IsError);
+                    Assert.Equal(JsonValueKind.Null, result.StructuredContent!.Value.GetProperty("note").ValueKind);
+                }, alternateHandler, options =>
+                {
+                    if (alternateHandler)
+                    {
+#pragma warning disable MCPEXP002 // Exercise overlapping dispatch through the alternate pipeline.
+                        options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
+                        {
+                            var first = next(request, cancellationToken).AsTask();
+                            await entered.Task.WaitAsync(cancellationToken);
+                            try { await next(request, cancellationToken); }
+                            catch (InvalidOperationException exception) when (exception.Message == "Second dispatch failed.") { }
+                            finally { release.TrySetResult(true); }
+                            return await first;
+                        });
+#pragma warning restore MCPEXP002
+                    }
+                    else
+                    {
+                        options.Filters.Request.CallToolFilters.Add(next => async (request, cancellationToken) =>
+                        {
+                            var first = next(request, cancellationToken).AsTask();
+                            await entered.Task.WaitAsync(cancellationToken);
+                            try { await next(request, cancellationToken); }
+                            catch (InvalidOperationException exception) when (exception.Message == "Second dispatch failed.") { }
+                            finally { release.TrySetResult(true); }
+                            return await first;
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("2025-06-18")]
+    [InlineData("2025-11-25")]
+    [InlineData("2026-07-28")]
     public async Task ListTools_DeferredRecovery_PreservesWrapperOwnedResults(string protocolVersion)
     {
         foreach (int mode in new[] { 0, 1, 2 })
@@ -1590,7 +1688,8 @@ public partial class DelegatingToolOutputSchemaTests
     }
 
     private static async Task WithClientAsync(
-        McpServerTool tool, string protocolVersion, Func<McpClient, Task> action, bool alternateHandler = false)
+        McpServerTool tool, string protocolVersion, Func<McpClient, Task> action, bool alternateHandler = false,
+        Action<McpServerOptions>? configure = null)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         cts.CancelAfter(TestConstants.DefaultTimeout);
@@ -1604,6 +1703,7 @@ public partial class DelegatingToolOutputSchemaTests
                 static (_, _) => throw new InvalidOperationException("Registered tool was not matched.");
 #pragma warning restore MCPEXP002
         }
+        configure?.Invoke(options);
         await using var server = McpServer.Create(
             new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream()),
             options);
@@ -1739,6 +1839,64 @@ public partial class DelegatingToolOutputSchemaTests
             CallToolResult[] results = await Task.WhenAll(first, second);
             afterInvocation();
             return results[returnSecond ? 1 : 0];
+        }
+    }
+
+    private sealed class GatedInvocationTool(
+        McpServerTool inner, TaskCompletionSource<bool> entered, TaskCompletionSource<bool> release,
+        bool suspendAfterInner, bool secondThrows) : DelegatingMcpServerTool(inner)
+    {
+        private int _calls;
+
+        public override async ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        {
+            bool first = Interlocked.Increment(ref _calls) == 1;
+            if (!first && secondThrows)
+            {
+                throw new InvalidOperationException("Second dispatch failed.");
+            }
+            if (first && !suspendAfterInner)
+            {
+                entered.TrySetResult(true);
+                await release.Task.WaitAsync(cancellationToken);
+            }
+            CallToolResult result = await base.InvokeAsync(request, cancellationToken);
+            if (first && suspendAfterInner)
+            {
+                entered.TrySetResult(true);
+                await release.Task.WaitAsync(cancellationToken);
+            }
+            return result;
+        }
+    }
+
+    private sealed class ObservedRecoveryTool(McpServerTool inner) : DelegatingMcpServerTool(inner)
+    {
+        public int EarlierPlanVisits { get; private set; }
+
+        public override async ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        {
+            CallToolResult first = await base.InvokeAsync(request, cancellationToken);
+            object target = typeof(RequestContext<CallToolRequestParams>)
+                .GetProperty("StructuredContentRecoveryTarget", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(request)!;
+            var plans = (Dictionary<JsonElement, Action<McpServerTool, CallToolResult>>)target.GetType()
+                .GetField("_plans", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
+            var original = plans[first.StructuredContent!.Value];
+            JsonElement[] identities = plans.Where(entry => ReferenceEquals(entry.Value, original)).Select(entry => entry.Key).ToArray();
+            Action<McpServerTool, CallToolResult> observed = (tool, result) =>
+            {
+                EarlierPlanVisits++;
+                original(tool, result);
+            };
+            target.GetType().GetMethod("Register", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(target, [identities, observed]);
+            for (int i = 1; i < 32; i++)
+            {
+                await base.InvokeAsync(request, cancellationToken);
+            }
+            return first;
         }
     }
 

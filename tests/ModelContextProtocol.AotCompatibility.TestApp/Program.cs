@@ -260,6 +260,42 @@ forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(
     mutableCountTool,
     JsonDocument.Parse("""{"type":"object","required":["count"],"properties":{"count":{"type":"integer"}}}""").RootElement,
     afterInvocation: () => mutableCount.Count = 42));
+var firstDispatchEntered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+var releaseFirstDispatch = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+int dispatchCount = 0;
+McpServerTool overlappingTool = McpServerTool.Create(async (CancellationToken cancellationToken) =>
+{
+    if (Interlocked.Increment(ref dispatchCount) == 1)
+    {
+        firstDispatchEntered.TrySetResult(true);
+        await releaseFirstDispatch.Task.WaitAsync(cancellationToken);
+    }
+    return new AotNullableChild();
+}, new()
+{
+    Name = "OverlappingForwardingNote",
+    UseStructuredContent = true,
+    SerializerOptions = structuredOptions,
+    OutputSchema = JsonDocument.Parse("""{"type":"object"}""").RootElement,
+});
+forwardingRecoveryTools.Add(new ForwardingSchemaAotTool(
+    overlappingTool,
+    JsonDocument.Parse("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""").RootElement));
+services.Configure<McpServerOptions>(options =>
+{
+    options.Filters.Request.CallToolFilters.Add(next => async (request, cancellationToken) =>
+    {
+        if (request.Params?.Name != "OverlappingForwardingNote")
+        {
+            return await next(request, cancellationToken);
+        }
+        var first = next(request, cancellationToken).AsTask();
+        await firstDispatchEntered.Task.WaitAsync(cancellationToken);
+        try { await next(request, cancellationToken); }
+        finally { releaseFirstDispatch.TrySetResult(true); }
+        return await first;
+    });
+});
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
@@ -456,6 +492,14 @@ if (mutableCountResult.IsError == true ||
     mutableCount.Count != 42)
 {
     throw new Exception($"Unexpected captured forwarding recovery output: {mutableCountResult.StructuredContent}");
+}
+
+var overlappingResult = await client.CallToolAsync("OverlappingForwardingNote");
+if (dispatchCount != 4 ||
+    overlappingResult.IsError == true ||
+    overlappingResult.StructuredContent?.GetProperty("note").ValueKind != JsonValueKind.Null)
+{
+    throw new Exception($"Unexpected overlapping dispatch recovery output: {overlappingResult.StructuredContent}");
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");

@@ -1643,17 +1643,19 @@ internal sealed partial class McpServerImpl : McpServer
         McpServerTool tool,
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken) =>
-        tool is DelegatingMcpServerTool
-            ? InvokeDelegatingToolAsync(tool, request, cancellationToken)
+        tool is DelegatingMcpServerTool || request.StructuredContentRecoveryTarget is not null
+            ? InvokeToolWithRecoveryAsync(tool, request, cancellationToken)
             : tool.InvokeAsync(request, cancellationToken);
 
-    private static async ValueTask<CallToolResult> InvokeDelegatingToolAsync(
+    private static async ValueTask<CallToolResult> InvokeToolWithRecoveryAsync(
         McpServerTool tool,
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken)
     {
-        request.ClearStructuredContentRecovery();
-        request.StructuredContentRecoveryTarget = new(tool, tool.ProtocolTool.OutputSchema);
+        var previousTarget = request.StructuredContentRecoveryTarget;
+        var recoveryTarget = new RequestContext<CallToolRequestParams>.StructuredContentRecoveryState(
+            tool, tool.ProtocolTool.OutputSchema);
+        request.StructuredContentRecoveryTarget = recoveryTarget;
         try
         {
             CallToolResult result = await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
@@ -1662,8 +1664,8 @@ internal sealed partial class McpServerImpl : McpServer
         }
         finally
         {
-            request.StructuredContentRecoveryTarget = null;
-            request.ClearStructuredContentRecovery();
+            recoveryTarget.Clear();
+            request.StructuredContentRecoveryTarget = previousTarget;
         }
     }
 

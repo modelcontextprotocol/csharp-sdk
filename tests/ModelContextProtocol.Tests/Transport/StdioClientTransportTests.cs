@@ -13,6 +13,22 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
 {
     public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
 
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task ConnectAsync_ImmediatelyExitedProcesses_CompleteTheirReaders()
+    {
+        await Task.WhenAll(Enumerable.Range(0, 16).Select(async _ =>
+        {
+            StdioClientTransport transport = PlatformDetection.IsWindows ?
+                new(new() { Command = "cmd", Arguments = ["/c", "exit /b 0"] }, LoggerFactory) :
+                new(new() { Command = "sh", Arguments = ["-c", "exit 0"] }, LoggerFactory);
+
+            await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+            var exception = await Assert.ThrowsAsync<ClientTransportClosedException>(
+                () => session.MessageReader.Completion.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+            Assert.IsType<StdioClientCompletionDetails>(exception.Details);
+        }));
+    }
+
     [Fact]
     public async Task DisposeAsync_ClosesServerStandardInputForGracefulExit()
     {
@@ -118,39 +134,23 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
     }
 
-    [Fact(Skip= "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
     public async Task CreateAsync_ValidProcessInvalidServer_StdErrCallbackInvoked()
     {
         string id = Guid.NewGuid().ToString("N");
 
-        int count = 0;
-        StringBuilder sb = new();
-        Action<string> stdErrCallback = line =>
-        {
-            Assert.NotNull(line);
-            lock (sb)
-            {
-                sb.AppendLine(line);
-                count++;
-            }
-        };
+        var stderr = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Action<string> stdErrCallback = line => stderr.TrySetResult(line);
 
         StdioClientTransport transport = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ?
             new(new() { Command = "cmd", Arguments = ["/c", $"echo {id} >&2 & exit /b 1"], StandardErrorLines = stdErrCallback }, LoggerFactory) :
             new(new() { Command = "sh", Arguments = ["-c", $"echo {id} >&2; exit 1"], StandardErrorLines = stdErrCallback }, LoggerFactory);
 
-        await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(
+            transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken))
+            .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
-        // The stderr reading thread may not have delivered the callback yet
-        // after the IOException is thrown. Poll briefly for it to arrive.
-        var deadline = DateTime.UtcNow + TestConstants.DefaultTimeout;
-        while (Volatile.Read(ref count) == 0 && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(50, TestContext.Current.CancellationToken);
-        }
-
-        Assert.InRange(count, 1, int.MaxValue);
-        Assert.Contains(id, sb.ToString());
+        Assert.Contains(id, await stderr.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
     }
 
     [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
