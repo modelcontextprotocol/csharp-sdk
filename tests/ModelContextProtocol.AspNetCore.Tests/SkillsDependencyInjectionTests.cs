@@ -135,7 +135,8 @@ public class SkillsDependencyInjectionTests(ITestOutputHelper output) : KestrelI
         var app = Builder.Build();
         app.Use(async (context, next) =>
         {
-            context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "reader")], "Test"));
+            context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.Name, "reader"), new Claim(ClaimTypes.NameIdentifier, "reader")], "Test"));
             var dependency = context.RequestServices.GetRequiredService<RequestDependency>();
             dependency.State = MiddlewareState;
             dependency.HttpRequestServices = context.RequestServices;
