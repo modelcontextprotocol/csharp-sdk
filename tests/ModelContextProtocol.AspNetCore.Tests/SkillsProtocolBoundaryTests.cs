@@ -17,7 +17,7 @@ public class SkillsProtocolBoundaryTests(ITestOutputHelper output) : KestrelInMe
     [InlineData(true, "2025-11-25", true)]
     [InlineData(true, "2026-07-28", false)]
     [InlineData(true, "2026-07-28", true)]
-    public async Task CustomTypedHandlersHaveNoImplicitMrtrOnStatelessHttp(bool stateless, string version, bool sampling)
+    public async Task DirectCallbacksUseLegacyStatefulHttp_AndAreRejectedOnStatelessHttp(bool stateless, string version, bool sampling)
     {
         Exception? localError = null;
         Builder.Services.AddMcpServer().WithHttpTransport(options => options.SessionMode =

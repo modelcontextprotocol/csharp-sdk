@@ -39,6 +39,7 @@ public static class McpSkillsBuilderExtensions
     /// application policy. Server-local primitive metadata is not interpreted as authorization.
     /// </para>
     /// </remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static IMcpServerBuilder WithSkills(this IMcpServerBuilder builder, Action<McpSkillsOptions>? configure = null)
     {
 #if NET
@@ -66,6 +67,7 @@ public static class McpSkillsBuilderExtensions
     /// without replacement. No file resources are registered. Configure runtime behavior separately through
     /// <see cref="WithSkills(IMcpServerBuilder, Action{McpSkillsOptions})"/>.
     /// </remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static IMcpServerBuilder WithSkills(
         this IMcpServerBuilder builder,
         IEnumerable<McpServerSkill> skills)
@@ -102,6 +104,7 @@ public static class McpSkillsBuilderExtensions
     /// Applications own manifest/content agreement after overrides. Configure runtime behavior with
     /// <see cref="WithSkills(IMcpServerBuilder, Action{McpSkillsOptions})"/>.
     /// </remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static IMcpServerBuilder WithSkillPackages(this IMcpServerBuilder builder, IEnumerable<McpServerSkillPackage> packages)
     {
 #if NET
@@ -125,6 +128,7 @@ public static class McpSkillsBuilderExtensions
     /// <param name="options">Optional package-authoring settings.</param>
     /// <returns>The supplied builder.</returns>
     /// <remarks>Authoring is synchronous and eager. See <see cref="McpServerSkillPackage.CreateFromDirectory"/>.</remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static IMcpServerBuilder WithSkillFromDirectory(
         this IMcpServerBuilder builder, string directoryPath, McpServerSkillPackageCreateOptions? options = null)
     {
@@ -138,6 +142,7 @@ public static class McpSkillsBuilderExtensions
     /// <param name="options">Optional common package-discovery settings.</param>
     /// <returns>The supplied builder.</returns>
     /// <remarks>Authoring and batch validation finish before registration. See <see cref="McpServerSkillPackage.CreateFromSubdirectories"/>.</remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static IMcpServerBuilder WithSkillsFromSubdirectories(
         this IMcpServerBuilder builder, string directoryPath, McpServerSkillPackageDiscoveryOptions? options = null)
     {

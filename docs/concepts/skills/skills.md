@@ -419,10 +419,6 @@ Low-level `McpServerOptions.RequestHandlers` callbacks own their JSON. Typed Ski
 and shapes protocol/cache fields. Invalid request parameters use `InvalidParams`; server-result failures retain
 Core's generic internal-error wire response and local diagnostics.
 
-Custom methods do not install implicit multi-round-trip request (MRTR) continuations. Direct sampling/elicitation
-requires a supported stateful channel; stateless HTTP has none. Do not rely on legacy stream compatibility as
-a portable 2026-07-28 continuation contract.
-
 #### Protocol versions and caching hints
 
 For `2026-07-28+`, both methods emit `resultType: "complete"` and default unset cache hints to `ttlMs: 0` and

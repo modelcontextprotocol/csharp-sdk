@@ -1,5 +1,7 @@
 using ModelContextProtocol.Extensions.Skills;
 using ModelContextProtocol.Protocol;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -12,16 +14,24 @@ namespace ModelContextProtocol.Tests.Protocol;
 public class SkillSerializationTests
 {
     [Fact]
-    public void PublicSkillsTypesUseTheDedicatedExperimentalDiagnostic()
+    public void PublicSkillsApisUseTheDedicatedExperimentalDiagnostic()
     {
         Assert.All(typeof(Skill).Assembly.GetExportedTypes(), type =>
         {
-            var attribute = Assert.Single(type.GetCustomAttributesData(),
+            AssertExperimental(type);
+            // Extension calls do not name the containing type, so methods need their own diagnostic.
+            Assert.All(type.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Where(method => method.IsDefined(typeof(ExtensionAttribute), inherit: false)), AssertExperimental);
+        });
+
+        static void AssertExperimental(MemberInfo member)
+        {
+            var attribute = Assert.Single(member.GetCustomAttributesData(),
                 attribute => attribute.AttributeType.FullName == "System.Diagnostics.CodeAnalysis.ExperimentalAttribute");
             Assert.Equal("MCPEXP005", Assert.Single(attribute.ConstructorArguments).Value);
             Assert.Equal("https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp005",
                 Assert.Single(attribute.NamedArguments, argument => argument.MemberName == "UrlFormat").TypedValue.Value);
-        });
+        }
     }
 
     private Skill CreateEntry(SkillResources resources) => new()

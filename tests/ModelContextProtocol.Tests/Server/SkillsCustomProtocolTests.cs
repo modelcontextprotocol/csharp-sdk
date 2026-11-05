@@ -6,10 +6,8 @@ namespace ModelContextProtocol.Tests.Server;
 
 public class SkillsCustomProtocolTests(ITestOutputHelper output) : ClientServerTestBase(output, startServer: false)
 {
-    [Theory]
-    [InlineData("2025-11-25")]
-    [InlineData("2026-07-28")]
-    public async Task StatefulStreamCallbacksUseDirectLegacyRequests_NotImplicitMrtr(string version)
+    [Fact]
+    public async Task LegacyStatefulStreamSupportsDirectSamplingAndElicitation()
     {
         McpServerBuilder.WithSkills(options => options.ListSkillsHandler = async (context, cancellationToken) =>
         {
@@ -21,7 +19,7 @@ public class SkillsCustomProtocolTests(ITestOutputHelper output) : ClientServerT
         StartServer();
         int samples = 0, elicitations = 0;
         var clientOptions = TestMcpClient.CreateOptions();
-        clientOptions.ProtocolVersion = version;
+        clientOptions.ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion;
         clientOptions.Handlers.SamplingHandler = (_, _, _) =>
         {
             samples++;
@@ -40,7 +38,6 @@ public class SkillsCustomProtocolTests(ITestOutputHelper output) : ClientServerT
         Assert.Equal(1, samples);
         Assert.Equal(1, elicitations);
         Assert.Null(response.Result!["inputRequests"]);
-        Assert.Equal(version == McpProtocolVersions.July2026ProtocolVersion ? "complete" : null,
-            response.Result["resultType"]?.GetValue<string>());
+        Assert.Null(response.Result["resultType"]);
     }
 }

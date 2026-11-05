@@ -26,6 +26,7 @@ public static class McpSkillsClientExtensions
     /// Clients must issue <c>skills/list</c> and <c>skills/get</c> only after observing the server's declaration.
     /// The list and get methods in this class throw <see cref="InvalidOperationException"/> when it is absent.
     /// </remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static bool SupportsSkills(this ServerCapabilities capabilities)
     {
 #if NET
@@ -59,6 +60,7 @@ public static class McpSkillsClientExtensions
     /// enforce application-owned pagination budgets.
     /// </para>
     /// </remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static async ValueTask<IList<Skill>> ListSkillsAsync(
         this McpClient client,
         RequestOptions? options = null,
@@ -94,6 +96,7 @@ public static class McpSkillsClientExtensions
     /// <see cref="ListSkillsAsync(McpClient, RequestOptions?, CancellationToken)"/> to retrieve all listing pages.
     /// An empty page does not establish that the server serves no skills; a skill can also be retrieved directly by URI.
     /// </remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static async ValueTask<ListSkillsResult> ListSkillsAsync(
         this McpClient client,
         ListSkillsRequestParams requestParams,
@@ -146,6 +149,7 @@ public static class McpSkillsClientExtensions
     /// confirm a URI referenced from server instructions or another skill, and to refresh one skill's manifest
     /// without re-enumerating the catalog.
     /// </remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static async ValueTask<Skill> GetSkillAsync(this McpClient client, string uri, RequestOptions? options = null, CancellationToken cancellationToken = default)
     {
 #if NET
@@ -171,6 +175,7 @@ public static class McpSkillsClientExtensions
     /// The request failed or the server returned an error response.
     /// </exception>
     /// <exception cref="InvalidDataException">The entry is invalid or has a different URI than the one requested.</exception>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static async ValueTask<GetSkillResult> GetSkillAsync(
         this McpClient client,
         GetSkillRequestParams requestParams,
@@ -237,6 +242,7 @@ public static class McpSkillsClientExtensions
     /// <see cref="Skill.Frontmatter"/> before loading. A digest match does not perform or replace that check.
     /// </para>
     /// </remarks>
+    [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static async ValueTask<ReadResourceResult> ReadSkillResourceAsync(
         this McpClient client,
         Skill skill,
