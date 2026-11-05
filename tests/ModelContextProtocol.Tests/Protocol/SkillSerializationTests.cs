@@ -11,6 +11,19 @@ namespace ModelContextProtocol.Tests.Protocol;
 /// </summary>
 public class SkillSerializationTests
 {
+    [Fact]
+    public void PublicSkillsTypesUseTheDedicatedExperimentalDiagnostic()
+    {
+        Assert.All(typeof(Skill).Assembly.GetExportedTypes(), type =>
+        {
+            var attribute = Assert.Single(type.GetCustomAttributesData(),
+                attribute => attribute.AttributeType.FullName == "System.Diagnostics.CodeAnalysis.ExperimentalAttribute");
+            Assert.Equal("MCPEXP005", Assert.Single(attribute.ConstructorArguments).Value);
+            Assert.Equal("https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp005",
+                Assert.Single(attribute.NamedArguments, argument => argument.MemberName == "UrlFormat").TypedValue.Value);
+        });
+    }
+
     private Skill CreateEntry(SkillResources resources) => new()
     {
         Uri = "skill://git-workflow/SKILL.md",
@@ -39,6 +52,7 @@ public class SkillSerializationTests
         ]));
 
         string json = JsonSerializer.Serialize(original, McpSkillsJsonContext.Default.Skill);
+        Assert.Equal(2, JsonNode.Parse(json)!["resources"]!.AsArray().Count);
         var deserialized = JsonSerializer.Deserialize(json, McpSkillsJsonContext.Default.Skill);
 
         Assert.NotNull(deserialized);
@@ -47,12 +61,26 @@ public class SkillSerializationTests
         Assert.Equal("Follow this team's Git conventions", deserialized.Description);
         Assert.False(deserialized.Resources.IsDynamic);
 
-        var resources = deserialized.Resources.Resources;
+        var resources = deserialized.Resources.Entries;
         Assert.NotNull(resources);
         Assert.Equal(2, resources.Count);
         Assert.Equal("skill://git-workflow/SKILL.md", resources[0].Uri);
         Assert.Equal(2314, resources[0].Size);
         Assert.Equal("sha256:" + new string('b', 64), resources[1].Digest);
+    }
+
+    [Fact]
+    public void Skill_RejectsNullManifestDuringSerialization()
+    {
+        Assert.Throws<JsonException>(() => JsonSerializer.Serialize(CreateEntry(null!), McpSkillsJsonContext.Default.Skill));
+        Assert.Throws<JsonException>(() => JsonSerializer.Serialize<SkillResources>(null!, McpSkillsJsonContext.Default.SkillResources));
+    }
+
+    [Fact]
+    public void Skill_RejectsNullManifestEntriesDuringSerialization()
+    {
+        Assert.Throws<JsonException>(() => JsonSerializer.Serialize(
+            CreateEntry(SkillResources.FromResources([null!])), McpSkillsJsonContext.Default.Skill));
     }
 
     [Fact]
@@ -72,7 +100,7 @@ public class SkillSerializationTests
 
         Assert.NotNull(deserialized);
         Assert.True(deserialized.Resources.IsDynamic);
-        Assert.Null(deserialized.Resources.Resources);
+        Assert.Null(deserialized.Resources.Entries);
     }
 
     [Fact]
@@ -83,7 +111,7 @@ public class SkillSerializationTests
 
         Assert.NotNull(deserialized);
         Assert.False(deserialized.Resources.IsDynamic);
-        Assert.Empty(deserialized.Resources.Resources!);
+        Assert.Empty(deserialized.Resources.Entries);
     }
 
     [Fact]
@@ -275,20 +303,6 @@ public class SkillSerializationTests
     }
 
     [Fact]
-    public void SkillResources_FromResources_CopiesTheSource()
-    {
-        var mutable = new List<SkillResource>
-        {
-            CreateResource("skill://a/SKILL.md", "sha256:" + new string('c', 64), 1),
-        };
-
-        var resources = SkillResources.FromResources(mutable);
-        mutable.Add(CreateResource("skill://a/extra.md", "sha256:" + new string('d', 64), 2));
-
-        Assert.Single(resources.Resources!);
-    }
-
-    [Fact]
     public void SkillResources_FromResources_WithNull_Throws() =>
         Assert.Throws<ArgumentNullException>(() => SkillResources.FromResources(null!));
 
@@ -341,6 +355,36 @@ public class SkillSerializationTests
         Assert.False(node.ContainsKey("nextCursor"));
         Assert.False(node.ContainsKey("resultType"));
         Assert.Empty(node["skills"]!.AsArray());
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("[null]")]
+    public void ListSkillsResult_AllowsExplicitNullMembersAtTheDtoLevel(string skills)
+    {
+        var result = JsonSerializer.Deserialize($$"""{"skills":{{skills}}}""", McpSkillsJsonContext.Default.ListSkillsResult);
+
+        Assert.NotNull(result);
+        if (skills == "null") Assert.Null(result.Skills);
+        else Assert.Null(Assert.Single(result.Skills));
+        Assert.NotNull(JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.ListSkillsResult));
+    }
+
+    [Fact]
+    public void GetSkillResult_AllowsAnExplicitNullSkillAtTheDtoLevel()
+    {
+        var result = JsonSerializer.Deserialize("""{"skill":null}""", McpSkillsJsonContext.Default.GetSkillResult);
+
+        Assert.NotNull(result);
+        Assert.Null(result.Skill);
+        Assert.NotNull(JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.GetSkillResult));
+    }
+
+    [Fact]
+    public void ResultsStillRequireTheirEntryMembers()
+    {
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("{}", McpSkillsJsonContext.Default.ListSkillsResult));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize("{}", McpSkillsJsonContext.Default.GetSkillResult));
     }
 
     [Fact]

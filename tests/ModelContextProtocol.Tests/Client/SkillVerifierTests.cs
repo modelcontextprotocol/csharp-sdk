@@ -43,7 +43,7 @@ public class SkillVerifierTests
         var entry = Entry(content);
         entry.Size += 1;
 
-        var exception = Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(entry, content));
+        var exception = Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(entry, content));
         Assert.Contains("bytes", exception.Message);
     }
 
@@ -52,7 +52,7 @@ public class SkillVerifierTests
     {
         var entry = Entry(Encoding.UTF8.GetBytes("# Hello\n"));
 
-        var exception = Assert.Throws<SkillVerificationException>(() =>
+        var exception = Assert.Throws<InvalidDataException>(() =>
             SkillVerifier.Verify(entry, Encoding.UTF8.GetBytes("# Hellp\n")));
         Assert.Contains("digest", exception.Message);
     }
@@ -81,7 +81,7 @@ public class SkillVerifierTests
     {
         var entry = Entry(Encoding.UTF8.GetBytes("x"));
 
-        Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(entry, new TextResourceContents { Uri = Uri, Text = null! }));
+        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(entry, new TextResourceContents { Uri = Uri, Text = null! }));
     }
 
     [Fact]
@@ -94,11 +94,23 @@ public class SkillVerifierTests
     }
 
     [Fact]
+    public void Verify_InvalidBlobEncodingReportsInvalidDataAndPreservesItsCause()
+    {
+        var entry = Entry(Encoding.UTF8.GetBytes("x"));
+        var contents = new BlobResourceContents { Uri = Uri, Blob = Encoding.UTF8.GetBytes("not base64!") };
+
+        var error = Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(entry, contents));
+
+        Assert.IsType<FormatException>(error.InnerException);
+        Assert.Contains(Uri, error.Message);
+    }
+
+    [Fact]
     public void Verify_Contents_RejectsUriMismatch()
     {
         var entry = Entry(Encoding.UTF8.GetBytes("x"));
 
-        Assert.Throws<SkillVerificationException>(() =>
+        Assert.Throws<InvalidDataException>(() =>
             SkillVerifier.Verify(entry, new TextResourceContents { Uri = "skill://alpha/other.md", Text = "x" }));
     }
 
@@ -110,7 +122,7 @@ public class SkillVerifierTests
 
         SkillVerifier.Verify(skill, new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] });
 
-        Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill,
+        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill,
             new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "y" }] }));
     }
 
@@ -119,7 +131,7 @@ public class SkillVerifierTests
     {
         var skill = CreateSkill(Encoding.UTF8.GetBytes("x"));
 
-        var exception = Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill,
+        var exception = Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill,
             new ReadResourceResult { Contents = [new TextResourceContents { Uri = "skill://alpha/new.md", Text = "x" }] }));
         Assert.Contains("not listed", exception.Message);
     }
@@ -129,7 +141,7 @@ public class SkillVerifierTests
     {
         var skill = CreateSkill(Encoding.UTF8.GetBytes("x"));
 
-        Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill, new ReadResourceResult()));
+        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, new ReadResourceResult()));
     }
 
     [Theory]
@@ -142,9 +154,9 @@ public class SkillVerifierTests
         var result = JsonSerializer.Deserialize<ReadResourceResult>(json, McpJsonUtilities.DefaultOptions);
         Assert.NotNull(result);
 
-        var error = Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill, result));
+        var error = Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, result));
         Assert.Contains("null", error.Message);
-        Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill, Uri, result));
+        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, Uri, result));
     }
 
     [Fact]
@@ -184,12 +196,12 @@ public class SkillVerifierTests
         // A correctly digested but different file of the same skill must not satisfy a read of SKILL.md.
         var substituted = new ReadResourceResult { Contents = [new TextResourceContents { Uri = "skill://alpha/other.md", Text = "other" }] };
         SkillVerifier.Verify(skill, substituted);
-        var exception = Assert.Throws<SkillVerificationException>(() => SkillVerifier.Verify(skill, Uri, substituted));
+        var exception = Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, Uri, substituted));
         Assert.Contains("returned no contents for that URI", exception.Message);
 
         SkillVerifier.Verify(skill, Uri, new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] });
 
-        Assert.Throws<SkillVerificationException>(() =>
+        Assert.Throws<InvalidDataException>(() =>
             SkillVerifier.Verify(skill, "skill://alpha/unlisted.md", new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] }));
     }
 

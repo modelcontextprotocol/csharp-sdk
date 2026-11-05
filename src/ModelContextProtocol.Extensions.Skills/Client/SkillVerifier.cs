@@ -1,5 +1,6 @@
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -25,6 +26,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// and the content are consistent, not that either is trustworthy.
 /// </para>
 /// </remarks>
+[Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
 public static class SkillVerifier
 {
     /// <summary>
@@ -62,7 +64,7 @@ public static class SkillVerifier
     /// <param name="expected">The manifest entry.</param>
     /// <param name="content">The bytes that were read.</param>
     /// <exception cref="ArgumentNullException"><paramref name="expected"/> is <see langword="null"/>.</exception>
-    /// <exception cref="SkillVerificationException">The size or digest of <paramref name="content"/> does not match <paramref name="expected"/>.</exception>
+    /// <exception cref="InvalidDataException">The size or digest of <paramref name="content"/> does not match <paramref name="expected"/>.</exception>
     public static void Verify(SkillResource expected, ReadOnlySpan<byte> content)
     {
 #if NET
@@ -73,14 +75,14 @@ public static class SkillVerifier
 
         if (content.Length != expected.Size)
         {
-            throw new SkillVerificationException(
+            throw new InvalidDataException(
                 $"The content of '{expected.Uri}' is {content.Length} bytes, but its manifest entry declares {expected.Size} bytes.");
         }
 
         string actualDigest = ComputeDigest(content);
         if (!string.Equals(actualDigest, expected.Digest, StringComparison.OrdinalIgnoreCase))
         {
-            throw new SkillVerificationException(
+            throw new InvalidDataException(
                 $"The content of '{expected.Uri}' has digest '{actualDigest}', but its manifest entry declares '{expected.Digest}'.");
         }
     }
@@ -91,7 +93,7 @@ public static class SkillVerifier
     /// <param name="expected">The manifest entry.</param>
     /// <param name="contents">The contents that were read.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    /// <exception cref="SkillVerificationException">
+    /// <exception cref="InvalidDataException">
     /// The contents are not for <paramref name="expected"/>'s URI, are neither text nor a blob, or their size or
     /// digest does not match <paramref name="expected"/>.
     /// </exception>
@@ -108,9 +110,9 @@ public static class SkillVerifier
         if (contents is null) throw new ArgumentNullException(nameof(contents));
 #endif
 
-        if (!string.Equals(contents.Uri, expected.Uri, StringComparison.Ordinal))
+        if (!SkillUriComparer.Instance.Equals(contents.Uri, expected.Uri))
         {
-            throw new SkillVerificationException(
+            throw new InvalidDataException(
                 $"The contents are for '{contents.Uri}', but verification was requested against the manifest entry for '{expected.Uri}'.");
         }
 
@@ -119,7 +121,7 @@ public static class SkillVerifier
             case TextResourceContents text:
                 if (text.Text is null)
                 {
-                    throw new SkillVerificationException($"The text contents of '{contents.Uri}' carry no text and cannot be verified.");
+                    throw new InvalidDataException($"The text contents of '{contents.Uri}' carry no text and cannot be verified.");
                 }
 
                 Verify(expected, Encoding.UTF8.GetBytes(text.Text));
@@ -133,14 +135,14 @@ public static class SkillVerifier
                 }
                 catch (FormatException e)
                 {
-                    throw new SkillVerificationException($"The blob contents of '{contents.Uri}' are not valid Base64.", e);
+                    throw new InvalidDataException($"The blob contents of '{contents.Uri}' are not valid Base64.", e);
                 }
 
                 Verify(expected, decoded.Span);
                 break;
 
             default:
-                throw new SkillVerificationException($"The contents of '{contents.Uri}' are neither text nor a blob and cannot be verified.");
+                throw new InvalidDataException($"The contents of '{contents.Uri}' are neither text nor a blob and cannot be verified.");
         }
     }
 
@@ -151,7 +153,7 @@ public static class SkillVerifier
     /// <param name="result">The result of reading a file of the skill.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="skill"/>'s manifest is <see cref="SkillResources.Dynamic"/>, which cannot be verified.</exception>
-    /// <exception cref="SkillVerificationException">
+    /// <exception cref="InvalidDataException">
     /// The result is empty, contains a null entry or contents for a URI the manifest does not list,
     /// or contains contents whose size or digest does not match the manifest.
     /// </exception>
@@ -169,18 +171,18 @@ public static class SkillVerifier
 
         if (result.Contents is not { Count: > 0 })
         {
-            throw new SkillVerificationException($"The read returned no contents to verify against skill '{skill.Uri}'.");
+            throw new InvalidDataException($"The read returned no contents to verify against skill '{skill.Uri}'.");
         }
 
         foreach (var contents in result.Contents)
         {
             if (contents is null)
             {
-                throw new SkillVerificationException($"The read returned a null content entry for skill '{skill.Uri}'.");
+                throw new InvalidDataException($"The read returned a null content entry for skill '{skill.Uri}'.");
             }
 
             var expected = FindResource(skill, contents.Uri) ??
-                throw new SkillVerificationException(
+                throw new InvalidDataException(
                     $"'{contents.Uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +
                     "refresh the entry with skills/get before reading it.");
 
@@ -197,7 +199,7 @@ public static class SkillVerifier
     /// <param name="result">The result of the read.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="skill"/>'s manifest is <see cref="SkillResources.Dynamic"/>, which cannot be verified.</exception>
-    /// <exception cref="SkillVerificationException">
+    /// <exception cref="InvalidDataException">
     /// <paramref name="uri"/> is not listed in the manifest, the result does not contain contents for
     /// <paramref name="uri"/>, or any contents in the result fail verification per <see cref="Verify(Skill, ReadResourceResult)"/>.
     /// </exception>
@@ -221,7 +223,7 @@ public static class SkillVerifier
         ThrowIfDynamic(skill);
         if (FindResource(skill, uri) is null)
         {
-            throw new SkillVerificationException(
+            throw new InvalidDataException(
                 $"'{uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +
                 "refresh the entry with skills/get before reading it.");
         }
@@ -231,12 +233,12 @@ public static class SkillVerifier
         bool found = false;
         foreach (var contents in result.Contents)
         {
-            found |= string.Equals(contents.Uri, uri, StringComparison.Ordinal);
+            found |= SkillUriComparer.Instance.Equals(contents.Uri, uri);
         }
 
         if (!found)
         {
-            throw new SkillVerificationException(
+            throw new InvalidDataException(
                 $"The read of '{uri}' returned no contents for that URI. The server answered with a different file of skill '{skill.Uri}'.");
         }
     }
@@ -262,20 +264,26 @@ public static class SkillVerifier
 
     internal static SkillResource? FindResource(Skill skill, string uri)
     {
-        var resources = skill.Resources?.Resources;
+        var resources = skill.Resources?.Entries;
         if (resources is null)
         {
             return null;
         }
 
+        SkillResource? match = null;
         foreach (var resource in resources)
         {
-            if (string.Equals(resource.Uri, uri, StringComparison.Ordinal))
+            if (SkillUriComparer.Instance.Equals(resource.Uri, uri))
             {
-                return resource;
+                if (match is not null)
+                {
+                    throw new InvalidDataException($"The manifest contains ambiguous entries for '{uri}'.");
+                }
+
+                match = resource;
             }
         }
 
-        return null;
+        return match;
     }
 }

@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Extensions.Skills;
@@ -16,10 +17,11 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// An entry is atomic: a skill's manifest is never split across pages.
 /// </para>
 /// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx">Skills extension specification</see>
+/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/beta/skills.mdx">Skills extension specification</see>
 /// for details.
 /// </para>
 /// </remarks>
+[Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
 public sealed class ListSkillsResult : PaginatedResult, ICacheableResult
 {
     /// <summary>
