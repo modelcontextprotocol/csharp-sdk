@@ -23,7 +23,7 @@ If you can't find an existing issue, please [open a new issue on GitHub](https:/
 
 Before you begin, ensure you have the following installed:
 
-- **.NET SDK 10.0 or later** - Required to build and test the project
+- **.NET SDK 10.0.403 or later** - Required to build and test the project
   - Download from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download)
   - Verify installation: `dotnet --version`
 - **Node.js 22 or later and npm** - Required for integration and conformance tests
