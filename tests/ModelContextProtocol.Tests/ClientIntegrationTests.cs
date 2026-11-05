@@ -63,6 +63,18 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
 
     [Theory]
     [MemberData(nameof(GetClients))]
+    public async Task ConnectConcurrently_Stdio(string clientId)
+    {
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
+        {
+            await using var client = await _fixture.CreateClientAsync(clientId);
+            var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.NotEmpty(tools);
+        }));
+    }
+
+    [Theory]
+    [MemberData(nameof(GetClients))]
     public async Task ListTools_Stdio(string clientId)
     {
         // arrange
@@ -464,8 +476,8 @@ public partial class ClientIntegrationTests : LoggedTest, IClassFixture<ClientIn
         // arrange
         StdioClientTransportOptions stdioOptions = new()
         {
-            Command = "npx",
-            Arguments = ["-y", "@modelcontextprotocol/server-memory"],
+            Command = "node",
+            Arguments = [NodeHelpers.GetTestServerScriptPath("memory")],
             Name = "memory",
         };
 
