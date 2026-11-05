@@ -105,6 +105,19 @@ public partial class McpClientResourceTemplateTests : ClientServerTestBase
         Assert.Equal(expectedUri, actualUri);
     }
 
+    // Not InlineData: attribute strings are stored as UTF-8, which would turn a lone surrogate into U+FFFD.
+    [Fact]
+    public async Task ReservedExpansion_LoneSurrogate_EncodesReplacementCharacter()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+
+        var result = await client.ReadResourceAsync(
+            "test://resource/{+name}", new Dictionary<string, object?> { ["name"] = "\uD83D" }, null, TestContext.Current.CancellationToken);
+
+        var actualUri = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text;
+        Assert.Equal("test://resource/%EF%BF%BD", actualUri);
+    }
+
     public class TestGroup
     {
         [JsonPropertyName("level")]
