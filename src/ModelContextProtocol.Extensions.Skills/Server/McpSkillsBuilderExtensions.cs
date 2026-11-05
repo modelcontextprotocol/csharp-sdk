@@ -440,9 +440,10 @@ public static class McpSkillsBuilderExtensions
             });
         }
 
-        private async ValueTask<JsonNode?> HandleListSkillsAsync(JsonRpcRequest request, CancellationToken cancellationToken)
+        private async ValueTask<JsonNode?> HandleListSkillsAsync(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
-            var requestParams = DeserializeParams(request, McpSkillsJsonContext.Default.ListSkillsRequestParams);
+            var request = context.JsonRpcRequest;
+            var requestParams = DeserializeParams(context, McpSkillsJsonContext.Default.ListSkillsRequestParams);
             var page = await catalog.ListAsync(requestParams?.Cursor, new McpSkillRequestContext(request), cancellationToken).ConfigureAwait(false);
             // The sealed built-in catalog validates its owned snapshots at construction.
             if (catalog is not InMemoryMcpSkillCatalog)
@@ -473,9 +474,10 @@ public static class McpSkillsBuilderExtensions
             return JsonSerializer.SerializeToNode(result, McpSkillsJsonContext.Default.ListSkillsResult);
         }
 
-        private async ValueTask<JsonNode?> HandleGetSkillAsync(JsonRpcRequest request, CancellationToken cancellationToken)
+        private async ValueTask<JsonNode?> HandleGetSkillAsync(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
-            var requestParams = DeserializeParams(request, McpSkillsJsonContext.Default.GetSkillRequestParams);
+            var request = context.JsonRpcRequest;
+            var requestParams = DeserializeParams(context, McpSkillsJsonContext.Default.GetSkillRequestParams);
             if (string.IsNullOrEmpty(requestParams?.Uri))
             {
                 throw new McpProtocolException("The 'uri' parameter is required.", McpErrorCode.InvalidParams);
@@ -521,20 +523,20 @@ public static class McpSkillsBuilderExtensions
             }
         }
 
-        private static T? DeserializeParams<T>(JsonRpcRequest request, JsonTypeInfo<T> typeInfo) where T : class
+        private static T? DeserializeParams<T>(RequestContext<JsonNode?> context, JsonTypeInfo<T> typeInfo) where T : class
         {
-            if (request.Params is null)
+            if (context.Params is null)
             {
                 return null;
             }
 
             try
             {
-                return JsonSerializer.Deserialize(request.Params, typeInfo);
+                return JsonSerializer.Deserialize(context.Params, typeInfo);
             }
             catch (JsonException e)
             {
-                throw new McpProtocolException($"Invalid parameters for '{request.Method}': {e.Message}", McpErrorCode.InvalidParams);
+                throw new McpProtocolException($"Invalid parameters for '{context.JsonRpcRequest.Method}': {e.Message}", McpErrorCode.InvalidParams);
             }
         }
 
