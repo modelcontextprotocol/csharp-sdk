@@ -32,6 +32,20 @@ public static class NodeHelpers
     }
 
     /// <summary>
+    /// Gets the entry point of a test server installed by 'npm ci', without invoking npm during tests.
+    /// </summary>
+    public static string GetTestServerScriptPath(string serverName)
+    {
+        var scriptPath = Path.Combine(FindRepoRoot(), "node_modules", "@modelcontextprotocol", $"server-{serverName}", "dist", "index.js");
+        if (!File.Exists(scriptPath))
+        {
+            throw new FileNotFoundException("Test server is not installed. Run 'npm ci' from the repository root before running tests.", scriptPath);
+        }
+
+        return scriptPath;
+    }
+
+    /// <summary>
     /// Ensures npm dependencies are installed by running 'npm ci' from the repo root.
     /// This is safe to call multiple times; it only runs once per test process.
     /// </summary>
