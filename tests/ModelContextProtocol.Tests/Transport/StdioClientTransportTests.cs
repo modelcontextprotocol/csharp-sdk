@@ -14,6 +14,63 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
 
     [Fact]
+    public async Task DisposeAsync_ClosesServerStandardInputForGracefulExit()
+    {
+        string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
+        string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
+
+        StdioClientTransport transport = new(new()
+        {
+            Name = "TestServer",
+            Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => "mono",
+                (_, true) => testServerExecutable,
+                _ => "dotnet",
+            },
+            Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => [testServerExecutable],
+                (_, true) => [],
+                _ => [testServerDll],
+            },
+            ShutdownTimeout = TestConstants.DefaultTimeout,
+        }, LoggerFactory);
+
+        await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        // Complete initialization so the shutdown budget does not include process startup.
+        var initializeRequest = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.Initialize,
+            Params = JsonSerializer.SerializeToNode(new InitializeRequestParams
+            {
+                ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                Capabilities = new ClientCapabilities(),
+                ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
+            }, McpJsonUtilities.DefaultOptions),
+        };
+        await session.SendMessageAsync(initializeRequest, TestContext.Current.CancellationToken);
+        var response = await session.MessageReader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(
+            TestConstants.DefaultTimeout,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(initializeRequest.Id, Assert.IsType<JsonRpcResponse>(response).Id);
+        await session.SendMessageAsync(
+            new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
+            TestContext.Current.CancellationToken);
+
+        await session.DisposeAsync();
+
+        var exception = await Assert.ThrowsAsync<ClientTransportClosedException>(
+            async () => await session.MessageReader.Completion);
+        var completionDetails = Assert.IsType<StdioClientCompletionDetails>(exception.Details);
+        // A zero exit code proves the server observed stdin EOF and exited on its own
+        // instead of being terminated after ShutdownTimeout.
+        Assert.Equal(0, completionDetails.ExitCode);
+    }
+
+    [Fact]
     public async Task ConnectAsync_DoesNotLogEnvironmentVariablesAtTrace()
     {
         string secretName = $"MCP_TEST_SECRET_{Guid.NewGuid():N}";

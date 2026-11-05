@@ -26,6 +26,9 @@ Before you begin, ensure you have the following installed:
 - **.NET SDK 10.0 or later** - Required to build and test the project
   - Download from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download)
   - Verify installation: `dotnet --version`
+- **Node.js 22 or later and npm** - Required for integration and conformance tests
+  - Run `npm ci` from the repository root before running tests to install the pinned test dependencies.
+  - Integration tests launch the installed servers directly with `node`, avoiding npm installation and shared-cache access during parallel tests.
 
 The dev container configuration in this repository includes all the necessary tools and SDKs to get started quickly.
 
@@ -96,6 +99,12 @@ The test projects include shared infrastructure in `tests/Common/Utils/` that mo
 #### Timeouts
 
 Use `TestConstants.DefaultTimeout` (60 seconds) rather than hardcoded values. CI machines are often slower than developer workstations, and short timeouts cause flaky failures.
+
+For direct client connections to controlled test servers that respond to discovery, use `TestMcpClient.CreateAsync`.
+It disables the separate discovery probe timeout while retaining the overall `TestConstants.DefaultTimeout` initialization deadline.
+If configuring client options, start with `TestMcpClient.CreateOptions()` before applying test-specific settings; explicitly supplied options are otherwise preserved unchanged.
+Do not use these defaults in discovery-timeout tests or with servers that silently ignore discovery, since those rely on the probe timeout for fallback.
+For a mock that only implements the legacy initialize handshake, explicitly select its supported protocol version instead of waiting for discovery to time out.
 
 ```csharp
 // Good

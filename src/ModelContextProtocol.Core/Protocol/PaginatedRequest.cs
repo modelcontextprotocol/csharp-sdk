@@ -10,8 +10,14 @@ namespace ModelContextProtocol.Protocol;
 /// </remarks>
 public abstract class PaginatedRequestParams : RequestParams
 {
-    /// <summary>Prevent external derivations.</summary>
-    private protected PaginatedRequestParams()
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PaginatedRequestParams"/> class.
+    /// </summary>
+    /// <remarks>
+    /// This constructor is <see langword="protected"/> rather than <c>private protected</c> so that extension
+    /// packages implementing paginated methods defined outside the core specification can derive from it.
+    /// </remarks>
+    protected PaginatedRequestParams()
     {
     }
 
