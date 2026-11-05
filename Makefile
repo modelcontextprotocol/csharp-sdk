@@ -18,6 +18,7 @@ build: restore
 test: build
 	dotnet test \
 		--no-build \
+		-p:TestTfmsInParallel=false \
 		--configuration $(CONFIGURATION) \
 		--filter '(Execution!=Manual)' \
 		--blame \

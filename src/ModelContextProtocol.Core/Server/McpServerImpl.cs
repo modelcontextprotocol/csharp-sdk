@@ -1603,7 +1603,7 @@ internal sealed partial class McpServerImpl : McpServer
                 {
                     if (request.MatchedPrimitive is McpServerTool tool)
                     {
-                        return tool.InvokeAsync(request, cancellationToken);
+                        return InvokeToolAsync(tool, request, cancellationToken);
                     }
 
                     return originalHandler(request, cancellationToken);
@@ -1636,7 +1636,37 @@ internal sealed partial class McpServerImpl : McpServer
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken)
     {
-        return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+        return await InvokeToolAsync(tool, request, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static ValueTask<CallToolResult> InvokeToolAsync(
+        McpServerTool tool,
+        RequestContext<CallToolRequestParams> request,
+        CancellationToken cancellationToken) =>
+        tool is DelegatingMcpServerTool || request.StructuredContentRecoveryTarget is not null
+            ? InvokeToolWithRecoveryAsync(tool, request, cancellationToken)
+            : tool.InvokeAsync(request, cancellationToken);
+
+    private static async ValueTask<CallToolResult> InvokeToolWithRecoveryAsync(
+        McpServerTool tool,
+        RequestContext<CallToolRequestParams> request,
+        CancellationToken cancellationToken)
+    {
+        var previousTarget = request.StructuredContentRecoveryTarget;
+        var recoveryTarget = new RequestContext<CallToolRequestParams>.StructuredContentRecoveryState(
+            tool, tool.ProtocolTool.OutputSchema);
+        request.StructuredContentRecoveryTarget = recoveryTarget;
+        try
+        {
+            CallToolResult result = await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+            request.RecoverStructuredContent(tool, result);
+            return result;
+        }
+        finally
+        {
+            recoveryTarget.Clear();
+            request.StructuredContentRecoveryTarget = previousTarget;
+        }
     }
 
     private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildComposedCallToolHandler(

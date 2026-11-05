@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
 
@@ -46,6 +47,71 @@ public sealed class RequestContext<TParams> : MessageContext
     /// Gets or sets the primitive that matched the request.
     /// </summary>
     public IMcpServerPrimitive? MatchedPrimitive { get; set; }
+
+    private readonly AsyncLocal<StructuredContentRecoveryState?> _structuredContentRecoveryTarget = new();
+
+    internal StructuredContentRecoveryState? StructuredContentRecoveryTarget
+    {
+        get => _structuredContentRecoveryTarget.Value is { IsActive: true } target ? target : null;
+        set => _structuredContentRecoveryTarget.Value = value;
+    }
+
+    internal void RecoverStructuredContent(McpServerTool tool, CallToolResult result) =>
+        StructuredContentRecoveryTarget?.Recover(tool, result);
+
+    internal sealed class StructuredContentRecoveryState(McpServerTool tool, JsonElement? schema)
+    {
+        private readonly object _lock = new();
+        private readonly Dictionary<JsonElement, Action<McpServerTool, CallToolResult>> _plans = [];
+        private bool _isActive = true;
+
+        internal McpServerTool Tool { get; } = tool;
+        internal JsonElement? Schema { get; } = schema;
+        internal bool IsActive => Volatile.Read(ref _isActive);
+
+        internal void Register(IEnumerable<JsonElement> identities, Action<McpServerTool, CallToolResult> recovery)
+        {
+            lock (_lock)
+            {
+                if (!_isActive)
+                {
+                    return;
+                }
+
+                foreach (JsonElement identity in identities)
+                {
+                    _plans[identity] = recovery;
+                }
+            }
+        }
+
+        internal void Recover(McpServerTool tool, CallToolResult result)
+        {
+            if (result.IsError == true || result.StructuredContent is not { } identity)
+            {
+                return;
+            }
+
+            Action<McpServerTool, CallToolResult>? recovery;
+            lock (_lock)
+            {
+                if (!_isActive || !_plans.TryGetValue(identity, out recovery))
+                {
+                    return;
+                }
+            }
+            recovery(tool, result);
+        }
+
+        internal void Clear()
+        {
+            lock (_lock)
+            {
+                _isActive = false;
+                _plans.Clear();
+            }
+        }
+    }
 
     /// <summary>
     /// Gets the JSON-RPC request associated with this context.
