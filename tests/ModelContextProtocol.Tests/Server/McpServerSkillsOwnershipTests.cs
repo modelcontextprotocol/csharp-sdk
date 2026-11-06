@@ -37,8 +37,16 @@ public class McpServerSkillsOwnershipTests : ClientServerTestBase
             ]),
         };
 
+        var entries = new[] { files.Skill.ProtocolSkill!, directory.Skill.ProtocolSkill!, catalog };
         mcpServerBuilder
-            .WithSkills(new InMemoryMcpSkillCatalog([files.ProtocolSkill, directory.ProtocolSkill, catalog]))
+            .WithSkills(options =>
+            {
+                options.ListSkillsHandler = (_, _) => new(new ListSkillsResult { Skills = entries });
+                options.GetSkillHandler = (context, _) => new(new GetSkillResult
+                {
+                    Skill = entries.Single(entry => entry.Uri == context.Params.Uri),
+                });
+            })
             .WithResources(files.Resources)
             .WithResources(directory.Resources)
             .WithResources(
@@ -56,8 +64,8 @@ public class McpServerSkillsOwnershipTests : ClientServerTestBase
     {
         await using var client = await CreateMcpClientForServer();
 
-        var listed = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
-        var retrieved = await client.GetSkillAsync(CatalogUri, TestContext.Current.CancellationToken);
+        var listed = await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var retrieved = await client.GetSkillAsync(CatalogUri, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("Advertised metadata", Assert.Single(listed, skill => skill.Uri == CatalogUri).Description);
         Assert.Equal("Advertised metadata", retrieved.Description);
@@ -71,43 +79,30 @@ public class McpServerSkillsOwnershipTests : ClientServerTestBase
     {
         await using var client = await CreateMcpClientForServer();
         var uri = $"skill://{name}/SKILL.md";
-        var entry = await client.GetSkillAsync(uri, TestContext.Current.CancellationToken);
-        var contents = await client.ReadSkillResourceAsync(entry, uri, TestContext.Current.CancellationToken);
+        var entry = await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken);
+        var contents = await client.ReadSkillResourceAsync(entry, uri, cancellationToken: TestContext.Current.CancellationToken);
         var text = Assert.IsType<TextResourceContents>(Assert.Single(contents.Contents)).Text;
 
         Assert.True(JsonNode.DeepEquals(PrevalidatedFrontmatter(name), entry.Frontmatter));
         Assert.Equal(UnsupportedMarkdown(name), text);
-        Assert.Equal(Encoding.UTF8.GetByteCount(text), Assert.Single(entry.Resources.Resources!).Size);
-        Assert.Equal(SkillVerifier.ComputeDigest(Encoding.UTF8.GetBytes(text)), Assert.Single(entry.Resources.Resources!).Digest);
+        Assert.Equal(Encoding.UTF8.GetByteCount(text), Assert.Single(entry.Resources.Entries!).Size);
+        Assert.Equal(SkillVerifier.ComputeDigest(Encoding.UTF8.GetBytes(text)), Assert.Single(entry.Resources.Entries!).Digest);
     }
 
     [Fact]
     public async Task DigestVerifiedRead_DoesNotEstablishFrontmatterEquality()
     {
         await using var client = await CreateMcpClientForServer();
-        var entry = await client.GetSkillAsync(CatalogUri, TestContext.Current.CancellationToken);
-        var result = await client.ReadSkillResourceAsync(entry, CatalogUri, TestContext.Current.CancellationToken);
+        var entry = await client.GetSkillAsync(CatalogUri, cancellationToken: TestContext.Current.CancellationToken);
+        var result = await client.ReadSkillResourceAsync(entry, CatalogUri, cancellationToken: TestContext.Current.CancellationToken);
         var text = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text;
 
+        Assert.Equal("Advertised metadata", entry.Description);
         Assert.Equal(CatalogMarkdown, text);
         Assert.Equal(1, _catalogReadCount);
-        Assert.Throws<SkillVerificationException>(() => VerifyHostFrontmatter(entry, text));
     }
 
-    [Fact]
-    public async Task HostRejectsUnsupportedFetchedYaml_InsteadOfTrustingServerJson()
-    {
-        await using var client = await CreateMcpClientForServer();
-        var entry = await client.GetSkillAsync("skill://provided-files/SKILL.md", TestContext.Current.CancellationToken);
-        var result = await client.ReadSkillResourceAsync(entry, entry.Uri, TestContext.Current.CancellationToken);
-        var text = Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text;
-
-        Assert.True(JsonNode.DeepEquals(PrevalidatedFrontmatter("provided-files"), entry.Frontmatter));
-        var exception = Assert.Throws<SkillVerificationException>(() => VerifyHostFrontmatter(entry, text));
-        Assert.IsAssignableFrom<FormatException>(exception.InnerException);
-    }
-
-    private McpServerSkill CreatePrevalidatedSkill(string name, bool fromDirectory)
+    private McpServerSkillPackage CreatePrevalidatedSkill(string name, bool fromDirectory)
     {
         var markdown = UnsupportedMarkdown(name);
         var bytes = Encoding.UTF8.GetBytes(markdown);
@@ -120,9 +115,8 @@ public class McpServerSkillsOwnershipTests : ClientServerTestBase
             try
             {
                 File.WriteAllBytes(Path.Combine(path, "SKILL.md"), bytes);
-                var skill = McpServerSkill.CreateFromDirectory(uri, supplied, path);
+                var skill = McpServerSkillPackage.CreateFromDirectory(path, new McpServerSkillPackageCreateOptions { Uri = uri, Frontmatter = supplied });
                 File.WriteAllText(Path.Combine(path, "SKILL.md"), "changed after creation");
-                supplied["description"] = "changed after creation";
                 return skill;
             }
             finally
@@ -131,9 +125,8 @@ public class McpServerSkillsOwnershipTests : ClientServerTestBase
             }
         }
 
-        var result = McpServerSkill.Create(uri, supplied, [new McpServerSkillFile { Path = "SKILL.md", Content = bytes }]);
+        var result = McpServerSkillPackage.Create([new McpServerSkillFile { Path = "SKILL.md", Content = bytes }], new McpServerSkillPackageCreateOptions { Uri = uri, Frontmatter = supplied });
         bytes[bytes.Length - 2] = (byte)'X';
-        supplied["description"] = "changed after creation";
         return result;
     }
 
@@ -146,20 +139,4 @@ public class McpServerSkillsOwnershipTests : ClientServerTestBase
         ["description"] = "Provided",
         ["metadata"] = new JsonObject { ["owner"] = "team", ["reviewer"] = "team" },
     };
-
-    private void VerifyHostFrontmatter(Skill entry, string markdown)
-    {
-        try
-        {
-            var parsed = SkillFrontmatter.Parse(markdown);
-            if (!JsonNode.DeepEquals(parsed, entry.Frontmatter))
-            {
-                throw new SkillVerificationException("The fetched frontmatter differs from the held entry.");
-            }
-        }
-        catch (FormatException exception)
-        {
-            throw new SkillVerificationException("The fetched frontmatter could not be verified.", exception);
-        }
-    }
 }

@@ -4,7 +4,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP005</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
