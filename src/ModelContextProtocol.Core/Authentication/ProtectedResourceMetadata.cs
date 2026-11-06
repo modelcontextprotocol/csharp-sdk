@@ -37,8 +37,17 @@ public sealed class ProtectedResourceMetadata
     /// <remarks>
     /// OPTIONAL.
     /// </remarks>
-    [JsonPropertyName("authorization_servers")]
+    [JsonIgnore]
     public IList<string> AuthorizationServers { get; set; } = [];
+
+    // RFC 9728 §3.2: parameters with zero values MUST be omitted from the response.
+    [JsonInclude]
+    [JsonPropertyName("authorization_servers")]
+    internal IList<string>? AuthorizationServersCore
+    {
+        get => AuthorizationServers.Count > 0 ? AuthorizationServers : null;
+        set => AuthorizationServers = value ?? [];
+    }
 
     /// <summary>
     /// Gets or sets the supported bearer token methods.
@@ -63,8 +72,17 @@ public sealed class ProtectedResourceMetadata
     /// <remarks>
     /// RECOMMENDED.
     /// </remarks>
-    [JsonPropertyName("scopes_supported")]
+    [JsonIgnore]
     public IList<string> ScopesSupported { get; set; } = [];
+
+    // RFC 9728 §3.2: parameters with zero values MUST be omitted from the response.
+    [JsonInclude]
+    [JsonPropertyName("scopes_supported")]
+    internal IList<string>? ScopesSupportedCore
+    {
+        get => ScopesSupported.Count > 0 ? ScopesSupported : null;
+        set => ScopesSupported = value ?? [];
+    }
 
     /// <summary>
     /// Gets or sets the URL of the protected resource's JSON Web Key (JWK) Set document.
