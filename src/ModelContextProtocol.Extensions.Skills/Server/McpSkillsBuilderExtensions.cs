@@ -136,12 +136,16 @@ public static class McpSkillsBuilderExtensions
         return builder.WithSkillPackages([McpServerSkillPackage.CreateFromDirectory(directoryPath, options)]);
     }
 
-    /// <summary>Authors and registers packages from immediate skill subdirectories.</summary>
+    /// <summary>Authors and registers packages from immediate child directories containing <c>SKILL.md</c>.</summary>
     /// <param name="builder">The server builder.</param>
-    /// <param name="directoryPath">The parent directory whose children contain skills.</param>
+    /// <param name="directoryPath">The parent directory whose immediate children are skill directories.</param>
     /// <param name="options">Optional common package-discovery settings.</param>
     /// <returns>The supplied builder.</returns>
-    /// <remarks>Authoring and batch validation finish before registration. See <see cref="McpServerSkillPackage.CreateFromSubdirectories"/>.</remarks>
+    /// <remarks>
+    /// Discovery does not search deeper directories for additional skills. Each selected directory's files are
+    /// collected recursively, but a nested <c>SKILL.md</c> is a file of that skill, not an additional registration.
+    /// Authoring and batch validation finish before registration. See <see cref="McpServerSkillPackage.CreateFromSubdirectories"/>.
+    /// </remarks>
     [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
     public static IMcpServerBuilder WithSkillsFromSubdirectories(
         this IMcpServerBuilder builder, string directoryPath, McpServerSkillPackageDiscoveryOptions? options = null)

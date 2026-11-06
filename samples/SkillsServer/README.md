@@ -3,14 +3,17 @@
 A Streamable HTTP MCP server that serves [Agent Skills](https://agentskills.io/) through the MCP Skills
 extension ([SEP-2640](https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/beta/skills.mdx)).
 
-Each skill is a directory under [`Skills/`](Skills) with a `SKILL.md` and supporting files:
+Each skill is an immediate child directory of [`Skills/`](Skills) with a `SKILL.md` and supporting files:
 
 | Skill URI                                | Files                                                          |
 | ---------------------------------------- | -------------------------------------------------------------- |
 | `skill://git-workflow/SKILL.md`          | `SKILL.md`, `references/COMMIT_STYLE.md`, `templates/PULL_REQUEST.md` |
 | `skill://refunds/SKILL.md`               | `SKILL.md`, `policy/REFUND_POLICY.md`, `examples/approved.md`, `examples/declined.md` |
 
-`WithSkillsFromSubdirectories` reads every skill directory, parses the YAML frontmatter of each `SKILL.md`, computes the
+`WithSkillsFromSubdirectories` discovers skills in immediate child directories containing a `SKILL.md`.
+It does not search deeper directories for additional skills. Selected files within each discovered skill are
+collected recursively; a nested `SKILL.md` is a file of that skill, not a separate registration.
+The method parses the YAML frontmatter of each skill's root `SKILL.md`, computes the
 SHA-256 digest and size of every file, and registers the `skills/list` and `skills/get` methods together with the
 resources that serve the files, in one call. Each skill's URI is `skill://{name}/SKILL.md`, where `name` comes from
 its frontmatter; set `McpServerSkillPackageDiscoveryOptions.UriPrefix` to place skills under an organizational path
