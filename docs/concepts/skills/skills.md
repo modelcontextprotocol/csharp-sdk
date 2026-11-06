@@ -67,11 +67,13 @@ builder.Services
     .WithSkillsFromSubdirectories(Path.Combine(AppContext.BaseDirectory, "Skills"));
 ```
 
-Every included immediate subdirectory containing a `SKILL.md` becomes a skill. The SDK reads the frontmatter from each
-`SKILL.md`, computes every digest and size from the same bytes the resources serve, registers the file resources,
+Only included immediate child directories containing a `SKILL.md` become skills; discovery does not search deeper
+directories for additional skills. Within each discovered skill, selected files are collected recursively, so a
+nested `SKILL.md` is a file of that skill, not a separate registration. The SDK reads the frontmatter from each
+skill's root `SKILL.md`, computes every digest and size from the same bytes the resources serve, registers the file resources,
 and publishes each skill at `skill://{name}/SKILL.md`, where `name` comes from the frontmatter. Set `McpServerSkillPackageDiscoveryOptions.UriPrefix`
 such as `skill://acme/billing/` to place the skills under an organizational path.
-Names used as URI path segments are percent-encoded.
+Names used as URI path segments are escaped with [`Uri.EscapeDataString`](https://learn.microsoft.com/dotnet/api/system.uri.escapedatastring).
 
 Dot-prefixed, hidden, and system files and directories are excluded by default, before reading their contents.
 The discovery and single-package options provide `IncludeHiddenAndSystemFiles` for an explicit opt-in. For a narrower
@@ -110,10 +112,11 @@ The primitive provides its entry for listing/get, and its resources serve the au
 not serialized, copied to file resources, or interpreted as authorization. Registering a package does not authorize
 file reads; protect metadata and file resources separately with the same application policy.
 The single-directory builder, `WithSkillFromDirectory`, authors one directory. `WithSkillsFromSubdirectories`
-discovers immediate child directories in ordinal order. Its separate discovery options provide `UriPrefix`,
+discovers only immediate child directories in ordinal order, not nested skills. Its separate discovery options
+provide `UriPrefix`,
 `IncludeHiddenAndSystemFiles`, and common `Metadata`/`Meta`, not per-skill URI or frontmatter overrides.
 
-The factories do not require DI. `CreateFromSubdirectories` also returns standalone packages.
+The factories do not require dependency injection. `CreateFromSubdirectories` also returns standalone packages.
 Register components separately with `WithSkills([package.Skill])` and `WithResources(package.Resources)`,
 or register both with `WithSkillPackages([package])`.
 
@@ -350,11 +353,12 @@ static bool CanReadSkills(ClaimsPrincipal? user) =>
     user?.Identity?.IsAuthenticated == true && user.IsInRole("skill-reader");
 ```
 
-This example filters unpaginated static Skills and resource listings. For paginated sources, authorize before forming
-pages and cursors; filtering afterwards cannot repair a cursor that reveals hidden entries. Listing omission never
-denies get or file read. Skills and resource filters are independent, with no automatic policy inheritance.
-Automatic participation in ASP.NET Core
-`AddAuthorizationFilters` is deferred and tracked by [#1990](https://github.com/modelcontextprotocol/csharp-sdk/issues/1990).
+> [!IMPORTANT]
+> This example filters unpaginated static Skills and resource listings. For paginated sources, authorize before forming
+> pages and cursors; filtering afterwards cannot repair a cursor that reveals hidden entries. Listing omission never
+> denies get or file read. Skills and resource filters are independent, with no automatic policy inheritance.
+> Automatic participation in ASP.NET Core `AddAuthorizationFilters` is not yet integrated; support is
+> tracked by [#1990](https://github.com/modelcontextprotocol/csharp-sdk/issues/1990).
 
 ### Advanced reference
 

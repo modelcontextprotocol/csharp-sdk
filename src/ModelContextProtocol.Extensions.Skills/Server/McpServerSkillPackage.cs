@@ -135,7 +135,7 @@ public sealed class McpServerSkillPackage
     private const string DefaultUriPrefix = "skill://";
 
     /// <summary>
-    /// Authors packages from the immediate child directories containing <c>SKILL.md</c>.
+    /// Authors packages only from the immediate child directories containing <c>SKILL.md</c>.
     /// </summary>
     /// <param name="directoryPath">The parent directory whose immediate children are skill directories.</param>
     /// <param name="options">Optional common URI prefix, file selection, and metadata.</param>
@@ -144,7 +144,8 @@ public sealed class McpServerSkillPackage
     /// <exception cref="DirectoryNotFoundException"><paramref name="directoryPath"/> does not exist.</exception>
     /// <exception cref="ArgumentException">No skills are found, a skill is invalid, or package manifests conflict.</exception>
     /// <remarks>
-    /// Each selected directory is authored recursively, but nested skills are files, not additional registrations.
+    /// Discovery does not search deeper directories for additional skills. Each selected directory's files are
+    /// collected recursively, but a nested <c>SKILL.md</c> is a file of that skill, not an additional registration.
     /// Shared file URIs must have agreeing digest and size across the complete batch, including duplicate skill
     /// identities. The factories do not register services, read files again to compare packages, or mutate options.
     /// </remarks>
@@ -521,9 +522,9 @@ public sealed class McpServerSkillPackage
     }
 
     /// <summary>
-    /// Percent-encodes each segment of a normalized relative path so that characters with URI syntax (such as
-    /// <c>{</c>, <c>?</c>, <c>#</c>, or a space) in a file name stay literal. Without this, a file named
-    /// <c>{name}.md</c> would register as a resource template rather than a concrete resource.
+    /// Each segment of a normalized relative path is escaped with <see cref="Uri.EscapeDataString(string)"/> so that
+    /// characters with URI syntax (such as <c>{</c>, <c>?</c>, <c>#</c>, or a space) in a file name stay literal.
+    /// Without this, a file named <c>{name}.md</c> would register as a resource template rather than a concrete resource.
     /// </summary>
     private static string EscapePath(string normalizedPath)
     {
