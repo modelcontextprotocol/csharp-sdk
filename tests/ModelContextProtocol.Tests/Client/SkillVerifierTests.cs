@@ -119,11 +119,38 @@ public class SkillVerifierTests
     {
         byte[] content = Encoding.UTF8.GetBytes("x");
         var skill = CreateSkill(content);
+        var other = new SkillResource { Uri = "skill://alpha/other.md", Digest = SkillVerifier.ComputeDigest(content), Size = content.Length };
+        skill.Resources = SkillResources.FromResources([Entry(content), other]);
+        var otherContents = new TextResourceContents { Uri = "skill://alpha/%6Fther.md", Text = "x" };
+        var result = new ReadResourceResult
+        {
+            Contents = [new TextResourceContents { Uri = "SKILL://ALPHA/SKILL.md", Text = "x" }, otherContents],
+        };
 
-        SkillVerifier.Verify(skill, new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] });
+        SkillVerifier.Verify(skill, result);
+        SkillVerifier.Verify(skill, "skill://alpha/%53KILL.md", result);
 
-        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill,
-            new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "y" }] }));
+        otherContents.Text = "y";
+        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, result));
+        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, Uri, result));
+
+        otherContents.Text = "xx";
+        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, result));
+        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, Uri, result));
+    }
+
+    [Fact]
+    public void Verify_Skill_UnreferencedAmbiguousUrisDoNotAffectVerification()
+    {
+        byte[] content = Encoding.UTF8.GetBytes("x");
+        var skill = CreateSkill(content);
+        var other = new SkillResource { Uri = "skill://alpha/other.md", Digest = SkillVerifier.ComputeDigest(content), Size = content.Length };
+        var alias = new SkillResource { Uri = "SKILL://ALPHA/other.md", Digest = other.Digest, Size = other.Size };
+        skill.Resources = SkillResources.FromResources([other, alias, Entry(content)]);
+        var result = new ReadResourceResult { Contents = [new TextResourceContents { Uri = Uri, Text = "x" }] };
+
+        SkillVerifier.Verify(skill, result);
+        SkillVerifier.Verify(skill, Uri, result);
     }
 
     [Fact]
@@ -157,6 +184,16 @@ public class SkillVerifierTests
         var error = Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, result));
         Assert.Contains("null", error.Message);
         Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, Uri, result));
+    }
+
+    [Fact]
+    public void Verify_Skill_RejectsMissingContentUriAsVerificationFailure()
+    {
+        var skill = CreateSkill(Encoding.UTF8.GetBytes("x"));
+        var result = new ReadResourceResult { Contents = [new TextResourceContents { Uri = null!, Text = "x" }] };
+
+        Assert.Contains("not listed", Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, result)).Message);
+        Assert.Contains("not listed", Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(skill, Uri, result)).Message);
     }
 
     [Fact]

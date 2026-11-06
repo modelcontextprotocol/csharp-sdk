@@ -169,25 +169,7 @@ public static class SkillVerifier
 
         ThrowIfDynamic(skill);
 
-        if (result.Contents is not { Count: > 0 })
-        {
-            throw new InvalidDataException($"The read returned no contents to verify against skill '{skill.Uri}'.");
-        }
-
-        foreach (var contents in result.Contents)
-        {
-            if (contents is null)
-            {
-                throw new InvalidDataException($"The read returned a null content entry for skill '{skill.Uri}'.");
-            }
-
-            var expected = FindResource(skill, contents.Uri) ??
-                throw new InvalidDataException(
-                    $"'{contents.Uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +
-                    "refresh the entry with skills/get before reading it.");
-
-            Verify(expected, contents);
-        }
+        VerifyContents(skill, result, CreateResourceIndex(skill));
     }
 
     /// <summary>
@@ -221,26 +203,62 @@ public static class SkillVerifier
 #endif
 
         ThrowIfDynamic(skill);
-        if (FindResource(skill, uri) is null)
-        {
+        var resources = CreateResourceIndex(skill);
+        var requested = FindResource(resources, uri) ??
             throw new InvalidDataException(
                 $"'{uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +
                 "refresh the entry with skills/get before reading it.");
-        }
 
-        Verify(skill, result);
-
-        bool found = false;
-        foreach (var contents in result.Contents)
-        {
-            found |= SkillUriComparer.Instance.Equals(contents.Uri, uri);
-        }
-
-        if (!found)
+        if (!VerifyContents(skill, result, resources, requested))
         {
             throw new InvalidDataException(
                 $"The read of '{uri}' returned no contents for that URI. The server answered with a different file of skill '{skill.Uri}'.");
         }
+    }
+
+    private static Dictionary<string, SkillResource?> CreateResourceIndex(Skill skill)
+    {
+        var entries = skill.Resources.Entries!;
+        var resources = new Dictionary<string, SkillResource?>(entries.Count, SkillUriComparer.Instance);
+        foreach (var resource in entries)
+        {
+            // A null value marks an ambiguous URI, which fails only when it is looked up.
+            resources[resource.Uri] = resources.ContainsKey(resource.Uri) ? null : resource;
+        }
+
+        return resources;
+    }
+
+    private static SkillResource? FindResource(Dictionary<string, SkillResource?> resources, string? uri) =>
+        uri is not null && resources.TryGetValue(uri, out var resource) ?
+            resource ?? throw new InvalidDataException($"The manifest contains ambiguous entries for '{uri}'.") : null;
+
+    private static bool VerifyContents(
+        Skill skill, ReadResourceResult result, Dictionary<string, SkillResource?> resources, SkillResource? requested = null)
+    {
+        if (result.Contents is not { Count: > 0 })
+        {
+            throw new InvalidDataException($"The read returned no contents to verify against skill '{skill.Uri}'.");
+        }
+
+        bool found = false;
+        foreach (var contents in result.Contents)
+        {
+            if (contents is null)
+            {
+                throw new InvalidDataException($"The read returned a null content entry for skill '{skill.Uri}'.");
+            }
+
+            var expected = FindResource(resources, contents.Uri) ??
+                throw new InvalidDataException(
+                    $"'{contents.Uri}' is not listed in the manifest of skill '{skill.Uri}'. An unlisted file is a change to the skill; " +
+                    "refresh the entry with skills/get before reading it.");
+
+            Verify(expected, contents);
+            found |= ReferenceEquals(expected, requested);
+        }
+
+        return found;
     }
 
     /// <summary>

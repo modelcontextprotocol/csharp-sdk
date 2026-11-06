@@ -52,8 +52,12 @@ public class SkillsAuthorizationTests(ITestOutputHelper output) : KestrelInMemor
         Assert.Equal(seen, resources.Select(resource => resource.Uri).OrderBy(uri => uri, StringComparer.Ordinal));
         await Assert.ThrowsAsync<McpProtocolException>(
             async () => await client.GetSkillAsync(HiddenSkillUri, cancellationToken: TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<McpProtocolException>(
-            async () => await client.ReadResourceAsync(HiddenSkillUri, cancellationToken: TestContext.Current.CancellationToken));
+        foreach (var uri in new[] { HiddenSkillUri, "skill://private/secret%2Dpayroll/SKILL.md", HiddenSkillUri + "#x" })
+        {
+            var error = await Assert.ThrowsAsync<McpProtocolException>(
+                async () => await client.ReadResourceAsync(uri, cancellationToken: TestContext.Current.CancellationToken));
+            Assert.Equal(McpErrorCode.InvalidRequest, error.ErrorCode);
+        }
     }
 
     [Theory]
@@ -168,7 +172,7 @@ public class SkillsAuthorizationTests(ITestOutputHelper output) : KestrelInMemor
                 });
                 filters.AddReadResourceFilter(next => (context, cancellationToken) =>
                 {
-                    if (!policy.CanRead(context.User, context.Params.Uri))
+                    if (!policy.CanRead(context.User, context.MatchedPrimitive?.Id))
                     {
                         throw new McpProtocolException("Access forbidden.", McpErrorCode.InvalidRequest);
                     }
@@ -221,9 +225,20 @@ public class SkillsAuthorizationTests(ITestOutputHelper output) : KestrelInMemor
             }
         }
 
-        if (!allowed)
+        foreach (var uri in new[]
         {
-            foreach (var uri in new[] { registered.Skill.Id, application.Skill.Id })
+            registered.Skill.Id,
+            "SKILL://PRIVATE/report/SKILL.md",
+            "skill://private/%72eport/SKILL.md",
+            registered.Skill.Id + "#x",
+            application.Skill.Id,
+        })
+        {
+            if (allowed)
+            {
+                Assert.Single((await client.ReadResourceAsync(uri, cancellationToken: TestContext.Current.CancellationToken)).Contents);
+            }
+            else
             {
                 var error = await Assert.ThrowsAsync<McpProtocolException>(
                     async () => await client.ReadResourceAsync(uri, cancellationToken: TestContext.Current.CancellationToken));
@@ -260,7 +275,7 @@ public class SkillsAuthorizationTests(ITestOutputHelper output) : KestrelInMemor
                 });
                 filters.AddReadResourceFilter(next => (context, cancellationToken) =>
                 {
-                    if (!policy.CanRead(context.User, context.Params.Uri))
+                    if (!policy.CanRead(context.User, context.MatchedPrimitive?.Id))
                     {
                         throw new McpProtocolException("Access forbidden.", McpErrorCode.InvalidRequest);
                     }
@@ -285,9 +300,9 @@ public class SkillsAuthorizationTests(ITestOutputHelper output) : KestrelInMemor
 
     private sealed class ReadPolicy
     {
-        public bool CanRead(ClaimsPrincipal? user, string uri) =>
-            uri.StartsWith("skill://private/", StringComparison.Ordinal) &&
-            uri != HiddenSkillUri &&
+        public bool CanRead(ClaimsPrincipal? user, string? id) =>
+            id?.StartsWith("skill://private/", StringComparison.Ordinal) == true &&
+            id != HiddenSkillUri &&
             (user?.Identity?.IsAuthenticated).GetValueOrDefault() &&
             (user?.IsInRole("reader")).GetValueOrDefault();
     }

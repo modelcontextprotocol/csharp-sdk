@@ -270,6 +270,10 @@ For caller-dependent sources, authorize before taking a page and derive cursors 
 Custom get handlers cannot authorize registered skills; use [typed Skills filters](#typed-request-filters).
 Registered resource matching likewise wins over a custom read fallback. Do not mutate shared registrations per caller.
 
+For per-entry policies on fixed registrations, authorize using `context.MatchedPrimitive?.Id`, not the raw
+`context.Params.Uri`: URI-equivalent spellings can match the same primitive. Custom handlers and URI templates
+must authorize the resolved application identity instead.
+
 #### Typed request filters
 
 `ListSkillsFilters` and `GetSkillFilters` use <xref:ModelContextProtocol.Server.McpRequestFilter`2>.

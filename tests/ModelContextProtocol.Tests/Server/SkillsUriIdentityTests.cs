@@ -87,7 +87,9 @@ public class SkillsUriIdentityTests : ClientServerTestBase
         contents.Text += "changed";
         Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(expected, contents));
         entry.Resources = SkillResources.FromResources([expected, alias]);
-        Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(entry, expected.Uri, new ReadResourceResult { Contents = [contents] }));
+        var result = new ReadResourceResult { Contents = [contents] };
+        Assert.Contains("ambiguous", Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(entry, result)).Message);
+        Assert.Contains("ambiguous", Assert.Throws<InvalidDataException>(() => SkillVerifier.Verify(entry, expected.Uri, result)).Message);
         Assert.Throws<ArgumentException>(() => McpServerSkill.Create(entry));
     }
 }
