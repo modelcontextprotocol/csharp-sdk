@@ -10,7 +10,7 @@ Each skill is an immediate child directory of [`Skills/`](Skills) with a `SKILL.
 | `skill://git-workflow/SKILL.md`          | `SKILL.md`, `references/COMMIT_STYLE.md`, `templates/PULL_REQUEST.md` |
 | `skill://refunds/SKILL.md`               | `SKILL.md`, `policy/REFUND_POLICY.md`, `examples/approved.md`, `examples/declined.md` |
 
-`WithSkillsFromSubdirectories` discovers skills only in immediate child directories containing a `SKILL.md`.
+`WithSkillsFromSubdirectories` discovers skills in immediate child directories containing a `SKILL.md`.
 It does not search deeper directories for additional skills. Selected files within each discovered skill are
 collected recursively; a nested `SKILL.md` is a file of that skill, not a separate registration.
 The method parses the YAML frontmatter of each skill's root `SKILL.md`, computes the

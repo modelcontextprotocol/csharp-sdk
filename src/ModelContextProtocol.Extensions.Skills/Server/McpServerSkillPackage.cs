@@ -135,7 +135,7 @@ public sealed class McpServerSkillPackage
     private const string DefaultUriPrefix = "skill://";
 
     /// <summary>
-    /// Authors packages only from the immediate child directories containing <c>SKILL.md</c>.
+    /// Authors packages from the immediate child directories containing <c>SKILL.md</c>.
     /// </summary>
     /// <param name="directoryPath">The parent directory whose immediate children are skill directories.</param>
     /// <param name="options">Optional common URI prefix, file selection, and metadata.</param>

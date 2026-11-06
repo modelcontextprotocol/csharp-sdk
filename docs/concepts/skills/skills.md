@@ -67,7 +67,7 @@ builder.Services
     .WithSkillsFromSubdirectories(Path.Combine(AppContext.BaseDirectory, "Skills"));
 ```
 
-Only included immediate child directories containing a `SKILL.md` become skills; discovery does not search deeper
+Included immediate child directories containing a `SKILL.md` become skills; discovery does not search deeper
 directories for additional skills. Within each discovered skill, selected files are collected recursively, so a
 nested `SKILL.md` is a file of that skill, not a separate registration. The SDK reads the frontmatter from each
 skill's root `SKILL.md`, computes every digest and size from the same bytes the resources serve, registers the file resources,
@@ -112,7 +112,7 @@ The primitive provides its entry for listing/get, and its resources serve the au
 not serialized, copied to file resources, or interpreted as authorization. Registering a package does not authorize
 file reads; protect metadata and file resources separately with the same application policy.
 The single-directory builder, `WithSkillFromDirectory`, authors one directory. `WithSkillsFromSubdirectories`
-discovers only immediate child directories in ordinal order, not nested skills. Its separate discovery options
+discovers immediate child directories in ordinal order, not nested skills. Its separate discovery options
 provide `UriPrefix`,
 `IncludeHiddenAndSystemFiles`, and common `Metadata`/`Meta`, not per-skill URI or frontmatter overrides.
 

@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 
 namespace ModelContextProtocol.Extensions.Skills;
 
-/// <summary>Provides common settings for authoring packages from immediate child skill directories only.</summary>
+/// <summary>Provides common settings for authoring packages from immediate child skill directories.</summary>
 [Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
 public sealed class McpServerSkillPackageDiscoveryOptions
 {

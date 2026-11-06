@@ -1,7 +1,7 @@
 // Demonstrates serving Agent Skills over MCP with the Skills extension (SEP-2640) from a Streamable HTTP server.
 //
 // Each skill is an immediate child directory of ./Skills containing a SKILL.md and, optionally, supporting files.
-// WithSkillsFromSubdirectories discovers skills only in those immediate child directories, not deeper directories.
+// WithSkillsFromSubdirectories discovers skills in those immediate child directories, not deeper directories.
 // Selected files within each skill are collected recursively; a nested SKILL.md is not a separate registration.
 // The method parses the YAML frontmatter of each skill's root SKILL.md, computes the
 // SHA-256 digest and size of every file, and registers both the skills' entries (what skills/list and skills/get

@@ -136,7 +136,7 @@ public static class McpSkillsBuilderExtensions
         return builder.WithSkillPackages([McpServerSkillPackage.CreateFromDirectory(directoryPath, options)]);
     }
 
-    /// <summary>Authors and registers packages only from immediate child directories containing <c>SKILL.md</c>.</summary>
+    /// <summary>Authors and registers packages from immediate child directories containing <c>SKILL.md</c>.</summary>
     /// <param name="builder">The server builder.</param>
     /// <param name="directoryPath">The parent directory whose immediate children are skill directories.</param>
     /// <param name="options">Optional common package-discovery settings.</param>
