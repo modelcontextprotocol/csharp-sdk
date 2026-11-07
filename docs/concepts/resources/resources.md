@@ -237,9 +237,10 @@ For the `2026-07-28` protocol version and later, a server can fully own a long-l
 `subscriptions/listen` stream by registering `WithSubscriptionsListenHandler`. This replaces the
 SDK's built-in listen handling. The handler must send one
 `notifications/subscriptions/acknowledged` notification before other events, tag every streamed
-notification with the listen request ID in `_meta.subscriptionId`, and remain active until its
-cancellation token is cancelled. It must also configure only the server capabilities that the
-handler actually supports; this extension does not advertise capabilities automatically.
+notification with the listen request ID in `_meta["io.modelcontextprotocol/subscriptionId"]`,
+and remain active until its cancellation token is cancelled. It must also configure only the
+server capabilities that the handler actually supports; this extension does not advertise
+capabilities automatically.
 
 #### Sending resource update notifications
 
@@ -251,6 +252,13 @@ await server.SendNotificationAsync(
     NotificationMethods.ResourceUpdatedNotification,
     new ResourceUpdatedNotificationParams { Uri = "config://app/settings" });
 ```
+
+On `2025-11-25` and earlier sessions, this sends the notification over the session channel.
+On `2026-07-28` and later stateful stream transports such as stdio, the built-in listen handler
+delivers it only to active `subscriptions/listen` streams granted that URI, with a subscription ID
+on each notification. Set `Resources.Subscribe = true` in the server capabilities to grant resource
+subscriptions. The built-in handler grants no subscriptions on stateless Streamable HTTP; a custom
+`WithSubscriptionsListenHandler` must own delivery on its held-open response stream.
 
 ### Resource list change notifications
 
