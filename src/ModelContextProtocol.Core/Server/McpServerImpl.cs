@@ -1119,16 +1119,16 @@ internal sealed partial class McpServerImpl : McpServer
         Dictionary<string, Dictionary<string, string[]>>? result = null;
         foreach (var primitive in primitives)
         {
-            JsonElement schema;
+            Dictionary<string, string[]>? paramValues;
             string id;
             if (primitive is AIFunctionMcpServerPrompt aiPrompt)
             {
-                schema = aiPrompt.AIFunction.JsonSchema;
+                paramValues = aiPrompt.AllowedValueCompletions;
                 id = aiPrompt.ProtocolPrompt.Name;
             }
             else if (primitive is AIFunctionMcpServerResource aiResource && aiResource.IsTemplated)
             {
-                schema = aiResource.AIFunction.JsonSchema;
+                paramValues = aiResource.AllowedValueCompletions;
                 id = aiResource.ProtocolResourceTemplate.UriTemplate;
             }
             else
@@ -1136,38 +1136,10 @@ internal sealed partial class McpServerImpl : McpServer
                 continue;
             }
 
-            if (schema.TryGetProperty("properties", out JsonElement properties) &&
-                properties.ValueKind is JsonValueKind.Object)
+            if (paramValues is not null)
             {
-                Dictionary<string, string[]>? paramValues = null;
-                foreach (var param in properties.EnumerateObject())
-                {
-                    if (param.Value.TryGetProperty("enum", out JsonElement enumValues) &&
-                        enumValues.ValueKind is JsonValueKind.Array)
-                    {
-                        List<string>? values = null;
-                        foreach (var item in enumValues.EnumerateArray())
-                        {
-                            if (item.ValueKind is JsonValueKind.String && item.GetString() is { } str)
-                            {
-                                values ??= [];
-                                values.Add(str);
-                            }
-                        }
-
-                        if (values is not null)
-                        {
-                            paramValues ??= new(StringComparer.Ordinal);
-                            paramValues[param.Name] = [.. values];
-                        }
-                    }
-                }
-
-                if (paramValues is not null)
-                {
-                    result ??= new(StringComparer.Ordinal);
-                    result[id] = paramValues;
-                }
+                result ??= new(StringComparer.Ordinal);
+                result[id] = paramValues;
             }
         }
 

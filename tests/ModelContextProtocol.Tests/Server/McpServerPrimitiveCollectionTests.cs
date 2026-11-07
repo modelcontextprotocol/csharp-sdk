@@ -818,6 +818,282 @@ public class McpServerPrimitiveCollectionTests
         Assert.Equal(whileStalled, afterward.Take(whileStalled.Length));
     }
 
+    // -------------------------------------------------------------------------
+    // Copying
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Copy_NullCollection_Throws()
+    {
+        Assert.Throws<ArgumentNullException>("collection", () => new McpServerPrimitiveCollection<McpServerTool>((McpServerPrimitiveCollection<McpServerTool>)null!));
+        Assert.Throws<ArgumentNullException>("collection", () => new McpServerResourceCollection(null!));
+    }
+
+    [Fact]
+    public void Copy_ContainsSamePrimitivesInSameOrder()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        McpServerTool[] tools = [CreateTool("c"), CreateTool("a"), CreateTool("b")];
+        foreach (var tool in tools)
+        {
+            source.Add(tool);
+        }
+
+        var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+
+        Assert.Equal(3, copy.Count);
+        Assert.False(copy.IsEmpty);
+        Assert.Equal(tools, copy);
+        Assert.Equal(tools, copy.ToArray());
+        Assert.Equal(["c", "a", "b"], copy.PrimitiveNames);
+        Assert.Same(tools[1], copy["a"]);
+        Assert.True(copy.TryGetPrimitive("b", out var b));
+        Assert.Same(tools[2], b);
+        Assert.Contains(tools[0], copy);
+        Assert.False(copy.TryGetPrimitive("missing", out _));
+        Assert.Throws<KeyNotFoundException>(() => copy["missing"]);
+
+        var array = new McpServerTool[4];
+        copy.CopyTo(array, 1);
+        Assert.Null(array[0]);
+        Assert.Equal(tools, array.Skip(1));
+    }
+
+    [Fact]
+    public void Copy_OfEmptyCollection_IsEmpty()
+    {
+        var copy = new McpServerPrimitiveCollection<McpServerTool>(new McpServerPrimitiveCollection<McpServerTool>());
+
+        Assert.True(copy.IsEmpty);
+        Assert.Empty(copy);
+        Assert.True(copy.TryAdd(CreateTool("tool1")));
+        Assert.Single(copy);
+    }
+
+    [Fact]
+    public void Copy_MutatingCopy_DoesNotAffectSourceOrOtherCopies()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        var shared = CreateTool("shared");
+        source.Add(shared);
+        source.Add(CreateTool("other"));
+
+        int sourceChanges = 0;
+        source.Changed += (_, _) => sourceChanges++;
+
+        var copy1 = new McpServerPrimitiveCollection<McpServerTool>(source);
+        var copy2 = new McpServerPrimitiveCollection<McpServerTool>(source);
+        int copy1Changes = 0;
+        copy1.Changed += (_, _) => copy1Changes++;
+
+        Assert.True(copy1.Remove(shared));
+        Assert.True(copy1.TryAdd(CreateTool("added")));
+
+        Assert.Equal(["other", "added"], copy1.PrimitiveNames);
+        Assert.Equal(2, copy1Changes);
+        Assert.Equal(["shared", "other"], source.PrimitiveNames);
+        Assert.Equal(["shared", "other"], copy2.PrimitiveNames);
+        Assert.Same(shared, copy2["shared"]);
+        Assert.Equal(0, sourceChanges);
+    }
+
+    [Fact]
+    public void Copy_MutatingSource_DoesNotAffectExistingCopies_AndLaterCopiesSeeTheMutation()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        source.Add(CreateTool("tool1"));
+
+        var before = new McpServerPrimitiveCollection<McpServerTool>(source);
+        source.Add(CreateTool("tool2"));
+        var after = new McpServerPrimitiveCollection<McpServerTool>(source);
+        source.Clear();
+
+        Assert.Equal(["tool1"], before.PrimitiveNames);
+        Assert.Equal(["tool1", "tool2"], after.PrimitiveNames);
+        Assert.Empty(source);
+    }
+
+    [Fact]
+    public void Copy_ClearCopy_FiresChangedAndLeavesSourceIntact()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        source.Add(CreateTool("tool1"));
+        var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+        int changeCount = 0;
+        copy.Changed += (_, _) => changeCount++;
+
+        copy.Clear();
+
+        Assert.Equal(1, changeCount);
+        Assert.Empty(copy);
+        Assert.Single(source);
+        Assert.True(copy.TryAdd(CreateTool("tool1")));
+        Assert.Single(copy);
+    }
+
+    [Fact]
+    public void Copy_DuplicateTryAddAndFailedRemove_DoNotFireChanged()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        source.Add(CreateTool("tool1"));
+        var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+        int changeCount = 0;
+        copy.Changed += (_, _) => changeCount++;
+
+        Assert.False(copy.TryAdd(CreateTool("tool1")));
+        Assert.False(copy.Remove(CreateTool("tool1")));
+        Assert.False(copy.Remove(CreateTool("missing")));
+
+        Assert.Equal(0, changeCount);
+        Assert.Single(copy);
+    }
+
+    [Fact]
+    public void Copy_DeferChangedEvents_CoalescesMutationsOfCopy()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        source.Add(CreateTool("tool1"));
+        var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+        int changeCount = 0;
+        copy.Changed += (_, _) => changeCount++;
+
+        using (copy.DeferChangedEvents())
+        {
+            copy.Add(CreateTool("tool2"));
+            copy.Remove(copy["tool1"]);
+            Assert.Equal(0, changeCount);
+        }
+
+        Assert.Equal(1, changeCount);
+        Assert.Equal(["tool2"], copy.PrimitiveNames);
+    }
+
+    [Fact]
+    public void Copy_OfCopy_IsIndependent()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        source.Add(CreateTool("tool1"));
+        var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+        var copyOfCopy = new McpServerPrimitiveCollection<McpServerTool>(copy);
+
+        copy.Add(CreateTool("tool2"));
+        copyOfCopy.Add(CreateTool("tool3"));
+
+        Assert.Equal(["tool1"], source.PrimitiveNames);
+        Assert.Equal(["tool1", "tool2"], copy.PrimitiveNames);
+        Assert.Equal(["tool1", "tool3"], copyOfCopy.PrimitiveNames);
+    }
+
+    [Fact]
+    public void Copy_PreservesNamesPrimitivesWereAddedUnder()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        var tool = CreateTool("original");
+        source.Add(tool);
+        tool.ProtocolTool.Name = "renamed";
+
+        var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+
+        Assert.Equal(["original"], copy.PrimitiveNames);
+        Assert.Same(tool, copy["original"]);
+    }
+
+    [Fact]
+    public void Copy_UsesSourceKeyComparer()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>(StringComparer.OrdinalIgnoreCase);
+        var tool = CreateTool("Tool");
+        source.Add(tool);
+
+        var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+
+        Assert.Same(tool, copy["TOOL"]);
+        Assert.False(copy.TryAdd(CreateTool("tool")));
+        Assert.True(copy.Remove(tool));
+        Assert.True(copy.TryAdd(CreateTool("tool")));
+    }
+
+    [Fact]
+    public void Copy_ResourceCollection_PreservesUriEquality()
+    {
+        var source = new McpServerResourceCollection();
+        var resource = McpServerResource.Create(() => "content", new() { UriTemplate = "https://example.com/resource", Name = "resource" });
+        var template = McpServerResource.Create((string id) => id, new() { UriTemplate = "test://items/{id}", Name = "template" });
+        source.Add(resource);
+        source.Add(template);
+
+        var copy = new McpServerResourceCollection(source);
+
+        Assert.True(copy.TryGetPrimitive("HTTPS://EXAMPLE.COM/resource", out var found));
+        Assert.Same(resource, found);
+        Assert.Same(template, copy["test://items/{id}"]);
+        Assert.False(copy.TryGetPrimitive("test://ITEMS/{id}", out _));
+        Assert.False(copy.TryAdd(McpServerResource.Create(() => "other", new() { UriTemplate = "https://EXAMPLE.com/resource", Name = "dup" })));
+
+        Assert.True(copy.Remove(resource));
+        Assert.False(copy.TryGetPrimitive("https://example.com/resource", out _));
+        Assert.Same(resource, source["https://example.com/resource"]);
+    }
+
+    [Fact]
+    public async Task Copy_ConcurrentMutationOfCopies_IsIsolated()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        for (int i = 0; i < 20; i++)
+        {
+            source.Add(CreateTool($"tool{i}"));
+        }
+
+        var tasks = Enumerable.Range(0, 8).Select(worker => Task.Run(() =>
+        {
+            for (int iteration = 0; iteration < 50; iteration++)
+            {
+                var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+                Assert.True(copy.Remove(copy[$"tool{iteration % 20}"]));
+                Assert.True(copy.TryAdd(CreateTool($"worker{worker}")));
+                Assert.Equal(20, copy.Count);
+                Assert.Equal(20, copy.ToArray().Length);
+                Assert.False(copy.TryGetPrimitive($"tool{iteration % 20}", out _));
+            }
+        }, TestContext.Current.CancellationToken));
+
+        await Task.WhenAll(tasks);
+
+        Assert.Equal(Enumerable.Range(0, 20).Select(i => $"tool{i}"), source.PrimitiveNames);
+    }
+
+    [Fact]
+    public async Task Copy_ConcurrentReadsDuringFirstMutation_SeeConsistentContents()
+    {
+        var source = new McpServerPrimitiveCollection<McpServerTool>();
+        for (int i = 0; i < 50; i++)
+        {
+            source.Add(CreateTool($"tool{i}"));
+        }
+
+        for (int iteration = 0; iteration < 20; iteration++)
+        {
+            var copy = new McpServerPrimitiveCollection<McpServerTool>(source);
+            using var start = new ManualResetEventSlim();
+            var readers = Enumerable.Range(0, 4).Select(reader => Task.Run(() =>
+            {
+                start.Wait(TestContext.Current.CancellationToken);
+                for (int i = 0; i < 200; i++)
+                {
+                    Assert.True(copy.TryGetPrimitive("tool0", out _));
+                    int count = copy.ToArray().Length;
+                    Assert.InRange(count, 50, 51);
+                }
+            }, TestContext.Current.CancellationToken)).ToArray();
+
+            start.Set();
+            copy.Add(CreateTool("added"));
+            await Task.WhenAll(readers);
+
+            Assert.Equal(51, copy.Count);
+        }
+    }
+
     /// <summary>A primitive whose <see cref="Equals(object?)"/> runs <see cref="OnEquals"/> once before comparing by reference.</summary>
     private sealed class ReentrantEqualityPrimitive(string id) : IMcpServerPrimitive
     {
