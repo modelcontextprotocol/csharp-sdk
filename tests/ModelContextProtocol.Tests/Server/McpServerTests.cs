@@ -258,6 +258,52 @@ public class McpServerTests : LoggedTest
         await runTask;
     }
 
+    private sealed class ElicitationTarget
+    {
+        public string Answer { get; set; } = string.Empty;
+    }
+
+    [Fact]
+    public async Task ElicitAsync_Generic_Should_Use_Interceptor_When_Client_Does_Not_Support_Elicitation()
+    {
+        // An installed interceptor delivers the request over its own channel, so the
+        // untyped overload skips the capability check on purpose. The generic overload
+        // has to reach that branch rather than throwing ahead of it.
+        await using var transport = new TestServerTransport();
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities(), TestContext.Current.CancellationToken);
+
+        var intercepted = false;
+#pragma warning disable MCPEXP002 // exercises the experimental outgoing-request interception seam
+        var interceptingServer = server.WithOutgoingRequestInterceptor((method, _, _) =>
+        {
+            intercepted = true;
+            Assert.Equal(RequestMethods.ElicitationCreate, method);
+            return new ValueTask<JsonNode?>(JsonSerializer.SerializeToNode(
+                new ElicitResult
+                {
+                    Action = "accept",
+                    Content = new Dictionary<string, JsonElement>
+                    {
+                        ["answer"] = JsonSerializer.SerializeToElement("yes"),
+                    },
+                },
+                McpJsonUtilities.DefaultOptions));
+        });
+#pragma warning restore MCPEXP002
+
+        var result = await interceptingServer.ElicitAsync<ElicitationTarget>(
+            "Proceed?", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(intercepted);
+        Assert.True(result.IsAccepted);
+        Assert.Equal("yes", result.Content?.Answer);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
     [Fact]
     public async Task Can_Handle_Ping_Requests()
     {
