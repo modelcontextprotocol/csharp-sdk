@@ -31,17 +31,26 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
             {
                 DefaultPollIntervalMs = 50,
             })
-            .WithTools([McpServerTool.Create(
-            async (string input, CancellationToken ct) =>
-            {
-                await Task.Delay(50, ct);
-                return $"Processed: {input}";
-            },
-            new McpServerToolCreateOptions
-            {
-                Name = "test-tool",
-                Description = "A test tool"
-            })]);
+            .WithTools([
+                McpServerTool.Create(
+                    async (string input, CancellationToken ct) =>
+                    {
+                        await Task.Delay(50, ct);
+                        return $"Processed: {input}";
+                    },
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "test-tool",
+                        Description = "A test tool"
+                    }),
+                McpServerTool.Create(
+                    (RequestContext<CallToolRequestParams> context) =>
+                        context.Params.Meta?["sharedKey"]?.GetValue<string>() ?? "missing",
+                    new McpServerToolCreateOptions
+                    {
+                        Name = "metadata-tool",
+                        Description = "Returns request metadata"
+                    })]);
     }
 
     private static IDictionary<string, JsonElement> CreateArguments(string key, string value)
@@ -131,6 +140,43 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
         Assert.NotEmpty(result.Content);
         var textContent = Assert.IsType<TextContentBlock>(result.Content[0]);
         Assert.Equal("Processed: hello", textContent.Text);
+    }
+
+    [Fact]
+    public async Task McpClientTool_CallAsTaskAsync_UsesProtocolName()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+        var tools = await client.ListToolsAsync(cancellationToken: ct);
+        var tool = tools.Single(t => t.Name == "test-tool").WithName("model-facing-name");
+
+        var augmented = await tool.CallAsTaskAsync(
+            new Dictionary<string, object?> { ["input"] = "hello" },
+            cancellationToken: ct);
+
+        Assert.True(augmented.IsTask);
+        Assert.NotNull(augmented.TaskCreated);
+    }
+
+    [Fact]
+    public async Task McpClientTool_CallWithPollingAsync_PreservesAndMergesMetadata()
+    {
+        await using var client = await CreateMcpClientForServer();
+        var ct = TestContext.Current.CancellationToken;
+        var tools = await client.ListToolsAsync(cancellationToken: ct);
+        var tool = tools.Single(t => t.Name == "metadata-tool")
+            .WithName("model-facing-name")
+            .WithMeta(new() { ["sharedKey"] = "from-tool" });
+
+        var result = await tool.CallWithPollingAsync(
+            options: new RequestOptions
+            {
+                Meta = new() { ["sharedKey"] = "from-options" },
+            },
+            cancellationToken: ct);
+
+        var textContent = Assert.IsType<TextContentBlock>(Assert.Single(result.Content));
+        Assert.Equal("from-options", textContent.Text);
     }
 
     [Fact]
