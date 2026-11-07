@@ -1043,6 +1043,17 @@ public abstract partial class McpClient : McpSession
     {
         Throw.IfNull(requestParams);
 
+        return CallToolCoreAsync(requestParams, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a <see cref="RequestMethods.ToolsCall"/> request. Every <c>CallToolAsync</c> overload routes through this
+    /// method, so derived clients can override it to apply <see cref="McpClientOptions.Filters"/>.
+    /// </summary>
+    private protected virtual ValueTask<CallToolResult> CallToolCoreAsync(
+        CallToolRequestParams requestParams,
+        CancellationToken cancellationToken)
+    {
         return SendRequestAsync(
             RequestMethods.ToolsCall,
             requestParams,
