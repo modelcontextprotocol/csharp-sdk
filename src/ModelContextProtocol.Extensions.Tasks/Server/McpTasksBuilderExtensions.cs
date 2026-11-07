@@ -171,9 +171,25 @@ public static class McpTasksBuilderExtensions
             };
 
             McpTaskInfo taskInfo;
+            IMcpTaskExecutor executor;
             try
             {
-                taskInfo = await _store.CreateTaskAsync(cancellationToken).ConfigureAwait(false);
+                // Resolve the executor from the execution scope (falling back to the process-local
+                // default) rather than the root provider so scoped and transient registrations get
+                // correct lifetimes; singleton registrations still yield the same instance. Resolving
+                // before the task record is created keeps a DI misconfiguration from leaving a
+                // durably-created task stuck at Working: the resolution error fails tools/call instead.
+                executor = _taskOptions.TaskExecutor
+                    ?? executionScope.ServiceProvider.GetService<IMcpTaskExecutor>()
+                    ?? ProcessLocalMcpTaskExecutor.Instance;
+
+                // Create the intent first, then persist it atomically with the task record so a
+                // crash between creation and a completed start can be recovered from the store.
+                // Both steps precede the task record: a failure here fails tools/call instead of
+                // leaving a durably-created task orphaned at Working.
+                JsonElement? executionIntent = await executor
+                    .CreateExecutionIntentAsync(request, cancellationToken).ConfigureAwait(false);
+                taskInfo = await _store.CreateTaskAsync(executionIntent, cancellationToken).ConfigureAwait(false);
             }
             catch
             {
@@ -189,9 +205,24 @@ public static class McpTasksBuilderExtensions
             // Capture the token before dispatching. Cancellation can remove and dispose the source
             // before the background delegate starts.
             var taskCancellationToken = cts.Token;
-            _ = Task.Run(
-                () => ExecuteTaskAsync(next, executionRequest, taskId, taskCancellationToken, executionScope),
-                CancellationToken.None);
+            var context = new McpTaskExecutionContext(
+                taskInfo,
+                executionRequest,
+                taskCancellationToken,
+                (req, ct) => ExecuteTaskAsync(next, req, taskId, ct, executionScope),
+                () => ReleaseExecutionResourcesAsync(executionScope, taskId));
+
+            try
+            {
+                await executor.StartAsync(context, taskCancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // The task record exists, so the client will poll it. Record the start failure as
+                // the task's failure before returning the task alternate, so the client's first
+                // poll observes the terminal state rather than racing it.
+                await RecordStartFailureAsync(context, ex).ConfigureAwait(false);
+            }
 
             return ResultOrAlternate<CallToolResult>.FromAlternate(
                 ToCreateTaskResult(taskInfo),
@@ -235,10 +266,52 @@ public static class McpTasksBuilderExtensions
             }
             finally
             {
-                if (_cancellationSources.TryRemove(taskId, out var registeredCts))
-                {
-                    registeredCts.Dispose();
-                }
+                RemoveCancellationSource(taskId);
+            }
+        }
+
+        private async Task RecordStartFailureAsync(McpTaskExecutionContext context, Exception exception)
+        {
+            _logger.LogError(exception, "Starting execution of task '{TaskId}' failed.", context.TaskId);
+
+            try
+            {
+                await context.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception disposeEx)
+            {
+                _logger.LogError(disposeEx, "Failed to release resources of task '{TaskId}' after a failed start.", context.TaskId);
+            }
+
+            try
+            {
+                var error = new JsonRpcErrorDetail { Code = (int)McpErrorCode.InternalError, Message = exception.Message };
+                var errorJson = JsonSerializer.SerializeToElement(error, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcErrorDetail>());
+                await _store.SetFailedAsync(context.TaskId, errorJson).ConfigureAwait(false);
+            }
+            catch (Exception storeEx)
+            {
+                _logger.LogError(storeEx, "Failed to record the failure of task '{TaskId}'.", context.TaskId);
+            }
+        }
+
+        private async Task ReleaseExecutionResourcesAsync(AsyncServiceScope executionScope, string taskId)
+        {
+            try
+            {
+                await executionScope.DisposeAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                RemoveCancellationSource(taskId);
+            }
+        }
+
+        private void RemoveCancellationSource(string taskId)
+        {
+            if (_cancellationSources.TryRemove(taskId, out var registeredCts))
+            {
+                registeredCts.Dispose();
             }
         }
 
