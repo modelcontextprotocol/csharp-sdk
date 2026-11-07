@@ -145,6 +145,35 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 });
 ```
 
+#### OAuth PKCE metadata validation
+
+When using <xref:ModelContextProtocol.Authentication.ClientOAuthOptions> with an HTTP transport, authorization server metadata must advertise `S256` in `code_challenge_methods_supported`. A document that omits that field or advertises only other methods is skipped while the client tries alternative well-known endpoints. If none supplies valid metadata with `S256`, authentication fails before requesting an authorization code or exchanging tokens.
+
+**Compatibility tightening: metadata-free legacy servers.** By default, the client also rejects authentication when authorization server metadata cannot be discovered; it no longer assumes `S256` support. For a trusted legacy deployment whose PKCE support you have independently established, you can explicitly restore the MCP 2025-03-26 default endpoint fallback at application startup:
+
+```csharp
+AppContext.SetSwitch(
+    "ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback",
+    true);
+```
+
+Alternatively, configure the same switch in the application's project file:
+
+```xml
+<ItemGroup>
+  <RuntimeHostConfigurationOption
+      Include="ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback"
+      Value="true" />
+</ItemGroup>
+```
+
+The switch is **disabled when absent or `false`**. When enabled, it restores default `/authorize`, `/token`, and `/register` paths on the MCP server's origin only when protected resource metadata is unavailable and no usable authorization server metadata document was discovered. It never bypasses PKCE or issuer validation of discovered metadata. The client still sends an `S256` challenge and a code verifier, and logs a warning whenever it uses the unverified fallback.
+
+[RFC 9700, Sections 2.1.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1) and [4.7.1](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.7.1) permit deployment-specific assurance of PKCE support, but synthesizing metadata is not assurance. Response `state` validation protects response correlation and CSRF; it does not prevent an intercepted authorization code from being redeemed directly. PKCE remains necessary.
+
+> [!WARNING]
+> Enabling this switch does not verify PKCE support or change state validation. Use it only after independently establishing that your trusted authorization server correctly enforces PKCE, including the [downgrade defenses in RFC 9700, Section 4.8.2](https://www.rfc-editor.org/rfc/rfc9700.html#section-4.8.2). The setting is **process-wide**, not a per-server allowlist: it affects every OAuth client in the process. Do not enable it in a process that also connects to untrusted authorization servers, or toggle it around individual requests. Prefer fixing metadata discovery and advertising `S256` so the switch can remain disabled.
+
 #### Controlling client timeout timers in tests
 
 The short <xref:ModelContextProtocol.Client.McpClientOptions.DiscoverProbeTimeout> budget excludes time spent acquiring an OAuth token. After authorization, the discovery probe receives a fresh budget. The overall <xref:ModelContextProtocol.Client.McpClientOptions.InitializationTimeout> and caller cancellation still apply.

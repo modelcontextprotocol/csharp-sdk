@@ -150,6 +150,16 @@ Follow [references/formatting.md](references/formatting.md) when composing and u
 
 ### Step 9: Create Draft Release
 
+Before handing off for human publication, confirm the planned tag's content has the correct
+`VersionPrefix` major. Release-triggered docs use discovered release tags for every published major;
+manual runs default to that source or can select `latest-branches` for all majors. Each selected
+ref is pinned and validated with no fallback. Runtime scripts/tests/picker assets and trusted AI
+release instructions come from current `main`, not the triggering tag. Missing branch refs block
+branch-mode refreshes, not tag-mode publication, and do not authorize creating/pushing branches.
+Branch-sourced docs may advance beyond package tags; keep the draft target pinned to the exact
+approved package SHA. See the shared
+[docs branch rules](../shared-resources/release-branches.md#documentation-content-and-orchestration).
+
 Display release metadata for user review:
 - **Title / Tag**: the confirmed tag, including any prerelease suffix (e.g. `v1.3.1`, `v2.0.0-preview.1`)
 - **Target**: merge commit SHA, its message, the merge commit's branch (the prepare-release PR base), and the prepare-release PR link

@@ -51,6 +51,24 @@ public sealed class NegotiatedProtocolVersionTests : LoggedTest, IAsyncDisposabl
     }
 
     [Fact]
+    public async Task ServerDiscover_DoesNotEstablishProtocolVersion_ButSubsequentRequestDoes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var discover = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.ServerDiscover,
+            Params = new JsonObject { ["_meta"] = PerRequestMetadata() },
+        };
+
+        Assert.IsType<JsonRpcResponse>(await SendAndReceiveAsync(discover, ct));
+        Assert.Null(_server.NegotiatedProtocolVersion);
+
+        Assert.IsType<JsonRpcResponse>(await RoundTripAsync(id: 2, McpProtocolVersions.July2026ProtocolVersion, ct));
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, _server.NegotiatedProtocolVersion);
+    }
+
+    [Fact]
     public async Task PerRequestProtocolVersion_IsEstablishedOnce_AndRejectsLaterChange()
     {
         var ct = TestContext.Current.CancellationToken;
