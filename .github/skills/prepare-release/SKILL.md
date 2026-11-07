@@ -169,6 +169,15 @@ Generate a human-readable diff of the public API surface between the previous re
 
 ### Step 9: Review and Update Documentation
 
+Published docs use discovered release tags by default; a manual `latest-branches` selection uses
+`origin/release/{MAJOR}.x` for every published major. Scripts/tests/picker assets always come from
+current `main`, as do trusted AI release instructions. Review selected content and orchestration
+separately. Selected content refs are pinned once and their `VersionPrefix` majors validated, with
+no fallback for missing refs or mismatches. Servicing tracks the latest
+shipped MINOR and promotes to an approved newer MINOR through a reviewed, ancestry-preserving PR.
+Shared release automation skills remain on `main`. See
+[release-branches.md](../shared-resources/release-branches.md#documentation-content-and-orchestration).
+
 Review repository documentation for changes needed to compensate for or adapt to this release:
 
 1. **NuGet package READMEs** -- Run the README content checklist from [references/readme-content.md](references/readme-content.md) and validate code samples:

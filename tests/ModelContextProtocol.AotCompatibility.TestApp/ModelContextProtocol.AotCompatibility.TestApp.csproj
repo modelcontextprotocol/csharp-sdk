@@ -8,7 +8,7 @@
     <PublishAot>true</PublishAot>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <!-- Suppress warnings for the experimental APIs exercised by this test app. -->
-    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP003</NoWarn>
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP003;MCPEXP005</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,11 +19,13 @@
     <ProjectReference Include="..\..\src\ModelContextProtocol\ModelContextProtocol.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.AspNetCore\ModelContextProtocol.AspNetCore.csproj" />
     <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Apps\ModelContextProtocol.Extensions.Apps.csproj" />
+    <ProjectReference Include="..\..\src\ModelContextProtocol.Extensions.Skills\ModelContextProtocol.Extensions.Skills.csproj" />
 
     <TrimmerRootAssembly Include="ModelContextProtocol.Core" />
     <TrimmerRootAssembly Include="ModelContextProtocol" />
     <TrimmerRootAssembly Include="ModelContextProtocol.AspNetCore" />
     <TrimmerRootAssembly Include="ModelContextProtocol.Extensions.Apps" />
+    <TrimmerRootAssembly Include="ModelContextProtocol.Extensions.Skills" />
   </ItemGroup>
 
 </Project>
