@@ -8,24 +8,23 @@ namespace ModelContextProtocol.Client;
 public sealed class HttpClientTransportOptions
 {
     /// <summary>
-    /// Gets or sets the base address of the server for SSE connections.
+    /// Gets or sets the base address of the server for HTTP connections.
     /// </summary>
-    /// <exception cref="ArgumentNullException">The value is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The value is not an absolute URI, or does not use the HTTP or HTTPS scheme.</exception>
-    public required Uri Endpoint
+    /// <remarks>
+    /// This can be omitted when constructing the transport with an <see cref="HttpClient"/> that has a
+    /// <see cref="HttpClient.BaseAddress"/>. An explicitly configured endpoint takes precedence over the client base address.
+    /// </remarks>
+    public Uri? Endpoint
     {
         get;
         set
         {
-            if (value is null)
-            {
-                throw new ArgumentNullException(nameof(value), "Endpoint cannot be null.");
-            }
-            if (!value.IsAbsoluteUri)
+            if (value is not null && !value.IsAbsoluteUri)
             {
                 throw new ArgumentException("Endpoint must be an absolute URI.", nameof(value));
             }
-            if (value.Scheme != Uri.UriSchemeHttp && value.Scheme != Uri.UriSchemeHttps)
+            if (value is not null && value.Scheme != Uri.UriSchemeHttp && value.Scheme != Uri.UriSchemeHttps)
             {
                 throw new ArgumentException("Endpoint must use HTTP or HTTPS scheme.", nameof(value));
             }
