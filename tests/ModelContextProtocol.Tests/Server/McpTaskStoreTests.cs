@@ -565,10 +565,11 @@ public class McpTaskStoreTests : ClientServerTestBase
         var cancelResult = await client.CancelTaskAsync(taskId, ct);
         Assert.NotNull(cancelResult);
 
-        // The task must remain Completed and the result must not be lost.
-        var verifyResult = await client.GetTaskAsync(taskId, ct);
-        var stillCompleted = Assert.IsType<CompletedTaskResult>(verifyResult);
-        Assert.NotEqual(default(JsonElement), stillCompleted.Result);
+        // The completing Get already served-and-dropped the terminal snapshot. Cancel must not
+        // resurrect a row (as cancelled or otherwise).
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.GetTaskAsync(taskId, ct));
+        Assert.Contains("Unknown task", ex.Message);
     }
 
     [Fact]
