@@ -12,6 +12,7 @@ namespace ModelContextProtocol.Tests.Transport;
 public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
 {
     public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
+    public static bool IsUnixWithStdErrCallbackSupported => !PlatformDetection.IsWindows && IsStdErrCallbackSupported;
 
     [Fact]
     public async Task DisposeAsync_ClosesServerStandardInputForGracefulExit()
@@ -162,6 +163,100 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
 
         // Should throw IOException for the failed server, not crash the host process.
         await Assert.ThrowsAnyAsync<IOException>(() => McpClient.CreateAsync(transport, loggerFactory: LoggerFactory, cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsUnixWithStdErrCallbackSupported))]
+    public async Task SendMessageAsync_ServerExited_ThrowsWithExitDetails()
+    {
+        string id = Guid.NewGuid().ToString("N");
+        var stdErrReceived = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // The server closes its stdin, so the send fails, and exits a second later. That holds open the
+        // window a server exiting at once leaves until it is reaped: the send has failed, but the
+        // process has not yet been seen to exit.
+        StdioClientTransport transport = new(new()
+        {
+            Command = "sh",
+            Arguments = ["-c", $"exec 0<&-; echo {id} >&2; sleep 1; exit 3"],
+            ShutdownTimeout = TestConstants.DefaultTimeout,
+            StandardErrorLines = line =>
+            {
+                if (line.Contains(id))
+                {
+                    stdErrReceived.TrySetResult(true);
+                }
+            },
+        }, LoggerFactory);
+
+        await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await stdErrReceived.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        var exception = await Assert.ThrowsAnyAsync<IOException>(() => session.SendMessageAsync(
+            new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
+            TestContext.Current.CancellationToken));
+        Assert.StartsWith("MCP server process exited unexpectedly", exception.Message);
+        Assert.Contains(id, exception.Message);
+
+        var closedException = await Assert.ThrowsAsync<ClientTransportClosedException>(
+            async () => await session.MessageReader.Completion.WaitAsync(
+                TestConstants.DefaultTimeout,
+                TestContext.Current.CancellationToken));
+        var completionDetails = Assert.IsType<StdioClientCompletionDetails>(closedException.Details);
+        Assert.Equal(3, completionDetails.ExitCode);
+        Assert.Contains(id, completionDetails.StandardErrorTail ?? []);
+    }
+
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsUnixWithStdErrCallbackSupported))]
+    public async Task ConnectSendAndDispose_ServerExitsImmediately_CompletesWithExitDetails()
+    {
+        // A server that exits at once makes the transport close the server's stdin while the first send
+        // may still be writing to it. On Unix, closing the pipe at that moment could hang the send forever,
+        // and a send that failed before the exit was observed reported a bare "Failed to send message.".
+        // Both races are narrow, so run many short sessions in parallel. Thousands of sessions would
+        // flood the test output, so this test does not log.
+        const int WorkerCount = 16;
+        const int SessionsPerWorker = 200;
+        string id = Guid.NewGuid().ToString("N");
+
+        StdioClientTransport transport = new(new()
+        {
+            Command = "sh",
+            Arguments = ["-c", $"echo {id} >&2; exit 3"],
+            ShutdownTimeout = TestConstants.DefaultTimeout,
+        });
+
+        int sendFailuresWithoutExitDetails = 0;
+        Task[] workers = Enumerable.Range(0, WorkerCount).Select(_ => Task.Run(async () =>
+        {
+            for (int i = 0; i < SessionsPerWorker; i++)
+            {
+                await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+                try
+                {
+                    await session.SendMessageAsync(
+                        new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
+                        TestContext.Current.CancellationToken);
+                }
+                catch (IOException ex)
+                {
+                    if (!ex.Message.Contains(id))
+                    {
+                        Interlocked.Increment(ref sendFailuresWithoutExitDetails);
+                    }
+                }
+            }
+        }, TestContext.Current.CancellationToken)).ToArray();
+
+        try
+        {
+            await Task.WhenAll(workers).WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"{workers.Count(w => !w.IsCompleted)} of {WorkerCount} workers did not complete.");
+        }
+
+        Assert.Equal(0, sendFailuresWithoutExitDetails);
     }
 
     [Theory]
