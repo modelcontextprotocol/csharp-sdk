@@ -17,17 +17,24 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
 Pipe clientToServerPipe = new(), serverToClientPipe = new();
+const string FallbackUri = "skill://aot-fallback/SKILL.md";
 
-var authoredSkill = McpServerSkill.Create(
-    "skill://aot/SKILL.md",
-    [McpServerSkillFile.FromText("SKILL.md", "---\nname: aot\ndescription:\n  An AOT-published skill.\nmetadata:\n  note: >\n    First\n    \tCode\n    Last\n---\n")]);
 var expectedMeta = JsonNode.Parse("""{"example.com/aot":{"values":["native",42,true]}}""")!.AsObject();
-var entry = authoredSkill.ProtocolSkill;
-entry.Meta = (JsonObject)expectedMeta.DeepClone();
-var catalog = new InMemoryMcpSkillCatalog([entry]);
-entry.Meta["example.com/aot"]!["values"]!.AsArray().Clear();
+var metadata = new List<object> { "local-aot-metadata" };
+var createOptions = new McpServerSkillPackageCreateOptions
+{
+    Uri = "skill://aot/SKILL.md",
+    Metadata = metadata,
+    Meta = expectedMeta,
+};
+var package = McpServerSkillPackage.Create(
+    [McpServerSkillFile.FromText("SKILL.md", "---\nname: aot\ndescription:\n  An AOT-published skill.\nmetadata:\n  note: >\n    First\n    \tCode\n    Last\n---\n")], createOptions);
+var primitive = package.Skill;
 
 var services = new ServiceCollection();
+var catalogTracker = new AotCatalogTracker();
+services.AddSingleton(catalogTracker);
+services.AddScoped<AotCatalogDependency>();
 JsonSerializerOptions structuredOptions = new(McpJsonUtilities.DefaultOptions)
 {
     IgnoreReadOnlyProperties = true,
@@ -308,8 +315,38 @@ services.AddMcpServer()
         new OverridingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "OverridingEcho", UseStructuredContent = true })),
     ])
     .WithMcpApps()
-    .WithSkills(catalog)
-    .WithResources(authoredSkill.Resources);
+    .WithSkillPackages([package]).WithSkills(options =>
+    {
+        options.ListSkillsHandler = (_, _) => new(new ListSkillsResult());
+        options.GetSkillHandler = (context, _) =>
+        {
+            if (context.MatchedPrimitive is not null || context.Params.Uri != FallbackUri)
+            {
+                throw new Exception("Unexpected custom get fallback context.");
+            }
+
+            var fallback = new Skill
+            {
+                Uri = FallbackUri,
+                Frontmatter = new JsonObject { ["name"] = "aot-fallback", ["description"] = "An AOT fallback skill." },
+                Resources = SkillResources.Dynamic,
+                Meta = expectedMeta,
+            };
+            return new(new GetSkillResult { Skill = fallback, TimeToLive = TimeSpan.FromMinutes(1), CacheScope = CacheScope.Public });
+        };
+
+        options.GetSkillFilters.Add(next => (context, cancellationToken) =>
+        {
+            _ = context.Services!.GetRequiredService<AotCatalogDependency>();
+            if (context.MatchedPrimitive?.Id == primitive.Id &&
+                (!ReferenceEquals(context.MatchedPrimitive, primitive) || primitive.Metadata is not ["local-aot-metadata"]))
+            {
+                throw new Exception("The get filter did not receive the matched primitive metadata.");
+            }
+
+            return next(context, cancellationToken);
+        });
+    });
 
 await using var serviceProvider = services.BuildServiceProvider();
 var server = serviceProvider.GetRequiredService<McpServer>();
@@ -553,6 +590,29 @@ if (skillFile.Contents is not [TextResourceContents { Text: var skillText }] || 
 }
 
 Console.WriteLine("Success!");
+
+internal sealed class AotCatalogTracker
+{
+    public int Created;
+    public int Disposed;
+}
+
+internal sealed class AotCatalogDependency : IAsyncDisposable
+{
+    private readonly AotCatalogTracker _tracker;
+
+    public AotCatalogDependency(AotCatalogTracker tracker)
+    {
+        _tracker = tracker;
+        Interlocked.Increment(ref tracker.Created);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Interlocked.Increment(ref _tracker.Disposed);
+        return ValueTask.CompletedTask;
+    }
+}
 
 [McpServerToolType]
 internal sealed class AotTools
