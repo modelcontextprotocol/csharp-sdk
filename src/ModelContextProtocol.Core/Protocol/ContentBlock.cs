@@ -102,7 +102,14 @@ public abstract class ContentBlock
             // this custom converter. Keep caller contracts first, then supply the SDK metadata
             // (including nested collection types) using the same settings and converters.
             JsonSerializerOptions nestedOptions = new(callerOptions);
-            nestedOptions.TypeInfoResolverChain.Add(McpJsonUtilities.JsonContext.Default);
+
+            // When the caller is the SDK context itself (for example the server writing a
+            // CallToolResult), it is already the resolver and can't be added to its own chain.
+            if (!ReferenceEquals(nestedOptions.TypeInfoResolver, McpJsonUtilities.JsonContext.Default))
+            {
+                nestedOptions.TypeInfoResolverChain.Add(McpJsonUtilities.JsonContext.Default);
+            }
+
             nestedOptions.MakeReadOnly();
             return nestedOptions;
         }
