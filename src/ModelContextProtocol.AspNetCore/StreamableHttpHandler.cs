@@ -895,13 +895,23 @@ internal sealed class StreamableHttpHandler(
 
         if (message is JsonRpcRequest { Method: RequestMethods.Initialize, Params: JsonObject initializeParams } &&
             initializeParams["protocolVersion"] is JsonValue initializeProtocolVersionValue &&
-            initializeProtocolVersionValue.TryGetValue(out string? initializeProtocolVersion) &&
-            !string.IsNullOrEmpty(protocolVersionHeader) &&
-            !string.Equals(protocolVersionHeader, initializeProtocolVersion, StringComparison.Ordinal))
+            initializeProtocolVersionValue.GetValueKind() == JsonValueKind.String &&
+            !string.IsNullOrEmpty(protocolVersionHeader))
         {
-            errorDetail = CreateHeaderMismatchError(
-                $"Bad Request: The {McpProtocolVersionHeaderName} header value '{protocolVersionHeader}' does not match body params.protocolVersion value '{initializeProtocolVersion}'.");
-            return false;
+            // A string that is not valid UTF-8 cannot equal any header value, so it is a mismatch too.
+            if (!TryGetStringValue(initializeProtocolVersionValue, out var initializeProtocolVersion))
+            {
+                errorDetail = CreateHeaderMismatchError(
+                    $"Bad Request: The body params.protocolVersion value is not valid UTF-8, so it does not match the {McpProtocolVersionHeaderName} header value '{protocolVersionHeader}'.");
+                return false;
+            }
+
+            if (!string.Equals(protocolVersionHeader, initializeProtocolVersion, StringComparison.Ordinal))
+            {
+                errorDetail = CreateHeaderMismatchError(
+                    $"Bad Request: The {McpProtocolVersionHeaderName} header value '{protocolVersionHeader}' does not match body params.protocolVersion value '{initializeProtocolVersion}'.");
+                return false;
+            }
         }
 
         // Legacy headers leave reserved metadata opaque. Without a header, let the core server resolve
@@ -965,8 +975,7 @@ internal sealed class StreamableHttpHandler(
         string? value = null;
         if (parameters is JsonObject paramsObj &&
             paramsObj["_meta"] is JsonObject metaObj &&
-            metaObj[MetaKeys.ProtocolVersion] is JsonValue protocolVersionValue &&
-            protocolVersionValue.TryGetValue(out value) &&
+            TryGetStringValue(metaObj[MetaKeys.ProtocolVersion], out value) &&
             !string.IsNullOrEmpty(value))
         {
             protocolVersion = value;
@@ -1097,7 +1106,11 @@ internal sealed class StreamableHttpHandler(
             JsonRpcNotification notification => notification.Params,
             _ => null,
         };
-        var mcpNameInBody = GetJsonNodeStringProperty(bodyParams, routingNameParameter);
+        if (!TryGetJsonNodeStringProperty(bodyParams, routingNameParameter, out var mcpNameInBody))
+        {
+            errorMessage = $"Header mismatch: body value '{routingNameParameter}' is not a valid string, so it cannot match the Mcp-Name header value '{mcpNameInHeader}'.";
+            return false;
+        }
 
         // Check that the header value matches the body value if the body value is present.
         if (!string.Equals(decodedMcpNameInHeader, mcpNameInBody, StringComparison.Ordinal))
@@ -1167,8 +1180,9 @@ internal sealed class StreamableHttpHandler(
         }
 
         // Look up the tool to check for x-mcp-header annotations in the schema
-        var toolName = GetJsonNodeStringProperty(bodyParams, "name");
-        if (toolName is null || toolCollection is null || !toolCollection.TryGetPrimitive(toolName, out var tool))
+        // An unreadable name was already rejected by the Mcp-Name check, so it can be skipped here.
+        if (!TryGetJsonNodeStringProperty(bodyParams, "name", out var toolName) ||
+            toolName is null || toolCollection is null || !toolCollection.TryGetPrimitive(toolName, out var tool))
         {
             errorMessage = null;
             return true;
@@ -1281,6 +1295,13 @@ internal sealed class StreamableHttpHandler(
                 argsObj.TryGetPropertyValue(property.Name, out var argNode) &&
                 argNode is not null)
             {
+                // ConvertToHeaderValue converts string arguments to .NET strings, which throws for invalid UTF-8.
+                if (argNode.GetValueKind() == JsonValueKind.String && !TryGetStringValue(argNode, out _))
+                {
+                    errorMessage = $"Header mismatch: body argument '{property.Name}' is not valid UTF-8, so it cannot match the {fullHeaderName} header.";
+                    return false;
+                }
+
                 var expectedHeaderValue = McpHeaderEncoder.ConvertToHeaderValue(argNode);
                 if (expectedHeaderValue is not null)
                 {
@@ -1302,14 +1323,44 @@ internal sealed class StreamableHttpHandler(
         return true;
     }
 
-    private static string? GetJsonNodeStringProperty(System.Text.Json.Nodes.JsonNode? node, string propertyName)
+    /// <summary>
+    /// Reads an optional string property of a JSON object without throwing. Returns <see langword="true"/> with a
+    /// <see langword="null"/> value when the node is not an object, or when the property is absent or JSON null.
+    /// Returns <see langword="false"/> when the property is present but is not a readable string.
+    /// </summary>
+    private static bool TryGetJsonNodeStringProperty(JsonNode? node, string propertyName, out string? value)
     {
-        if (node is System.Text.Json.Nodes.JsonObject obj && obj.TryGetPropertyValue(propertyName, out var value))
+        if (node is JsonObject obj && obj.TryGetPropertyValue(propertyName, out var propertyValue) && propertyValue is not null)
         {
-            return value?.GetValue<string>();
+            return TryGetStringValue(propertyValue, out value);
         }
 
-        return null;
+        value = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads a JSON string value without throwing. Returns <see langword="false"/> when the node is not a JSON string,
+    /// or when the string is not valid UTF-8. System.Text.Json validates the UTF-8 inside a string token only when it
+    /// converts the token to a .NET string, and it throws <see cref="InvalidOperationException"/> at that point.
+    /// </summary>
+    private static bool TryGetStringValue(JsonNode? node, [NotNullWhen(true)] out string? value)
+    {
+        if (node is JsonValue jsonValue && jsonValue.GetValueKind() == JsonValueKind.String)
+        {
+            try
+            {
+                value = jsonValue.GetValue<string>();
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                // The string is not valid UTF-8. Treat it the same as a value that is not a string.
+            }
+        }
+
+        value = null;
+        return false;
     }
 
     // Valid HTTP header field-value characters per RFC 9110: horizontal tab (0x09),
