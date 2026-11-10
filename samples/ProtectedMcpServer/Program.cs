@@ -9,8 +9,22 @@ using System.Security.Claims;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var serverUrl = "http://localhost:7071/";
-var inMemoryOAuthServerUrl = "https://localhost:7029";
+var resource = builder.Configuration["Mcp:Resource"]
+    ?? throw new InvalidOperationException("Configure Mcp:Resource with the canonical MCP server URL.");
+var authority = builder.Configuration["Authentication:Authority"]
+    ?? throw new InvalidOperationException("Configure Authentication:Authority with the authorization server issuer.");
+var audience = builder.Configuration["Authentication:Audience"]
+    ?? throw new InvalidOperationException("Configure Authentication:Audience with the expected access token audience.");
+var scopesSupported = builder.Configuration.GetRequiredSection("Authentication:ScopesSupported").Get<string[]>()
+    ?? throw new InvalidOperationException("Configure Authentication:ScopesSupported with the scopes clients should request.");
+var requiredScopes = builder.Configuration.GetRequiredSection("Authentication:RequiredScopes").Get<string[]>()
+    ?? throw new InvalidOperationException("Configure Authentication:RequiredScopes with the scope values required in access tokens.");
+
+if (requiredScopes.Length == 0 || requiredScopes.Any(string.IsNullOrWhiteSpace))
+{
+    throw new InvalidOperationException("Authentication:RequiredScopes must contain at least one nonempty scope.");
+}
+
 var allowedOrigins = builder.Configuration.GetSection("Mcp:AllowedOrigins").Get<string[]>() ?? ["http://localhost:5173"];
 
 // This sample runs the MCP server on localhost:7071, and it is intended to be callable from a
@@ -39,16 +53,17 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    // Configure to validate tokens from our in-memory OAuth server
-    options.Authority = inMemoryOAuthServerUrl;
+    options.Authority = authority;
+    options.MapInboundClaims = false;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
         ValidateAudience = true,
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
-        ValidAudience = serverUrl, // Validate that the audience matches the resource metadata as suggested in RFC 8707
-        ValidIssuer = inMemoryOAuthServerUrl,
+        // Entra v2 access tokens use the API's application (client) ID, not its resource URL, as the audience.
+        ValidAudience = audience,
+        ValidIssuer = authority,
         NameClaimType = "name",
         RoleClaimType = "roles"
     };
@@ -69,7 +84,7 @@ builder.Services.AddAuthentication(options =>
         },
         OnChallenge = context =>
         {
-            Console.WriteLine($"Challenging client to authenticate with Entra ID");
+            Console.WriteLine($"Challenging client to authenticate with {authority}");
             return Task.CompletedTask;
         }
     };
@@ -78,13 +93,29 @@ builder.Services.AddAuthentication(options =>
 {
     options.ResourceMetadata = new()
     {
-        ResourceDocumentation = "https://docs.example.com/api/weather",
-        AuthorizationServers = { inMemoryOAuthServerUrl },
-        ScopesSupported = ["mcp:tools"],
+        Resource = resource,
+        AuthorizationServers = { authority },
+        ScopesSupported = scopesSupported,
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("McpTools", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireAssertion(context =>
+        {
+            // Entra uses "scp"; the local test OAuth server uses "scope".
+            var tokenScopes = context.User.FindAll("scp")
+                .Concat(context.User.FindAll("scope"))
+                .SelectMany(claim => claim.Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                .ToHashSet(StringComparer.Ordinal);
+
+            return requiredScopes.All(tokenScopes.Contains);
+        });
+    });
+});
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMcpServer()
@@ -110,12 +141,11 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Use the default MCP policy name that we've configured
-app.MapMcp().RequireAuthorization().RequireCors("McpBrowserClient");
+app.MapMcp().RequireAuthorization("McpTools").RequireCors("McpBrowserClient");
 
-Console.WriteLine($"Starting MCP server with authorization at {serverUrl}");
-Console.WriteLine($"Using in-memory OAuth server at {inMemoryOAuthServerUrl}");
-Console.WriteLine($"Protected Resource Metadata URL: {serverUrl}.well-known/oauth-protected-resource");
+Console.WriteLine($"MCP resource: {resource}");
+Console.WriteLine($"Using authorization server at {authority}");
+Console.WriteLine($"Protected Resource Metadata URL: {resource.TrimEnd('/')}/.well-known/oauth-protected-resource");
 Console.WriteLine("Press Ctrl+C to stop the server");
 
-app.Run(serverUrl);
+app.Run();
