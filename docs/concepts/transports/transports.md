@@ -110,6 +110,16 @@ builder.Services.AddMcpServer()
 await builder.Build().RunAsync();
 ```
 
+By default, the stdio server accepts a message of any size and buffers each line until its newline arrives. To bound the memory used to read one message, set <xref:ModelContextProtocol.Server.StreamServerTransportOptions.MaxMessageSize>:
+
+```csharp
+builder.Services.AddMcpServer()
+    .WithStdioServerTransport(options => options.MaxMessageSize = 32 * 1024 * 1024)
+    .WithTools<MyTools>();
+```
+
+A request over the limit is discarded without being buffered whole and is answered with a JSON-RPC `-32600` (invalid request) error for its id. A response over the limit, such as a large sampling result, fails the server's pending request instead. The same option applies to <xref:ModelContextProtocol.Server.StreamServerTransport>.
+
 ### Streamable HTTP transport
 
 The [Streamable HTTP] transport uses HTTP for bidirectional communication with optional streaming. This is the recommended transport for remote servers.
