@@ -13,7 +13,8 @@ The Protected MCP Server sample shows how to:
 
 ## Prerequisites
 
-- .NET 10 SDK to build this repository, and the .NET 9 runtime to run this sample
+- .NET 10 SDK to build and run this sample
+- .NET 9 runtime when using TestOAuthServer with the command below
 - A running TestOAuthServer, or an external authorization server such as Microsoft Entra ID
 
 ## Setup and Running
@@ -112,7 +113,7 @@ Start with Microsoft's [Secure a Model Context Protocol (MCP) server with Micros
 1. Create a single-tenant app registration for the MCP server. Record its **Directory (tenant) ID** and **Application (client) ID**.
 2. Set `api.requestedAccessTokenVersion` to `2` in its manifest **before** changing the Application ID URI.
 3. Set the **Application ID URI** to `https://localhost:7071`, matching `Mcp:Resource` exactly. Do not add a trailing slash. If you use another HTTPS hostname or port, change both the registration and sample configuration.
-4. Expose a delegated scope named `mcp.tools`. Its fully qualified value is `https://localhost:7071/mcp.tools`.
+4. Expose a delegated scope named `mcp:tools`. Its fully qualified value is `https://localhost:7071/mcp:tools`.
 
 The server validates tokens; it does not sign users in or redeem authorization codes. It does **not** need a client secret or a redirect URI.
 
@@ -123,8 +124,8 @@ Trust the development certificate if necessary with `dotnet dev-certs https --tr
 ```powershell
 $env:Authentication__Authority = "https://login.microsoftonline.com/<tenant-id>/v2.0"
 $env:Authentication__Audience = "<server-application-client-id>"
-$env:Authentication__ScopesSupported__0 = "https://localhost:7071/mcp.tools"
-$env:Authentication__RequiredScopes__0 = "mcp.tools"
+$env:Authentication__ScopesSupported__0 = "https://localhost:7071/mcp:tools"
+$env:Authentication__RequiredScopes__0 = "mcp:tools"
 $env:Mcp__Resource = "https://localhost:7071"
 
 dotnet run --project samples\ProtectedMcpServer --no-launch-profile --urls https://localhost:7071
@@ -140,7 +141,7 @@ Entra's discovery document does not advertise Dynamic Client Registration (DCR) 
 
 1. Create a separate single-tenant **public client** registration for the test client.
 2. Under **Authentication**, add a **Mobile and desktop applications** redirect URI matching the client's callback.
-3. Add the MCP API's delegated `mcp.tools` permission. Complete user/admin consent as required by the tenant. Optionally pre-authorize that client for this scope under the server app's **Expose an API** settings.
+3. Add the MCP API's delegated `mcp:tools` permission. Complete user/admin consent as required by the tenant. Optionally pre-authorize that client for this scope under the server app's **Expose an API** settings.
 4. Supply the **client** application's ID to the MCP client, not the server application's ID. Public clients use authorization code flow with PKCE and no client secret.
 
 Client support and configuration differ:
@@ -172,13 +173,13 @@ The first request should return `401` with a `WWW-Authenticate` header containin
     "https://login.microsoftonline.com/<tenant-id>/v2.0"
   ],
   "scopes_supported": [
-    "https://localhost:7071/mcp.tools"
+    "https://localhost:7071/mcp:tools"
   ],
   "bearer_methods_supported": ["header"]
 }
 ```
 
-A valid delegated access token for this API with `scp` containing `mcp.tools` authorizes MCP requests. A wrong-audience token returns `401`; an authenticated token missing the required scope returns `403`.
+A valid delegated access token for this API with `scp` containing `mcp:tools` authorizes MCP requests. A wrong-audience token returns `401`; an authenticated token missing the required scope returns `403`.
 
 ## Testing Without Client
 
