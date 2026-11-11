@@ -44,6 +44,8 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
     [Fact]
     public async Task MaximumProtocolVersion_ModernVersionUsesDiscover()
     {
+        // When a revision after 2026-07-28 is supported, add a test proving that a lower ceiling
+        // excludes newer server-advertised versions during discovery and initialize fallback.
         await using var transport = new PerRequestMetadataRetryTestTransport();
         await using var client = await McpClient.CreateAsync(transport,
             new McpClientOptions { MaximumProtocolVersion = McpProtocolVersions.July2026ProtocolVersion },
