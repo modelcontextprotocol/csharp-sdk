@@ -15,13 +15,14 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     private readonly int? _processId;
 
     public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, DataReceivedEventHandler errorHandler, ILoggerFactory? loggerFactory) :
-        base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory)
+        base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory, startReading: false)
     {
         _options = options;
         _process = process;
         _stderrRollingLog = stderrRollingLog;
         _errorHandler = errorHandler;
         try { _processId = process.Id; } catch { }
+        StartReading();
     }
 
     /// <inheritdoc/>
@@ -72,6 +73,11 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
             LogStandardInputCloseFailed(Name, ex);
         }
 
+        // Stop the read loop before waiting for the process. If the server has
+        // already closed stdout but is still waiting on another inherited handle,
+        // waiting first can leave the transport and its reader blocked together.
+        CancelShutdown();
+
         // Ensure all pending ErrorDataReceived events are drained before detaching
         // the handler. GetUnexpectedExitExceptionAsync does this when HasExited is
         // true, but there is a narrow window on Linux where the process has closed
@@ -91,7 +97,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         try
         {
             StdioClientTransport.DisposeProcess(
-                _process, 
+                _process,
                 processRunning: true,
                 _options.ShutdownTimeout,
                 beforeDispose: () => SetDisconnected(new ClientTransportClosedException(BuildCompletionDetails(error))));
@@ -178,7 +184,7 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
             Exception = error,
             ProcessId = _processId,
         };
-        
+
         try
         {
             if (StdioClientTransport.HasExited(_process))

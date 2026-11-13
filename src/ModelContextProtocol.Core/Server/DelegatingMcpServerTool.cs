@@ -6,6 +6,10 @@ namespace ModelContextProtocol.Server;
 /// <remarks>
 /// This is recommended as a base type when building tools that can be chained around an underlying <see cref="McpServerTool"/>.
 /// The default implementation simply passes each call to the inner tool instance.
+/// When an invocation override retains the original <see cref="CallToolResult.StructuredContent"/> element,
+/// server dispatch can apply required-member recovery against the registered tool's effective output schema.
+/// Calling the base invocation also finalizes recovery for the inner forwarding segment before an override consumes it.
+/// Overrides that replace or reserialize structured content are responsible for matching their advertised schema.
 /// </remarks>
 public abstract class DelegatingMcpServerTool : McpServerTool
 {
@@ -35,9 +39,24 @@ public abstract class DelegatingMcpServerTool : McpServerTool
 
     /// <inheritdoc />
     public override ValueTask<CallToolResult> InvokeAsync(
-        RequestContext<CallToolRequestParams> request, 
+        RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken = default) =>
-        _innerTool.InvokeAsync(request, cancellationToken);
+        HasCustomInvocation && request is { StructuredContentRecoveryTarget: { } recoveryTarget }
+            ? InvokeInnerToolAsync(request, recoveryTarget, cancellationToken)
+            : _innerTool.InvokeAsync(request, cancellationToken);
+
+    private async ValueTask<CallToolResult> InvokeInnerToolAsync(
+        RequestContext<CallToolRequestParams> request,
+        RequestContext<CallToolRequestParams>.StructuredContentRecoveryState recoveryTarget,
+        CancellationToken cancellationToken)
+    {
+        CallToolResult result = await _innerTool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
+        if (ReferenceEquals(request.StructuredContentRecoveryTarget, recoveryTarget))
+        {
+            request.RecoverStructuredContent(_innerTool, result);
+        }
+        return result;
+    }
 
     /// <inheritdoc />
     public override string ToString() => _innerTool.ToString();
