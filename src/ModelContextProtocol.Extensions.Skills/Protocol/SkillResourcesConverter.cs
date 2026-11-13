@@ -62,6 +62,11 @@ internal sealed class SkillResourcesConverter : JsonConverter<SkillResources>
 
     public override void Write(Utf8JsonWriter writer, SkillResources value, JsonSerializerOptions options)
     {
+        if (value is null)
+        {
+            throw new JsonException("Invalid skill manifest: an array or the string 'dynamic' is required, not null.");
+        }
+
         if (value.IsDynamic)
         {
             writer.WriteStringValue(SkillsProtocol.DynamicResourcesSentinel);
@@ -69,8 +74,13 @@ internal sealed class SkillResourcesConverter : JsonConverter<SkillResources>
         }
 
         writer.WriteStartArray();
-        foreach (var resource in value.Resources!)
+        foreach (var resource in value.Entries)
         {
+            if (resource is null)
+            {
+                throw new JsonException("Invalid skill manifest: a resource entry was null.");
+            }
+
             JsonSerializer.Serialize(writer, resource, McpSkillsJsonContext.Default.SkillResource);
         }
 

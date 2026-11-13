@@ -20,15 +20,15 @@ public class SkillFrontmatterNodeClassificationTests
         McpServerSkill? skill = null;
 
         var parseException = Record.Exception(() => SkillFrontmatter.Parse(markdown));
-        var automaticException = Record.Exception(() => McpServerSkill.Create(files));
-        var explicitException = Record.Exception(() => skill = McpServerSkill.Create("skill://alpha/SKILL.md", supplied, files));
+        var automaticException = Record.Exception(() => McpServerSkillPackage.Create(files).Skill);
+        var explicitException = Record.Exception(() => skill = McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = supplied }).Skill);
 
         Assert.Equal("UnsupportedYamlException", parseException?.GetType().Name);
         Assert.Contains("flow collections are not supported as mapping keys", parseException!.Message);
         Assert.IsType<ArgumentException>(automaticException);
         Assert.Null(explicitException);
         Assert.NotNull(skill);
-        Assert.True(JsonNode.DeepEquals(supplied, skill.ProtocolSkill.Frontmatter));
+        Assert.True(JsonNode.DeepEquals(supplied, skill.ProtocolSkill!.Frontmatter));
     }
 
     [Theory]
@@ -50,9 +50,9 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         Assert.True(JsonNode.DeepEquals(expected, SkillFrontmatter.Parse(markdown)));
-        Assert.True(JsonNode.DeepEquals(expected, McpServerSkill.Create(files).ProtocolSkill.Frontmatter));
+        Assert.True(JsonNode.DeepEquals(expected, McpServerSkillPackage.Create(files).Skill.ProtocolSkill!.Frontmatter));
         Assert.True(JsonNode.DeepEquals(expected,
-            McpServerSkill.Create("skill://alpha/SKILL.md", expected, files).ProtocolSkill.Frontmatter));
+            McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = expected }).Skill.ProtocolSkill!.Frontmatter));
     }
 
     [Theory]
@@ -68,8 +68,8 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         Assert.Throws<FormatException>(() => SkillFrontmatter.Parse(markdown));
-        Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
-        Assert.Throws<ArgumentException>(() => McpServerSkill.Create("skill://alpha/SKILL.md", supplied, files));
+        Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files).Skill);
+        Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = supplied }).Skill);
     }
 
     [Theory]
@@ -83,8 +83,8 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         Assert.Throws<FormatException>(() => SkillFrontmatter.Parse(markdown));
-        Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
-        Assert.Throws<ArgumentException>(() => McpServerSkill.Create("skill://alpha/SKILL.md", supplied, files));
+        Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files).Skill);
+        Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = supplied }).Skill);
     }
 
     [Fact]
@@ -101,14 +101,14 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         var parseException = Record.Exception(() => SkillFrontmatter.Parse(markdown));
-        var automaticException = Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
-        var skill = McpServerSkill.Create("skill://alpha/SKILL.md", supplied, files);
+        var automaticException = Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files).Skill);
+        var skill = McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = supplied }).Skill;
 
         Assert.Equal("UnsupportedYamlException", parseException?.GetType().Name);
         Assert.Contains("explicit mapping keys", parseException!.Message);
         Assert.Contains("does not support", automaticException.Message);
         Assert.Contains("explicit mapping keys", automaticException.Message);
-        Assert.True(JsonNode.DeepEquals(supplied, skill.ProtocolSkill.Frontmatter));
+        Assert.True(JsonNode.DeepEquals(supplied, skill.ProtocolSkill!.Frontmatter));
     }
 
     [Theory]
@@ -150,13 +150,13 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         var parseException = Record.Exception(() => SkillFrontmatter.Parse(markdown));
-        var automaticException = Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
-        var skill = McpServerSkill.Create("skill://test/SKILL.md", supplied, files);
+        var automaticException = Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files).Skill);
+        var skill = McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://test/SKILL.md", Frontmatter = supplied }).Skill;
 
         Assert.Equal("UnsupportedYamlException", parseException?.GetType().Name);
         Assert.Contains("multi-line flow collections", parseException!.Message);
         Assert.Contains("does not support", automaticException.Message);
-        Assert.True(JsonNode.DeepEquals(supplied, skill.ProtocolSkill.Frontmatter));
+        Assert.True(JsonNode.DeepEquals(supplied, skill.ProtocolSkill!.Frontmatter));
     }
 
     [Theory]
@@ -224,9 +224,9 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         Assert.True(JsonNode.DeepEquals(expected, SkillFrontmatter.Parse(markdown)));
-        Assert.True(JsonNode.DeepEquals(expected, McpServerSkill.Create(files).ProtocolSkill.Frontmatter));
+        Assert.True(JsonNode.DeepEquals(expected, McpServerSkillPackage.Create(files).Skill.ProtocolSkill!.Frontmatter));
         Assert.True(JsonNode.DeepEquals(expected,
-            McpServerSkill.Create("skill://alpha/SKILL.md", expected, files).ProtocolSkill.Frontmatter));
+            McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = expected }).Skill.ProtocolSkill!.Frontmatter));
     }
 
     [Theory]
@@ -285,9 +285,9 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         Assert.True(JsonNode.DeepEquals(expected, SkillFrontmatter.Parse(markdown)));
-        Assert.True(JsonNode.DeepEquals(expected, McpServerSkill.Create(files).ProtocolSkill.Frontmatter));
+        Assert.True(JsonNode.DeepEquals(expected, McpServerSkillPackage.Create(files).Skill.ProtocolSkill!.Frontmatter));
         Assert.True(JsonNode.DeepEquals(expected,
-            McpServerSkill.Create("skill://alpha/SKILL.md", expected, files).ProtocolSkill.Frontmatter));
+            McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = expected }).Skill.ProtocolSkill!.Frontmatter));
     }
 
     [Theory]
@@ -320,9 +320,9 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         var parseException = Assert.ThrowsAny<FormatException>(() => SkillFrontmatter.Parse(markdown));
-        var automaticException = Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
+        var automaticException = Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files).Skill);
         var explicitException = Assert.Throws<ArgumentException>(
-            () => McpServerSkill.Create("skill://alpha/SKILL.md", CreateFrontmatter("null"), files));
+            () => McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = CreateFrontmatter("null") }).Skill);
 
         Assert.NotEqual("UnsupportedYamlException", parseException.GetType().Name);
         Assert.Contains("must be a YAML mapping", parseException.Message);
@@ -340,9 +340,9 @@ public class SkillFrontmatterNodeClassificationTests
         var files = new[] { McpServerSkillFile.FromText("SKILL.md", markdown) };
 
         Assert.True(JsonNode.DeepEquals(expected, SkillFrontmatter.Parse(markdown)));
-        Assert.True(JsonNode.DeepEquals(expected, McpServerSkill.Create(files).ProtocolSkill.Frontmatter));
+        Assert.True(JsonNode.DeepEquals(expected, McpServerSkillPackage.Create(files).Skill.ProtocolSkill!.Frontmatter));
         Assert.True(JsonNode.DeepEquals(expected,
-            McpServerSkill.Create("skill://alpha/SKILL.md", expected, files).ProtocolSkill.Frontmatter));
+            McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = expected }).Skill.ProtocolSkill!.Frontmatter));
     }
 
     [Theory]
@@ -380,14 +380,14 @@ public class SkillFrontmatterNodeClassificationTests
         McpServerSkill? skill = null;
 
         var parseException = Record.Exception(() => SkillFrontmatter.Parse(markdown));
-        var automaticException = Record.Exception(() => McpServerSkill.Create(files));
-        var explicitException = Record.Exception(() => skill = McpServerSkill.Create("skill://alpha/SKILL.md", supplied, files));
+        var automaticException = Record.Exception(() => McpServerSkillPackage.Create(files).Skill);
+        var explicitException = Record.Exception(() => skill = McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = supplied }).Skill);
 
         Assert.Equal("UnsupportedYamlException", parseException?.GetType().Name);
         Assert.Contains(messageFragment, parseException!.Message);
         Assert.IsType<ArgumentException>(automaticException);
         Assert.Null(explicitException);
-        Assert.True(JsonNode.DeepEquals(supplied, skill!.ProtocolSkill.Frontmatter));
+        Assert.True(JsonNode.DeepEquals(supplied, skill!.ProtocolSkill!.Frontmatter));
     }
 
     private void AssertMalformedForEveryAuthoringPath(string body)
@@ -402,8 +402,8 @@ public class SkillFrontmatterNodeClassificationTests
 
         var parseException = Assert.ThrowsAny<FormatException>(() => SkillFrontmatter.Parse(markdown));
         Assert.NotEqual("UnsupportedYamlException", parseException.GetType().Name);
-        Assert.Throws<ArgumentException>(() => McpServerSkill.Create(files));
-        var explicitException = Assert.Throws<ArgumentException>(() => McpServerSkill.Create("skill://alpha/SKILL.md", supplied, files));
+        Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files).Skill);
+        var explicitException = Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = supplied }).Skill);
         Assert.Contains("could not be read", explicitException.Message);
     }
 

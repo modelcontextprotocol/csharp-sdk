@@ -1,10 +1,12 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 
 namespace ModelContextProtocol.Extensions.Skills;
 
 /// <summary>
-/// Represents one file of a skill authored through <see cref="McpServerSkill"/>.
+/// Represents one file of a skill authored through <see cref="McpServerSkillPackage"/>.
 /// </summary>
+[Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
 public sealed class McpServerSkillFile
 {
     /// <summary>

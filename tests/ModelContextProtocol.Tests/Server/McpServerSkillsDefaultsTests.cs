@@ -23,10 +23,8 @@ public class McpServerSkillsDefaultsTests : ClientServerTestBase
     {
         mcpServerBuilder.WithSkills(
         [
-            McpServerSkill.Create(
-                "skill://alpha/SKILL.md",
-                new JsonObject { ["name"] = "alpha", ["description"] = "d" },
-                [McpServerSkillFile.FromText("SKILL.md", "---\nname: alpha\ndescription: d\n---\n")]),
+            McpServerSkillPackage.Create(
+                [McpServerSkillFile.FromText("SKILL.md", "---\nname: alpha\ndescription: d\n---\n")], new McpServerSkillPackageCreateOptions { Uri = "skill://alpha/SKILL.md", Frontmatter = new JsonObject { ["name"] = "alpha", ["description"] = "d" } }).Skill,
         ]);
     }
 
@@ -44,7 +42,7 @@ public class McpServerSkillsDefaultsTests : ClientServerTestBase
         Assert.Equal(0, result["ttlMs"]?.GetValue<long>());
         Assert.Equal("private", result["cacheScope"]?.GetValue<string>());
 
-        var typed = await client.ListSkillsAsync(new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
+        var typed = await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(TimeSpan.Zero, typed.TimeToLive);
         Assert.Equal(CacheScope.Private, typed.CacheScope);
     }
@@ -94,8 +92,8 @@ public class McpServerSkillsDefaultsTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
         client.ServerCapabilities.Extensions!.Remove(SkillsProtocol.ExtensionId);
 
-        Assert.False(client.SupportsSkills());
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await client.ListSkillsAsync(TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await client.GetSkillAsync("skill://alpha/SKILL.md", TestContext.Current.CancellationToken));
+        Assert.False(client.ServerCapabilities.Extensions.ContainsKey(SkillsProtocol.ExtensionId));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await client.GetSkillAsync("skill://alpha/SKILL.md", cancellationToken: TestContext.Current.CancellationToken));
     }
 }
