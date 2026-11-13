@@ -9,7 +9,7 @@ public class McpServerNativeUriSkillTests(ITestOutputHelper output) : ClientServ
 {
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
-        mcpServerBuilder.WithSkills(
+        mcpServerBuilder.WithSkillPackages(
             new[]
             {
                 (Uri: "repo:/skills/alpha/SKILL.md", Name: "alpha"),
@@ -18,8 +18,8 @@ public class McpServerNativeUriSkillTests(ITestOutputHelper output) : ClientServ
                 (Uri: "urn:alpha/SKILL.md", Name: "alpha"),
                 (Uri: "repo:/skills/caf%C3%A9/SKILL.md", Name: "café"),
                 (Uri: "repo:skills/caf%C3%A9/SKILL.md", Name: "café"),
-            }.Select(entry => McpServerSkill.Create(
-                entry.Uri, [McpServerSkillFile.FromText("SKILL.md", $"---\nname: {entry.Name}\ndescription: Native resource\n---\n")])));
+            }.Select(entry => McpServerSkillPackage.Create(
+                [McpServerSkillFile.FromText("SKILL.md", $"---\nname: {entry.Name}\ndescription: Native resource\n---\n")], new McpServerSkillPackageCreateOptions { Uri = entry.Uri })));
     }
 
     [Theory]
@@ -32,14 +32,14 @@ public class McpServerNativeUriSkillTests(ITestOutputHelper output) : ClientServ
     public async Task NativeResourceUrisListGetAndVerifyWithoutRewritingTheirIdentity(string uri)
     {
         await using var client = await CreateMcpClientForServer();
-        var skills = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
-        var fetched = await client.GetSkillAsync(uri, TestContext.Current.CancellationToken);
+        var skills = await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var fetched = await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken);
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(6, skills.Count);
         Assert.Equal(uri, fetched.Uri);
         Assert.Contains(resources, resource => resource.Uri == uri);
-        var read = await client.ReadSkillResourceAsync(fetched, uri, TestContext.Current.CancellationToken);
+        var read = await client.ReadSkillResourceAsync(fetched, uri, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(uri, Assert.Single(read.Contents).Uri);
         Assert.IsType<TextResourceContents>(read.Contents[0]);
     }

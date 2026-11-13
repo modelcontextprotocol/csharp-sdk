@@ -161,6 +161,13 @@ If the user says they published but the API still reports a draft, trust the API
 
 ### Stage 4 handoff
 
+Before inviting publication, confirm the planned tag's content major matches. Release-triggered
+docs use discovered tags for all published majors; manual runs can select `latest-branches` instead.
+Missing selected refs and major mismatches fail without fallback. A missing branch blocks branch-mode
+refreshes, not tag-mode publication; obtain separate approval for any branch creation/push.
+Runtime scripts/tests/picker assets and trusted AI release instructions come from current `main`,
+independent of the triggering tag or manual ref.
+
 Hand off with the action and the watch, so the user knows they do not need to come back and report:
 
 > The draft release for **v2.1.0** is ready. Review the notes line by line, set the prerelease flag

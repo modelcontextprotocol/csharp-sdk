@@ -18,6 +18,9 @@ namespace ModelContextProtocol;
 /// package is one such consumer. These APIs remain experimental until additional
 /// extensibility scenarios validate the design.
 /// </description></item>
+/// <item><description>
+/// <c>MCPEXP005</c> covers the experimental MCP Skills extension APIs.
+/// </description></item>
 /// </list>
 /// <para>
 /// When an experimental API is associated with an experimental specification, the message
@@ -64,6 +67,21 @@ internal static class Experimentals
     /// URL for the experimental MCP Apps extension APIs.
     /// </summary>
     public const string Apps_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp003";
+
+    /// <summary>
+    /// Diagnostic ID for experimental MCP Skills extension APIs.
+    /// </summary>
+    public const string Skills_DiagnosticId = "MCPEXP005";
+
+    /// <summary>
+    /// Message for the experimental MCP Skills extension APIs.
+    /// </summary>
+    public const string Skills_Message = "The MCP Skills extension is experimental and subject to change.";
+
+    /// <summary>
+    /// URL for the experimental MCP Skills extension APIs.
+    /// </summary>
+    public const string Skills_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp005";
 
     /// <summary>
     /// Diagnostic ID for SDK extensibility APIs that enable independently packaged features,

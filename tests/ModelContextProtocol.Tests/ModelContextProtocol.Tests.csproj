@@ -11,7 +11,7 @@
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.Tests</RootNamespace>
     <!-- https://github.com/dotnet/sdk/issues/51060 -->
-    <NoWarn>$(NoWarn);NU1903;NU1902;MCP9006</NoWarn>
+    <NoWarn>$(NoWarn);NU1903;NU1902;MCP9006;MCPEXP005</NoWarn>
     <!-- Define for conditional TimeProvider support in InMemoryMcpTaskStore -->
     <DefineConstants>$(DefineConstants);MCP_TEST_TIME_PROVIDER</DefineConstants>
   </PropertyGroup>
@@ -42,6 +42,7 @@
   <ItemGroup>
     <Compile Include="..\..\src\ModelContextProtocol\Server\DistributedCacheEventIdFormatter.cs" Link="DistributedCacheEventIdFormatter.cs" />
     <Compile Include="..\..\src\ModelContextProtocol.Extensions.Skills\SkillFrontmatter.cs" Link="SkillFrontmatter.cs" />
+    <Compile Include="..\..\samples\SkillsServer\DatabaseStyleHandlers.cs" Link="Samples\DatabaseStyleHandlers.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net472'">

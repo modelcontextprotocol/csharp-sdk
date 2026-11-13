@@ -19,6 +19,13 @@ internal sealed class SseHandler(
 
     public async Task HandleSseRequestAsync(HttpContext context)
     {
+        var (isValid, userIdClaim) = StreamableHttpHandler.GetSessionIdentity(context.User);
+        if (!isValid)
+        {
+            await Results.Text(StreamableHttpHandler.MissingUserIdClaimMessage, statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
+            return;
+        }
+
         var sessionId = StreamableHttpHandler.MakeNewSessionId();
 
         // If the server is shutting down, we need to cancel all SSE connections immediately without waiting for HostOptions.ShutdownTimeout
@@ -32,7 +39,6 @@ internal sealed class SseHandler(
         var endpointPattern = requestPath[..(requestPath.LastIndexOf('/') + 1)];
         await using var transport = new SseResponseStreamTransport(context.Response.Body, $"{endpointPattern}message?sessionId={sessionId}", sessionId);
 
-        var userIdClaim = StreamableHttpHandler.GetUserIdClaim(context.User);
         var sseSession = new SseSession(transport, userIdClaim);
 
         if (!_sessions.TryAdd(sessionId, sseSession))
@@ -92,9 +98,16 @@ internal sealed class SseHandler(
             return;
         }
 
-        if (sseSession.UserId != StreamableHttpHandler.GetUserIdClaim(context.User))
+        var (isValid, requestUserId) = StreamableHttpHandler.GetSessionIdentity(context.User);
+        if (!isValid)
         {
-            await Results.Forbid().ExecuteAsync(context);
+            await Results.Text(StreamableHttpHandler.MissingUserIdClaimMessage, statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
+            return;
+        }
+
+        if (sseSession.UserId != requestUserId)
+        {
+            await Results.StatusCode(StatusCodes.Status403Forbidden).ExecuteAsync(context);
             return;
         }
 
