@@ -348,7 +348,7 @@ services.AddMcpServer()
         });
     });
 
-await using var serviceProvider = services.BuildServiceProvider();
+await using var serviceProvider = services.BuildServiceProvider(validateScopes: true);
 var server = serviceProvider.GetRequiredService<McpServer>();
 _ = server.RunAsync();
 
@@ -563,7 +563,7 @@ if (!JsonNode.DeepEquals(expectedMeta, skills[0].Meta))
     throw new Exception("Unexpected skill entry metadata in the listing.");
 }
 
-var skillResult = await client.GetSkillAsync(new GetSkillRequestParams { Uri = "skill://aot/SKILL.md" });
+var skillResult = await client.GetSkillAsync(new GetSkillRequestParams { Uri = "SKILL://AOT/SKILL.md" });
 if (skillResult.ResultType != "complete" ||
     skillResult.TimeToLive != TimeSpan.Zero ||
     skillResult.CacheScope != CacheScope.Private)
@@ -587,6 +587,22 @@ var skillFile = await client.ReadSkillResourceAsync(skill, skill.Uri);
 if (skillFile.Contents is not [TextResourceContents { Text: var skillText }] || !skillText.Contains("name: aot"))
 {
     throw new Exception("Unexpected skill content.");
+}
+
+var fallbackResult = await client.GetSkillAsync(new GetSkillRequestParams { Uri = FallbackUri });
+if (fallbackResult.Skill.Uri != FallbackUri ||
+    fallbackResult.Skill.Name != "aot-fallback" ||
+    !JsonNode.DeepEquals(expectedMeta, fallbackResult.Skill.Meta) ||
+    fallbackResult.ResultType != "complete" ||
+    fallbackResult.TimeToLive != TimeSpan.FromMinutes(1) ||
+    fallbackResult.CacheScope != CacheScope.Public)
+{
+    throw new Exception("Unexpected custom get fallback result.");
+}
+
+if (catalogTracker.Created != 2 || catalogTracker.Disposed != 2)
+{
+    throw new Exception("Unexpected request-service lifetimes for registered get and custom fallback.");
 }
 
 Console.WriteLine("Success!");
