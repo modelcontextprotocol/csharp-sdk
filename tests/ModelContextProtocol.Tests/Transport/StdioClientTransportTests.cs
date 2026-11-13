@@ -16,7 +16,6 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     [Fact]
     public async Task DisposeAsync_ClosesServerStandardInputForGracefulExit()
     {
-        TimeSpan shutdownTimeout = TimeSpan.FromSeconds(4);
         string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
         string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
 
@@ -35,10 +34,31 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
                 (_, true) => [],
                 _ => [testServerDll],
             },
-            ShutdownTimeout = shutdownTimeout,
+            ShutdownTimeout = TestConstants.DefaultTimeout,
         }, LoggerFactory);
 
         await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        // Complete initialization so the shutdown budget does not include process startup.
+        var initializeRequest = new JsonRpcRequest
+        {
+            Id = new RequestId(1),
+            Method = RequestMethods.Initialize,
+            Params = JsonSerializer.SerializeToNode(new InitializeRequestParams
+            {
+                ProtocolVersion = McpProtocolVersions.November2025ProtocolVersion,
+                Capabilities = new ClientCapabilities(),
+                ClientInfo = new Implementation { Name = "test-client", Version = "1.0.0" },
+            }, McpJsonUtilities.DefaultOptions),
+        };
+        await session.SendMessageAsync(initializeRequest, TestContext.Current.CancellationToken);
+        var response = await session.MessageReader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(
+            TestConstants.DefaultTimeout,
+            TestContext.Current.CancellationToken);
+        Assert.Equal(initializeRequest.Id, Assert.IsType<JsonRpcResponse>(response).Id);
+        await session.SendMessageAsync(
+            new JsonRpcNotification { Method = NotificationMethods.InitializedNotification },
+            TestContext.Current.CancellationToken);
 
         await session.DisposeAsync();
 

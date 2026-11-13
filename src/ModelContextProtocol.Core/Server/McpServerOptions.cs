@@ -210,12 +210,16 @@ public sealed class McpServerOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Each <see cref="McpServerRequestHandler"/> registers a raw JSON-RPC method handler that
-    /// bypasses the typed handler infrastructure. This enables extensions to register handlers
+    /// Each <see cref="McpServerRequestHandler"/> registers a JSON-RPC method handler that
+    /// controls its own serialization and bypasses the typed request filters. This enables extensions to register handlers
     /// for methods not known to Core at compile time.
     /// </para>
     /// <para>
-    /// Handlers registered here take precedence over built-in handlers for the same method.
+    /// Handlers receive the request's server and services through <see cref="RequestContext{TParams}"/>
+    /// and use the same service scope lifecycle as built-in request handlers, honoring <see cref="ScopeRequests"/>.
+    /// </para>
+    /// <para>
+    /// Each method must be unique. Custom handlers cannot replace built-in handlers or other custom handlers.
     /// </para>
     /// </remarks>
     [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]

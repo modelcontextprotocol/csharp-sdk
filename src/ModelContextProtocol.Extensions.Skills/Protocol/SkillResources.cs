@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Extensions.Skills;
@@ -10,18 +11,20 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// <para>
 /// The specification requires this value on every skill entry and admits exactly two forms. An entry with no
 /// manifest at all, or with any value other than an array or the string <c>"dynamic"</c>, is invalid and hosts
-/// must not load it. Use <see cref="FromResources"/> or <see cref="Dynamic"/> to construct one; there is
-/// deliberately no public constructor, so an invalid manifest cannot be produced by accident.
+/// must not load it. Use <see cref="FromResources"/> or <see cref="Dynamic"/> to construct one.
+/// This union represents the supported wire forms; it does not validate the supplied file entries or their
+/// agreement with the owning skill. High-level Skills operations perform those structural checks.
 /// </para>
 /// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx">Skills extension specification</see>
+/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/beta/skills.mdx">Skills extension specification</see>
 /// for details.
 /// </para>
 /// </remarks>
 [JsonConverter(typeof(SkillResourcesConverter))]
+[Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
 public sealed class SkillResources
 {
-    private SkillResources(IReadOnlyList<SkillResource>? resources) => Resources = resources;
+    private SkillResources(IReadOnlyList<SkillResource>? resources) => Entries = resources;
 
     /// <summary>
     /// Gets a manifest representing a skill whose content is generated dynamically.
@@ -55,10 +58,11 @@ public sealed class SkillResources
     /// <summary>
     /// Gets a value indicating whether this manifest is the <c>"dynamic"</c> marker.
     /// </summary>
-    public bool IsDynamic => Resources is null;
+    [MemberNotNullWhen(false, nameof(Entries))]
+    public bool IsDynamic => Entries is null;
 
     /// <summary>
     /// Gets the enumerated files, or <see langword="null"/> when <see cref="IsDynamic"/> is <see langword="true"/>.
     /// </summary>
-    public IReadOnlyList<SkillResource>? Resources { get; }
+    public IReadOnlyList<SkillResource>? Entries { get; }
 }

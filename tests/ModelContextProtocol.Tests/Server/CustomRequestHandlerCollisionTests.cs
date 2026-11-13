@@ -77,6 +77,21 @@ public class CustomRequestHandlerCollisionTests(ITestOutputHelper testOutputHelp
     }
 
     [Fact]
+    public async Task CustomHandler_NullHandler_ThrowsAtStartup()
+    {
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
+        var options = new McpServerOptions
+        {
+            RequestHandlers = [new McpServerRequestHandler { Method = "custom/method", Handler = null! }],
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(() => McpServer.Create(transport, options, LoggerFactory));
+
+        Assert.Contains("custom/method", exception.Message);
+        Assert.Contains(nameof(McpServerRequestHandler.Handler), exception.Message);
+    }
+
+    [Fact]
     public async Task CustomHandler_EmptyRoutingNameParameter_Throws()
     {
         await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);

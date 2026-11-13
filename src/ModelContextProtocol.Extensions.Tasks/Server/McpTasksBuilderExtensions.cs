@@ -307,12 +307,13 @@ public static class McpTasksBuilderExtensions
             }
         }
 
-        private async ValueTask<JsonNode?> HandleGetTask(JsonRpcRequest request, CancellationToken cancellationToken)
+        private async ValueTask<JsonNode?> HandleGetTask(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
+            var request = context.JsonRpcRequest;
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksGet);
             GateToTasksCapability(request);
 
-            var requestParams = request.Params?.Deserialize(McpTasksJsonContext.Default.GetTaskRequestParams)
+            var requestParams = context.Params?.Deserialize(McpTasksJsonContext.Default.GetTaskRequestParams)
                 ?? throw new McpProtocolException("Missing params for tasks/get", McpErrorCode.InvalidParams);
 
             var info = await _store.GetTaskAsync(requestParams.TaskId, cancellationToken).ConfigureAwait(false);
@@ -324,18 +325,19 @@ public static class McpTasksBuilderExtensions
             return JsonSerializer.SerializeToNode(ToGetTaskResult(info), McpTasksJsonContext.Default.GetTaskResult);
         }
 
-        private async ValueTask<JsonNode?> HandleUpdateTask(JsonRpcRequest request, CancellationToken cancellationToken)
+        private async ValueTask<JsonNode?> HandleUpdateTask(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
+            var request = context.JsonRpcRequest;
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksUpdate);
             GateToTasksCapability(request);
 
-            var taskId = request.Params?["taskId"]?.GetValue<string>()
+            var taskId = context.Params?["taskId"]?.GetValue<string>()
                 ?? throw new McpProtocolException("Missing params.taskId for tasks/update", McpErrorCode.InvalidParams);
 
             // Deserialize inputResponses using Core's options which can access the internal
             // InputResponsesCore backing property on RequestParams. The extension's source-gen
             // context cannot see that internal member.
-            var inputResponses = request.Params?["inputResponses"]?.Deserialize(
+            var inputResponses = context.Params?["inputResponses"]?.Deserialize(
                     McpJsonUtilities.ProtocolOptions.GetTypeInfo<IDictionary<string, InputResponse>>())
                 ?? new Dictionary<string, InputResponse>();
 
@@ -344,12 +346,13 @@ public static class McpTasksBuilderExtensions
             return JsonSerializer.SerializeToNode(new UpdateTaskResult(), McpTasksJsonContext.Default.UpdateTaskResult);
         }
 
-        private async ValueTask<JsonNode?> HandleCancelTask(JsonRpcRequest request, CancellationToken cancellationToken)
+        private async ValueTask<JsonNode?> HandleCancelTask(RequestContext<JsonNode?> context, CancellationToken cancellationToken)
         {
+            var request = context.JsonRpcRequest;
             GateToJuly2026OrLaterProtocol(request, TasksProtocol.MethodTasksCancel);
             GateToTasksCapability(request);
 
-            var requestParams = request.Params?.Deserialize(McpTasksJsonContext.Default.CancelTaskRequestParams)
+            var requestParams = context.Params?.Deserialize(McpTasksJsonContext.Default.CancelTaskRequestParams)
                 ?? throw new McpProtocolException("Missing params for tasks/cancel", McpErrorCode.InvalidParams);
 
             await _store.SetCancelledAsync(requestParams.TaskId, cancellationToken).ConfigureAwait(false);

@@ -13,17 +13,16 @@ public class McpServerNestedUnicodeSkillTests(ITestOutputHelper output) : Client
         {
             McpServerSkillFile.FromText("SKILL.md", "---\nname: outer\ndescription: Parent skill\n---\n"),
         };
-        var skills = new List<McpServerSkill>();
+        var skills = new List<McpServerSkillPackage>();
         foreach (var name in new[] { "café", "数据分析", "\U00010428" })
         {
             var markdown = $"---\nname: {name}\ndescription: Nested skill\n---\n";
             files.Add(McpServerSkillFile.FromText($"{name}/SKILL.md", markdown));
-            skills.Add(McpServerSkill.Create(
-                $"skill://outer/{Uri.EscapeDataString(name)}/SKILL.md",
-                [McpServerSkillFile.FromText("SKILL.md", markdown)]));
+            skills.Add(McpServerSkillPackage.Create(
+                [McpServerSkillFile.FromText("SKILL.md", markdown)], new McpServerSkillPackageCreateOptions { Uri = $"skill://outer/{Uri.EscapeDataString(name)}/SKILL.md" }));
         }
-        skills.Add(McpServerSkill.Create("skill://outer/SKILL.md", files));
-        mcpServerBuilder.WithSkills(skills);
+        skills.Add(McpServerSkillPackage.Create(files, new McpServerSkillPackageCreateOptions { Uri = "skill://outer/SKILL.md" }));
+        mcpServerBuilder.WithSkillPackages(skills);
     }
 
     [Theory]
@@ -33,7 +32,7 @@ public class McpServerNestedUnicodeSkillTests(ITestOutputHelper output) : Client
     public async Task NestedUnicodeSkillsListGetAndShareVerifiedResources(string name)
     {
         await using var client = await CreateMcpClientForServer();
-        var skills = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
+        var skills = await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken);
         var resources = await client.ListResourcesAsync(cancellationToken: TestContext.Current.CancellationToken);
         var uri = $"skill://outer/{Uri.EscapeDataString(name)}/SKILL.md";
 
@@ -42,13 +41,13 @@ public class McpServerNestedUnicodeSkillTests(ITestOutputHelper output) : Client
         Assert.Contains(skills, skill => skill.Uri == uri);
         Assert.Contains(resources, resource => resource.Uri == uri);
 
-        var inner = await client.GetSkillAsync(uri, TestContext.Current.CancellationToken);
-        var outer = await client.GetSkillAsync("skill://outer/SKILL.md", TestContext.Current.CancellationToken);
+        var inner = await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken);
+        var outer = await client.GetSkillAsync("skill://outer/SKILL.md", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(name, inner.Name);
-        Assert.Contains(outer.Resources.Resources!, resource => resource.Uri == uri);
+        Assert.Contains(outer.Resources.Entries!, resource => resource.Uri == uri);
 
-        var innerRead = await client.ReadSkillResourceAsync(inner, uri, TestContext.Current.CancellationToken);
-        var outerRead = await client.ReadSkillResourceAsync(outer, uri, TestContext.Current.CancellationToken);
+        var innerRead = await client.ReadSkillResourceAsync(inner, uri, cancellationToken: TestContext.Current.CancellationToken);
+        var outerRead = await client.ReadSkillResourceAsync(outer, uri, cancellationToken: TestContext.Current.CancellationToken);
         var innerText = Assert.IsType<TextResourceContents>(Assert.Single(innerRead.Contents));
         var outerText = Assert.IsType<TextResourceContents>(Assert.Single(outerRead.Contents));
         Assert.Equal(uri, innerText.Uri);
