@@ -42,6 +42,13 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
             {
                 Name = "test-tool",
                 Description = "A test tool"
+            }),
+            McpServerTool.Create(
+            (McpServer server) => JsonSerializer.Serialize(server.ClientCapabilities, McpJsonUtilities.DefaultOptions),
+            new McpServerToolCreateOptions
+            {
+                Name = "echo-client-capabilities",
+                Description = "Returns the client capabilities the server received with the request"
             })]);
     }
 
@@ -141,6 +148,61 @@ public class McpClientTaskMethodsTests : ClientServerTestBase
 
         Assert.True(augmented.IsTask);
         Assert.NotNull(augmented.TaskCreated);
+    }
+
+    [Fact]
+    public async Task CallToolAsync_WithRequestAndSessionCapabilities_MergesExtensionsByIdentifierOnly()
+    {
+        // The session declares a standard capability and two extensions. The request declares the
+        // same standard capability with another shape, one extension of its own, and other settings
+        // for an extension the session also declares.
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities
+            {
+                Elicitation = new ElicitationCapability { Form = new FormElicitationCapability() },
+                Extensions = new Dictionary<string, object>
+                {
+                    ["com.example/session-only"] = new JsonObject(),
+                    ["com.example/shared"] = new JsonObject { ["mode"] = "session" },
+                },
+            },
+        });
+        var ct = TestContext.Current.CancellationToken;
+
+        var result = await client.CallToolAsync(
+            new CallToolRequestParams
+            {
+                Name = "echo-client-capabilities",
+                Meta = new JsonObject
+                {
+                    [MetaKeys.ClientCapabilities] = new JsonObject
+                    {
+                        ["elicitation"] = new JsonObject { ["url"] = new JsonObject() },
+                        ["extensions"] = new JsonObject
+                        {
+                            ["com.example/request-only"] = new JsonObject(),
+                            ["com.example/shared"] = new JsonObject { ["mode"] = "request", ["limit"] = 10 },
+                        },
+                    },
+                },
+            }, ct);
+
+        var text = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        var received = JsonNode.Parse(text)!.AsObject();
+
+        // A standard capability is taken whole from the session.
+        Assert.True(JsonNode.DeepEquals(new JsonObject { ["form"] = new JsonObject() }, received["elicitation"]));
+
+        // Extensions are merged by identifier, and the settings of an extension declared on both
+        // sides are taken whole from the session, not merged field by field.
+        var expectedExtensions = new JsonObject
+        {
+            ["com.example/request-only"] = new JsonObject(),
+            ["com.example/session-only"] = new JsonObject(),
+            ["com.example/shared"] = new JsonObject { ["mode"] = "session" },
+        };
+        Assert.True(JsonNode.DeepEquals(expectedExtensions, received["extensions"]), received.ToJsonString());
     }
 
     [Fact]
