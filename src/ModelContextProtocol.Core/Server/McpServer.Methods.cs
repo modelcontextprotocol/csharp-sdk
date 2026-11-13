@@ -413,8 +413,8 @@ public abstract partial class McpServer : McpSession
             Meta = options?.GetMetaForRequest(),
         };
 
-        ThrowIfElicitationUnsupported(request);
-
+        // Capability checks are done by the untyped overload, which skips them when an
+        // outgoing-request interceptor is installed.
         var raw = await ElicitAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (!raw.IsAccepted || raw.Content is null)

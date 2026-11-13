@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Tests.Server;
 
@@ -253,6 +254,93 @@ public class McpServerTests : LoggedTest
         Assert.True(transport.SentMessages.Count >= 2, "Expected at least 2 messages (initialize response and elicit request)");
         var elicitRequest = Assert.IsType<JsonRpcRequest>(transport.SentMessages[1]);
         Assert.Equal(RequestMethods.ElicitationCreate, elicitRequest.Method);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
+    public async Task ElicitAsyncOfT_Should_Throw_Exception_If_Client_Does_Not_Support_Elicitation()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities(), TestContext.Current.CancellationToken);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await server.ElicitAsync<TypedElicitForm>(
+            "Which city?",
+            new RequestOptions { JsonSerializerOptions = McpServerTestsJsonContext.Default.Options },
+            TestContext.Current.CancellationToken));
+        Assert.Equal("Client does not support elicitation requests.", ex.Message);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
+    public async Task ElicitAsyncOfT_Should_Use_Interceptor_When_Client_Does_Not_Support_Elicitation()
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities(), TestContext.Current.CancellationToken);
+
+        string? interceptedMethod = null;
+#pragma warning disable MCPEXP002
+        var interceptingServer = server.WithOutgoingRequestInterceptor((method, _, _) =>
+        {
+            interceptedMethod = method;
+            return new(JsonNode.Parse("""{"action":"accept","content":{"city":"Seattle"}}"""));
+        });
+#pragma warning restore MCPEXP002
+
+        // Act
+        var result = await interceptingServer.ElicitAsync<TypedElicitForm>(
+            "Which city?",
+            new RequestOptions { JsonSerializerOptions = McpServerTestsJsonContext.Default.Options },
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(RequestMethods.ElicitationCreate, interceptedMethod);
+        Assert.True(result.IsAccepted);
+        Assert.Equal("Seattle", result.Content?.City);
+
+        // Only the initialize response went over the transport.
+        Assert.Single(transport.SentMessages);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Theory]
+    [InlineData(null, "cancel")]
+    [InlineData("""{"action":"decline"}""", "decline")]
+    public async Task ElicitAsyncOfT_Should_Return_Non_Accepted_Interceptor_Result_Without_Content(string? interceptorResult, string expectedAction)
+    {
+        // Arrange
+        await using var transport = new TestServerTransport();
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities(), TestContext.Current.CancellationToken);
+
+#pragma warning disable MCPEXP002
+        var interceptingServer = server.WithOutgoingRequestInterceptor((_, _, _) =>
+            new(interceptorResult is null ? null : JsonNode.Parse(interceptorResult)));
+#pragma warning restore MCPEXP002
+
+        // Act
+        var result = await interceptingServer.ElicitAsync<TypedElicitForm>(
+            "Which city?",
+            new RequestOptions { JsonSerializerOptions = McpServerTestsJsonContext.Default.Options },
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Assert.Equal(expectedAction, result.Action);
+        Assert.False(result.IsAccepted);
+        Assert.Null(result.Content);
 
         await transport.DisposeAsync();
         await runTask;
@@ -1809,3 +1897,13 @@ public class McpServerTests : LoggedTest
             () => server.NotifyProgressAsync((ProgressNotificationParams)null!, TestContext.Current.CancellationToken));
     }
 }
+
+internal sealed class TypedElicitForm
+{
+    public string? City { get; set; }
+}
+
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(TypedElicitForm))]
+[JsonSerializable(typeof(JsonElement))]
+internal partial class McpServerTestsJsonContext : JsonSerializerContext;
