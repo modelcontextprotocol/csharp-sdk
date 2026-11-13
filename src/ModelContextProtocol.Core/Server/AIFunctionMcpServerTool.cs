@@ -3,9 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -15,6 +18,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
     private readonly bool? _returnsCallToolResult;
+    private readonly IReadOnlyList<string>? _declaredArgumentNames;
+    private readonly HashSet<string>? _declaredArgumentNameSet;
+
+    private const int MaxUnknownArgumentsInMessage = 10;
+    private const int MaxArgumentNameLengthInMessage = 64;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -45,7 +53,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return CreateCore(
             AIFunctionFactory.Create(method, target, CreateAIFunctionFactoryOptions(method, options)),
             options,
-            returnsCallToolResult: ReturnsCallToolResult(method));
+            returnsCallToolResult: ReturnsCallToolResult(method),
+            snapshotDeclaredArguments: true);
     }
 
     /// <summary>
@@ -68,7 +77,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 return createTargetFunc(((RequestServiceProvider<CallToolRequestParams>)args.Services!).Request);
             }, CreateAIFunctionFactoryOptions(method, options)),
             options,
-            returnsCallToolResult: ReturnsCallToolResult(method));
+            returnsCallToolResult: ReturnsCallToolResult(method),
+            snapshotDeclaredArguments: true);
     }
 
     private static bool? ReturnsCallToolResult(MethodInfo method)
@@ -129,7 +139,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     public static new AIFunctionMcpServerTool Create(AIFunction function, McpServerToolCreateOptions? options) =>
         CreateCore(function, options, returnsCallToolResult: null);
 
-    private static AIFunctionMcpServerTool CreateCore(AIFunction function, McpServerToolCreateOptions? options, bool? returnsCallToolResult)
+    private static AIFunctionMcpServerTool CreateCore(
+        AIFunction function,
+        McpServerToolCreateOptions? options,
+        bool? returnsCallToolResult,
+        bool snapshotDeclaredArguments = false)
     {
         Throw.IfNull(function);
 
@@ -174,7 +188,17 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 options.Meta;
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? [], returnsCallToolResult);
+        IReadOnlyList<string>? declaredArgumentNames = null;
+        HashSet<string>? declaredArgumentNameSet = null;
+        if (snapshotDeclaredArguments &&
+            (options?.SerializerOptions ?? McpJsonUtilities.DefaultOptions).UnmappedMemberHandling is JsonUnmappedMemberHandling.Disallow)
+        {
+            // Declared names come from function.JsonSchema, which matches the advertised
+            // input schema properties today (AddMcpHeaderExtensions only annotates existing properties).
+            SnapshotDeclaredArgumentNames(function.JsonSchema, out declaredArgumentNames, out declaredArgumentNameSet);
+        }
+
+        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? [], returnsCallToolResult, declaredArgumentNames, declaredArgumentNameSet);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -237,7 +261,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
     private AIFunctionMcpServerTool(
-        AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata, bool? returnsCallToolResult)
+        AIFunction function,
+        Tool tool,
+        IServiceProvider? serviceProvider,
+        IReadOnlyList<object> metadata,
+        bool? returnsCallToolResult,
+        IReadOnlyList<string>? declaredArgumentNames,
+        HashSet<string>? declaredArgumentNameSet)
     {
         ValidateToolName(tool.Name);
 
@@ -246,6 +276,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         _metadata = metadata;
         _returnsCallToolResult = returnsCallToolResult;
+        _declaredArgumentNames = declaredArgumentNames;
+        _declaredArgumentNameSet = declaredArgumentNameSet;
     }
 
     /// <inheritdoc />
@@ -305,9 +337,19 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         if (request.Params?.Arguments is { } argDict)
         {
+            List<string>? unknownKeys = null;
             foreach (var kvp in argDict)
             {
                 arguments[kvp.Key] = kvp.Value;
+                if (_declaredArgumentNameSet is not null && !_declaredArgumentNameSet.Contains(kvp.Key))
+                {
+                    (unknownKeys ??= []).Add(kvp.Key);
+                }
+            }
+
+            if (unknownKeys is not null)
+            {
+                throw new McpException(CreateUnknownArgumentsMessage(unknownKeys, _declaredArgumentNames!));
             }
         }
 
@@ -819,6 +861,108 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             StructuredContent = structuredContent,
             IsError = allErrorContent && hasAny
         };
+    }
+
+    /// <summary>Snapshots declared argument names from a tool JSON schema's properties.</summary>
+    private static void SnapshotDeclaredArgumentNames(
+        JsonElement schema, out IReadOnlyList<string> names, out HashSet<string> set)
+    {
+        List<string> declaredNames = [];
+        HashSet<string> declaredNameSet = new(StringComparer.Ordinal);
+
+        if (schema.ValueKind is JsonValueKind.Object &&
+            schema.TryGetProperty("properties", out JsonElement properties) &&
+            properties.ValueKind is JsonValueKind.Object)
+        {
+            foreach (JsonProperty property in properties.EnumerateObject())
+            {
+                declaredNames.Add(property.Name);
+                declaredNameSet.Add(property.Name);
+            }
+        }
+
+        names = declaredNames;
+        set = declaredNameSet;
+    }
+
+    /// <summary>Builds a names-only error message for unknown tool arguments.</summary>
+    private static string CreateUnknownArgumentsMessage(IReadOnlyList<string> unknownKeys, IReadOnlyList<string> declaredNames)
+    {
+        int shownCount = Math.Min(unknownKeys.Count, MaxUnknownArgumentsInMessage);
+        string[] quoted = new string[shownCount];
+        for (int i = 0; i < shownCount; i++)
+        {
+            quoted[i] = $"'{FormatArgumentName(unknownKeys[i])}'";
+        }
+
+        string unknownPart;
+        if (unknownKeys.Count == 1)
+        {
+            unknownPart = $"Unknown argument {quoted[0]}.";
+        }
+        else
+        {
+            int remaining = unknownKeys.Count - shownCount;
+            string listed = string.Join(", ", quoted);
+            unknownPart = remaining > 0 ?
+                $"Unknown arguments {listed} and {remaining} more." :
+                $"Unknown arguments {listed}.";
+        }
+
+        string validPart = declaredNames.Count == 0 ?
+            "This tool takes no arguments." :
+            $"Valid arguments: {string.Join(", ", declaredNames)}.";
+
+        return $"{unknownPart} {validPart}";
+    }
+
+    /// <summary>
+    /// Escapes a caller-supplied argument name for an error message and truncates it to
+    /// <see cref="MaxArgumentNameLengthInMessage"/> characters without splitting an escape sequence or surrogate pair.
+    /// </summary>
+    private static string FormatArgumentName(string name)
+    {
+        StringBuilder builder = new(MaxArgumentNameLengthInMessage + 3);
+        for (int i = 0; i < name.Length; i++)
+        {
+            char c = name[i];
+            bool isPair = char.IsHighSurrogate(c) && i + 1 < name.Length && char.IsLowSurrogate(name[i + 1]);
+            string? escape = isPair ? null : c switch
+            {
+                '\\' => "\\\\",
+                '\0' => "\\0",
+                '\t' => "\\t",
+                '\n' => "\\n",
+                '\r' => "\\r",
+                _ when char.IsControl(c) || char.IsSurrogate(c) || IsInvisibleOrBidiFormatChar(c) => $"\\u{(int)c:x4}",
+                _ => null,
+            };
+
+            int length = escape?.Length ?? (isPair ? 2 : 1);
+            if (builder.Length + length > MaxArgumentNameLengthInMessage)
+            {
+                return builder.Append("...").ToString();
+            }
+
+            if (escape is not null)
+            {
+                builder.Append(escape);
+            }
+            else
+            {
+                builder.Append(name, i, length);
+                i += length - 1;
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>Returns whether <paramref name="c"/> is a format, line-separator, or paragraph-separator character.</summary>
+    private static bool IsInvisibleOrBidiFormatChar(char c)
+    {
+        UnicodeCategory category = char.GetUnicodeCategory(c);
+        return category is UnicodeCategory.Format or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator;
     }
 
     /// <summary>
