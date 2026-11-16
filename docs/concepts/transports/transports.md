@@ -167,6 +167,7 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 ```
 
 Return `null` or an empty sequence from `ScopeSelector` to omit the `scope` parameter entirely.
+
 #### OAuth PKCE metadata validation
 
 When using <xref:ModelContextProtocol.Authentication.ClientOAuthOptions> with an HTTP transport, authorization server metadata must advertise `S256` in `code_challenge_methods_supported`. A document that omits that field or advertises only other methods is skipped while the client tries alternative well-known endpoints. If none supplies valid metadata with `S256`, authentication fails before requesting an authorization code or exchanging tokens.
