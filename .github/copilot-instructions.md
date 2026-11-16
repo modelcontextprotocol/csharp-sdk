@@ -57,14 +57,14 @@ The SDK consists of three main packages:
 
 ### Naming Conventions
 - Use `McpClient`, `McpServer`, `McpSession` for MCP-related classes (capitalize MCP)
-- Prefix MCP-specific types with `Mcp` (e.g., `McpException`, `McpEndpoint`)
+- Prefix MCP-specific types with `Mcp` (e.g., `McpException`, `McpServerOptions`)
 - Use descriptive names for parameters with `[Description("...")]` attributes when exposing to MCP
 
 ## Architecture Patterns
 
 ### Dependency Injection
 - Use Microsoft.Extensions.DependencyInjection patterns
-- Register services with `.AddMcpServer()` and `.AddMcpClient()` extension methods
+- Register the server with the `.AddMcpServer()` extension method
 - Support both builder patterns and options configuration
 
 ### JSON Serialization
@@ -74,7 +74,7 @@ The SDK consists of three main packages:
 - Set `JsonIgnoreCondition.WhenWritingNull` for optional properties to minimize payload size
 - Use `JsonSerializerDefaults.Web` for camelCase property naming
 - Protocol types are decorated with `[JsonSerializable]` attributes for AOT support
-- Custom converters: `CustomizableJsonStringEnumConverter` for flexible enum serialization
+- When reflection-based serialization is enabled, user-defined enums are serialized as strings with the built-in `JsonStringEnumConverter`; Native AOT enums require source-generated converter metadata such as `JsonStringEnumConverter<TEnum>`.
 
 ### Async Patterns
 - All I/O operations should be async
@@ -246,7 +246,7 @@ Two primary transport implementations with different invariants:
   - Default to `McpJsonUtilities.DefaultOptions` if not specified
   - Can use reflection-based serialization or custom source generators
   
-- **Enum handling**: `CustomizableJsonStringEnumConverter` for flexible enum serialization
+- **Enum handling**: reflection-based serialization uses the built-in `JsonStringEnumConverter`; Native AOT enums require source-generated converter metadata such as `JsonStringEnumConverter<TEnum>`
 
 ## Architecture and Design Patterns
 
@@ -255,7 +255,7 @@ Two primary transport implementations with different invariants:
 - **IMcpServerBuilder** pattern provides fluent API for configuring servers via DI
 - Server primitives (tools, prompts, resources) are discovered via reflection using attributes
 - Support both attribute-based registration (`WithTools<T>()`) and instance-based (`WithTools(target)`)
-- Use `McpServerFactory` to create server instances with configured options
+- Use `McpServer.Create` to create server instances with configured options
 
 ### Tool/Prompt/Resource Discovery
 - Tools, prompts, and resources use attribute-based discovery: `[McpServerTool]`, `[McpServerPrompt]`, `[McpServerResource]`

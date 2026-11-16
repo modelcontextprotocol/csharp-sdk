@@ -153,7 +153,7 @@ internal class StreamClientSessionTransport : TransportBase
     {
         try
         {
-            var message = (JsonRpcMessage?)JsonSerializer.Deserialize(line.AsSpan().Trim(), McpJsonUtilities.DefaultOptions.GetTypeInfo(typeof(JsonRpcMessage)));
+            var message = (JsonRpcMessage?)JsonSerializer.Deserialize(line.AsSpan().Trim(), McpJsonUtilities.ProtocolOptions.GetTypeInfo(typeof(JsonRpcMessage)));
             if (message != null)
             {
                 await WriteMessageAsync(message, cancellationToken).ConfigureAwait(false);

@@ -55,12 +55,14 @@ public static class McpApps
     /// <remarks>
     /// Use these options when serializing or deserializing MCP Apps types such as
     /// <see cref="McpUiToolMeta"/>, <see cref="McpUiClientCapabilities"/>, and <see cref="McpUiResourceMeta"/>.
+    /// Property names are matched case-sensitively, as with <see cref="McpJsonUtilities.ProtocolOptions"/>.
+    /// Alternate spellings such as <c>ResourceUri</c> do not bind the protocol's <c>resourceUri</c> property.
     /// </remarks>
     public static JsonSerializerOptions SerializerOptions { get; } = CreateSerializerOptions();
 
     private static JsonSerializerOptions CreateSerializerOptions()
     {
-        var options = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
+        var options = new JsonSerializerOptions(McpJsonUtilities.ProtocolOptions);
         options.TypeInfoResolverChain.Insert(0, McpAppsJsonContext.Default);
         options.MakeReadOnly();
         return options;

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -37,9 +38,85 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
             TransportMode = UseStreamableHttp ? HttpTransportMode.StreamableHttp : HttpTransportMode.Sse,
         }, HttpClient, LoggerFactory);
 
-        var clientOptions = new McpClientOptions();
+        var clientOptions = TestMcpClient.CreateOptions();
         configureClient?.Invoke(clientOptions);
         return await McpClient.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_SlowDiscovery_PreservesModernProtocol()
+    {
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
+
+        var discovery = new AsyncGate();
+        var timeProvider = new FakeTimeProvider();
+        await using var app = await StartServerWithGatedDiscoveryAsync(discovery);
+
+        var connecting = ConnectAsync(configureClient: options =>
+        {
+            options.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+            options.TimeProvider = timeProvider;
+        });
+        await discovery.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(new McpClientOptions().DiscoverProbeTimeout * 2);
+        discovery.Release.SetResult();
+
+        await using var client = await connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.Equal(McpProtocolVersions.July2026ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConnectAsync_Discovery_RespectsConfiguredDeadline(bool customProbeTimeout)
+    {
+        Assert.SkipWhen(UseStreamableHttp && !Stateless, July2026StatefulStreamableHttpSkipReason);
+
+        var discovery = new AsyncGate();
+        var timeProvider = new FakeTimeProvider();
+        var probeTimeout = new McpClientOptions().DiscoverProbeTimeout;
+        await using var app = await StartServerWithGatedDiscoveryAsync(discovery);
+
+        var connecting = ConnectAsync(configureClient: options =>
+        {
+            options.ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion;
+            options.TimeProvider = timeProvider;
+            if (customProbeTimeout)
+            {
+                options.DiscoverProbeTimeout = probeTimeout;
+            }
+        });
+        await discovery.WaitUntilEnteredAsync(connecting);
+        timeProvider.Advance(customProbeTimeout ? probeTimeout : TestConstants.DefaultTimeout);
+
+        if (customProbeTimeout)
+        {
+            await Assert.ThrowsAsync<McpException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            var exception = await Assert.ThrowsAsync<TimeoutException>(() => connecting.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+            Assert.Equal("Initialization timed out", exception.Message);
+        }
+    }
+
+    private async Task<WebApplication> StartServerWithGatedDiscoveryAsync(AsyncGate discovery)
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(ConfigureStateless)
+            .WithMessageFilters(filters => filters.AddIncomingFilter(next => async (context, cancellationToken) =>
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ServerDiscover })
+                {
+                    await discovery.WaitAsync(cancellationToken);
+                }
+                await next(context, cancellationToken);
+            }));
+
+        var app = Builder.Build();
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        return app;
     }
 
     [Fact]
@@ -118,32 +195,47 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
         Assert.Equal(HttpStatusCode.Forbidden, httpRequestException.StatusCode);
     }
 
-    [Fact]
-    public async Task ClaimsPrincipal_CanBeInjected_IntoToolMethod()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClaimsPrincipal_CanBeInjected_IntoToolMethod(bool secondaryIdentity)
     {
-        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
+        var principal = CreateUser("TestUser");
+        if (secondaryIdentity)
+        {
+            principal = new ClaimsPrincipal([
+                new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "untrusted")]),
+                .. principal.Identities,
+            ]);
+        }
+        Builder.Services.AddAuthorization();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless)
+            .WithTools([McpServerTool.Create((ClaimsPrincipal user) =>
+            {
+                Assert.Same(principal, user);
+                return user.Identities.Single(identity => identity.IsAuthenticated).Name;
+            }, new() { Name = "echo_user" })]);
 
         await using var app = Builder.Build();
 
+        app.UseRouting();
         app.Use(next => async context =>
         {
-            context.User = CreateUser("TestUser");
+            context.User = principal;
             await next(context);
         });
-
-        app.MapMcp();
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
 
         await app.StartAsync(TestContext.Current.CancellationToken);
 
         await using var client = await ConnectAsync();
 
-        var response = await client.CallToolAsync(
-            "echo_claims_principal",
-            new Dictionary<string, object?>() { ["message"] = "Hello world!" },
-            cancellationToken: TestContext.Current.CancellationToken);
+        var response = await client.CallToolAsync("echo_user", cancellationToken: TestContext.Current.CancellationToken);
 
+        Assert.False(response.IsError ?? false);
         var content = Assert.Single(response.Content.OfType<TextContentBlock>());
-        Assert.Equal("TestUser: Hello world!", content.Text);
+        Assert.Equal("TestUser", content.Text);
     }
 
     [Fact]
@@ -329,12 +421,10 @@ public abstract partial class MapMcpTests(ITestOutputHelper testOutputHelper) : 
             new Dictionary<string, object?> { ["message"] = "hi" },
             cancellationToken: TestContext.Current.CancellationToken);
 
-        // The client now defaults to the 2026-07-28 protocol revision, whose handshake is server/discover
-        // rather than the legacy initialize request. On the stateful Streamable HTTP fixture the
-        // request is refused, so the client downgrades to the legacy initialize.
-        var expectedHandshakeMethod = UseStreamableHttp && !Stateless
-            ? RequestMethods.Initialize
-            : RequestMethods.ServerDiscover;
+        // With default client options, only the stateless HTTP fixture uses discovery.
+        var expectedHandshakeMethod = UseStreamableHttp && Stateless
+            ? RequestMethods.ServerDiscover
+            : RequestMethods.Initialize;
         Assert.Contains(expectedHandshakeMethod, observedMethods);
         Assert.Contains(RequestMethods.ToolsList, observedMethods);
         Assert.Contains(RequestMethods.ToolsCall, observedMethods);

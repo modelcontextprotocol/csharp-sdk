@@ -62,7 +62,7 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
 
         await using var mcpClient = await ConnectAsync(requestPath);
 
-        Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo.Name);
+        Assert.Equal("TestCustomRouteServer", mcpClient.ServerInfo?.Name);
     }
 
     [Fact]

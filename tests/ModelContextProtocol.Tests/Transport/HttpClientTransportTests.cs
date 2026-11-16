@@ -148,6 +148,53 @@ public class HttpClientTransportTests : LoggedTest
     }
 
     [Fact]
+    public async Task SendMessageAsync_Disposes_Response_On_Success()
+    {
+        // Regression test for https://github.com/modelcontextprotocol/csharp-sdk/issues/1840
+        // Every POST is sent with HttpCompletionOption.ResponseHeadersRead, so the underlying
+        // connection only returns to the pool once the response is consumed or disposed. The
+        // success path (an accepted response whose body is unused) previously did neither,
+        // leaving cleanup nondeterministic and potentially stranding the connection.
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        await using var transport = new HttpClientTransport(_transportOptions, httpClient, LoggerFactory);
+
+        using var postContent = new DisposalTrackingContent("accepted");
+        var firstCall = true;
+        mockHttpHandler.RequestHandler = (request) =>
+        {
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsoluteUri == "http://localhost:8080/sseendpoint")
+            {
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.Accepted,
+                    Content = postContent
+                });
+            }
+            else
+            {
+                if (!firstCall)
+                    throw new IOException("Abort");
+                else
+                    firstCall = false;
+
+                return Task.FromResult(new HttpResponseMessage
+                {
+                    StatusCode = HttpStatusCode.OK,
+                    Content = new StringContent("event: endpoint\r\ndata: /sseendpoint\r\n\r\n")
+                });
+            }
+        };
+
+        await using var session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        await session.SendMessageAsync(new JsonRpcRequest { Method = RequestMethods.Initialize, Id = new RequestId(44) }, TestContext.Current.CancellationToken);
+
+        Assert.True(postContent.Disposed,
+            "The POST response was not disposed after SendMessageAsync completed; " +
+            "with HttpCompletionOption.ResponseHeadersRead this can strand the connection because cleanup is no longer deterministic.");
+    }
+
+    [Fact]
     public async Task StreamableHttp_NotificationWithEmptyAcceptedJsonResponse_DoesNotLogParseFailure()
     {
         var options = new HttpClientTransportOptions
@@ -585,5 +632,16 @@ public class HttpClientTransportTests : LoggedTest
             TestContext.Current.CancellationToken);
 
         Assert.Equal("test-session", session.SessionId);
+    }
+
+    private sealed class DisposalTrackingContent(string content) : StringContent(content)
+    {
+        public bool Disposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
     }
 }

@@ -1,0 +1,403 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace ModelContextProtocol.Extensions.Skills;
+
+/// <summary>
+/// Validates skill entries against the structural requirements of the Skills extension specification.
+/// </summary>
+internal static class SkillValidation
+{
+    private const string SkillFileSuffix = "/" + SkillsProtocol.SkillFileName;
+
+    /// <summary>
+    /// Returns the skill root (the <c>SKILL.md</c> URI with its <c>/SKILL.md</c> suffix removed), or throws if
+    /// <paramref name="skillUri"/> does not end in <c>/SKILL.md</c>.
+    /// </summary>
+    public static string GetSkillRoot(string skillUri, string paramName)
+    {
+        if (string.IsNullOrEmpty(skillUri))
+        {
+            throw new ArgumentException("A skill URI must not be null or empty.", paramName);
+        }
+
+        if (!skillUri.EndsWith(SkillFileSuffix, StringComparison.Ordinal) || skillUri.Length == SkillFileSuffix.Length)
+        {
+            throw new ArgumentException(
+                $"The skill URI '{skillUri}' must be the URI of the skill's {SkillsProtocol.SkillFileName}, ending in '{SkillFileSuffix}'.",
+                paramName);
+        }
+
+        return skillUri.Substring(0, skillUri.Length - SkillFileSuffix.Length);
+    }
+
+    /// <summary>
+    /// Returns the decoded final path segment of a skill root, which the specification requires to equal the skill's name.
+    /// </summary>
+    public static string GetNameSegment(string skillRoot)
+    {
+        int start = Math.Max(skillRoot.LastIndexOf('/') + 1, skillRoot.IndexOf(':') + 1);
+        return System.Uri.UnescapeDataString(skillRoot.Substring(start));
+    }
+
+    /// <summary>
+    /// Returns whether <paramref name="name"/> satisfies the Agent Skills naming rules: 1 to 64 characters of
+    /// Unicode lowercase (or caseless) letters, digits, and hyphens, with no leading, trailing, or consecutive hyphens.
+    /// </summary>
+    public static bool IsValidSkillName(string name)
+    {
+        if (name.Length == 0)
+        {
+            return false;
+        }
+
+        int scalarCount = 0;
+        bool previousIsHyphen = true;
+        for (int index = 0; index < name.Length; index++)
+        {
+            char c = name[index];
+            bool isHyphen = c == '-';
+            var category = CharUnicodeInfo.GetUnicodeCategory(name, index);
+            bool isAlphanumeric = category is UnicodeCategory.LowercaseLetter or
+                UnicodeCategory.ModifierLetter or UnicodeCategory.OtherLetter or UnicodeCategory.DecimalDigitNumber;
+            if (!isAlphanumeric &&
+                !isHyphen)
+            {
+                return false;
+            }
+
+            if (isHyphen &&
+                previousIsHyphen)
+            {
+                return false;
+            }
+
+            if (++scalarCount > 64)
+            {
+                return false;
+            }
+
+            if (char.IsHighSurrogate(c))
+            {
+                index++;
+            }
+
+            previousIsHyphen = isHyphen;
+        }
+
+        return !previousIsHyphen;
+    }
+
+    /// <summary>
+    /// Returns whether <paramref name="digest"/> has the form <c>sha256:{hex}</c> with 64 lowercase hexadecimal digits.
+    /// </summary>
+    public static bool IsValidDigest(string? digest)
+    {
+        const int HexLength = 64;
+        if (digest is null ||
+            digest.Length != SkillsProtocol.DigestPrefix.Length + HexLength ||
+            !digest.StartsWith(SkillsProtocol.DigestPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        for (int i = SkillsProtocol.DigestPrefix.Length; i < digest.Length; i++)
+        {
+            if (digest[i] is not ((>= '0' and <= '9') or (>= 'a' and <= 'f')))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Checks that <paramref name="uri"/> is an absolute URI whose path has no empty, <c>.</c>, or <c>..</c>
+    /// segments and no query or fragment, so that a prefix comparison against a skill root is meaningful.
+    /// </summary>
+    public static void ValidateUriShape(string uri, string what, string paramName)
+    {
+        if (GetUriShapeError(uri, out _) is { } error)
+        {
+            throw new ArgumentException($"{what} '{uri}' {error}", paramName);
+        }
+    }
+
+    internal static bool TryValidateUriShape(string uri, out Uri? parsedUri)
+    {
+        if (GetUriShapeError(uri, out parsedUri) is null)
+        {
+            return true;
+        }
+
+        parsedUri = null;
+        return false;
+    }
+
+    private static string? GetUriShapeError(string uri, out Uri? parsedUri)
+    {
+        parsedUri = null;
+        int schemeEnd = uri.IndexOf(':');
+        if (schemeEnd <= 0 ||
+            !System.Uri.TryCreate(uri, UriKind.Absolute, out parsedUri))
+        {
+            return "must be a syntactically valid absolute URI with a scheme, such as skill://name/SKILL.md.";
+        }
+
+        if (uri.IndexOf('?') >= 0 || uri.IndexOf('#') >= 0)
+        {
+            return "must not contain a query or fragment.";
+        }
+
+        // Check the raw text rather than System.Uri's view of it, which decodes and compacts dot segments, so that
+        // "%2e%2e" is caught as well as "..". The authority (the first segment) may be empty, as in
+        // file:///name/SKILL.md; path segments may not.
+        int pathStart = schemeEnd + 1;
+        bool hasAuthority =
+            pathStart + 1 < uri.Length &&
+            uri[pathStart] == '/' &&
+            uri[pathStart + 1] == '/';
+        if (hasAuthority)
+        {
+            pathStart += 2;
+        }
+        else if (pathStart < uri.Length &&
+                 uri[pathStart] == '/')
+        {
+            pathStart++;
+        }
+
+        string[] segments = uri.Substring(pathStart).Split('/');
+        for (int i = 0; i < segments.Length; i++)
+        {
+            string segment = segments[i];
+            if (segment.Length == 0 &&
+                (i > 0 || !hasAuthority))
+            {
+                return "must not contain empty path segments.";
+            }
+
+            string decoded = System.Uri.UnescapeDataString(segment);
+            if (decoded == "." || decoded == ".." || decoded.IndexOf('/') >= 0 || decoded.IndexOf('\\') >= 0)
+            {
+                return "must not contain '.', '..', or encoded separator path segments, which would resolve outside the skill.";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Validates an entry received from a server, throwing <see cref="InvalidDataException"/> describing the
+    /// first violation found. Hosts must not load invalid entries, so an invalid entry is a verification failure.
+    /// </summary>
+    public static void ValidateReceived(Skill skill, string method)
+    {
+        try
+        {
+            Validate(skill, "skill");
+        }
+        catch (ArgumentException e)
+        {
+            throw new InvalidDataException($"The server returned an invalid skill entry from '{method}': {e.Message}", e);
+        }
+    }
+
+    /// <summary>
+    /// Validates a complete skill entry, throwing <see cref="ArgumentException"/> describing the first violation found.
+    /// </summary>
+    public static void Validate(Skill skill, string paramName, string? uriParamName = null)
+    {
+        if (skill is null)
+        {
+            throw new ArgumentNullException(paramName);
+        }
+
+        uriParamName ??= paramName;
+        string root = GetSkillRoot(skill.Uri, uriParamName);
+        ValidateUriShape(skill.Uri, "The skill URI", uriParamName);
+        string nameSegment = GetNameSegment(root);
+
+        if (skill.Frontmatter is null)
+        {
+            throw new ArgumentException($"Skill '{skill.Uri}' has no frontmatter.", paramName);
+        }
+
+        string? name = skill.Name;
+        if (string.IsNullOrEmpty(name))
+        {
+            throw new ArgumentException($"Skill '{skill.Uri}' must declare a non-empty string 'name' in its frontmatter.", paramName);
+        }
+
+        if (!IsValidSkillName(name!))
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has the name '{name}', which does not satisfy the Agent Skills naming rules " +
+                "(1 to 64 lowercase or caseless letters, digits, and single hyphens, not starting or ending with a hyphen).",
+                paramName);
+        }
+
+        string? description = skill.Description;
+        if (string.IsNullOrEmpty(description))
+        {
+            throw new ArgumentException($"Skill '{skill.Uri}' must declare a non-empty string 'description' in its frontmatter.", paramName);
+        }
+
+        int descriptionLength = Encoding.UTF32.GetByteCount(description!) / 4;
+        if (descriptionLength > MaxDescriptionLength)
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has a description of {descriptionLength} characters; the Agent Skills specification allows at most {MaxDescriptionLength}.",
+                paramName);
+        }
+
+        ValidateOptionalString(skill, "compatibility", MaxCompatibilityLength, paramName);
+        ValidateOptionalStringType(skill, "license", "a license name or a reference to a bundled license file", paramName);
+
+        if (skill.Frontmatter.TryGetPropertyValue("metadata", out var metadataNode))
+        {
+            if (metadataNode is not JsonObject metadata)
+            {
+                throw new ArgumentException(
+                    $"Skill '{skill.Uri}' has a 'metadata' frontmatter field that is not a mapping. Give it string key-value entries, or remove the key if it is not needed.",
+                    paramName);
+            }
+
+            foreach (var entry in metadata)
+            {
+                if (entry.Value is null ||
+                    entry.Value.GetValueKind() != JsonValueKind.String)
+                {
+                    throw new ArgumentException(
+                        $"Skill '{skill.Uri}' has a 'metadata' value for '{entry.Key}' that is not a string.",
+                        paramName);
+                }
+            }
+        }
+
+        ValidateOptionalStringType(skill, "allowed-tools", "a space-separated string of tools", paramName);
+
+        int authorityStart = root.IndexOf("://", StringComparison.Ordinal);
+        bool nameIsAuthority = authorityStart >= 0 && root.IndexOf('/', authorityStart + 3) < 0;
+        if (!string.Equals(name, nameSegment, nameIsAuthority ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has the name '{name}', but the path segment preceding /{SkillsProtocol.SkillFileName} is '{nameSegment}'. " +
+                "The specification requires them to be equal.",
+                uriParamName);
+        }
+
+        if (skill.Resources is null)
+        {
+            throw new ArgumentException($"Skill '{skill.Uri}' has no resources manifest. Use SkillResources.Dynamic for generated content.", paramName);
+        }
+
+        if (skill.Resources.IsDynamic)
+        {
+            return;
+        }
+
+        var resources = skill.Resources.Entries;
+        if (resources.Count == 0)
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has an empty resources manifest. A manifest must list every file of the skill, {SkillsProtocol.SkillFileName} included.",
+                paramName);
+        }
+
+        var rootUri = new Uri(root + "/");
+        var seen = new HashSet<string>(SkillUriComparer.Instance);
+        bool hasSkillFile = false;
+
+        foreach (var resource in resources)
+        {
+            if (resource is null)
+            {
+                throw new ArgumentException($"Skill '{skill.Uri}' has a null entry in its resources manifest.", paramName);
+            }
+
+            if (string.IsNullOrEmpty(resource.Uri))
+            {
+                throw new ArgumentException($"Skill '{skill.Uri}' has a resource with a null or empty URI.", paramName);
+            }
+
+            ValidateUriShape(resource.Uri, $"Skill '{skill.Uri}' lists the resource", paramName);
+            if (!rootUri.IsBaseOf(new Uri(resource.Uri)))
+            {
+                throw new ArgumentException(
+                    $"Skill '{skill.Uri}' lists the resource '{resource.Uri}', which is not within the skill's directory '{root}'.",
+                    paramName);
+            }
+
+            if (!seen.Add(resource.Uri))
+            {
+                throw new ArgumentException($"Skill '{skill.Uri}' lists the resource '{resource.Uri}' more than once.", paramName);
+            }
+
+            if (!IsValidDigest(resource.Digest))
+            {
+                throw new ArgumentException(
+                    $"Skill '{skill.Uri}' lists the resource '{resource.Uri}' with the digest '{resource.Digest}', " +
+                    "which is not of the form 'sha256:' followed by 64 lowercase hexadecimal digits.",
+                    paramName);
+            }
+
+            if (resource.Size < 0)
+            {
+                throw new ArgumentException($"Skill '{skill.Uri}' lists the resource '{resource.Uri}' with a negative size.", paramName);
+            }
+
+            hasSkillFile |= SkillUriComparer.Instance.Equals(resource.Uri, skill.Uri);
+        }
+
+        if (!hasSkillFile)
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' does not list its own {SkillsProtocol.SkillFileName} in its resources manifest.",
+                paramName);
+        }
+    }
+
+    private const int MaxDescriptionLength = 1024;
+    private const int MaxCompatibilityLength = 500;
+
+    private static void ValidateOptionalString(Skill skill, string key, int? maxLength, string paramName)
+    {
+        if (!skill.Frontmatter.TryGetPropertyValue(key, out var node))
+        {
+            return;
+        }
+
+        if (node is not JsonValue value || !value.TryGetValue(out string? text))
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has a '{key}' frontmatter field that is not a string. Give it a value, or remove the key if it is not needed.",
+                paramName);
+        }
+
+        int length = Encoding.UTF32.GetByteCount(text!) / 4;
+        if (length == 0 ||
+            (maxLength is { } max && length > max))
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has a '{key}' frontmatter field of {length} characters; the Agent Skills specification requires 1 to {maxLength ?? int.MaxValue}.",
+                paramName);
+        }
+    }
+
+    // Type-only check for an optional field the Agent Skills specification defines as a string without a length rule.
+    // It uses the same string test as the Skill accessors, so an entry that passes always reads back as a string.
+    private static void ValidateOptionalStringType(Skill skill, string key, string definition, string paramName)
+    {
+        if (skill.Frontmatter.TryGetPropertyValue(key, out var node) &&
+            !(node is JsonValue value && value.TryGetValue(out string? _)))
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has a '{key}' frontmatter field that is not a string. The Agent Skills specification defines it as {definition}.",
+                paramName);
+        }
+    }
+}

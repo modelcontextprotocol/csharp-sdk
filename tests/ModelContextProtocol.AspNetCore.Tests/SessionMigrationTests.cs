@@ -6,6 +6,7 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Net;
 using System.Net.ServerSentEvents;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -129,29 +130,50 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
         var migrationCount = 0;
         var handler = new TestMigrationHandler
         {
-            OnInitialized = (_, _, _, _) => default,
             OnMigration = (context, sessionId, ct) =>
             {
-                Interlocked.Increment(ref migrationCount);
-                return new ValueTask<InitializeRequestParams?>(new InitializeRequestParams
+                migrationCount++;
+                context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [new Claim(ClaimTypes.NameIdentifier, "ChangedByMigration")], "TestAuth"));
+                return new(new InitializeRequestParams
                 {
                     ProtocolVersion = "2025-03-26",
-                    Capabilities = new ClientCapabilities(),
-                    ClientInfo = new Implementation { Name = "MigratedClient", Version = "2.0.0" },
+                    Capabilities = new(),
+                    ClientInfo = new() { Name = "MigratedClient", Version = "1.0.0" },
                 });
             },
         };
 
-        await StartAsync(handler);
+        await StartAsync(handler, app => app.Use(next => async context =>
+        {
+            List<Claim> claims = [new Claim("name", "authenticated-user")];
+            if (context.Request.Headers.TryGetValue("X-Test-User", out var user))
+            {
+                claims.Add(new Claim(ClaimTypes.NameIdentifier, user.ToString()));
+            }
+            context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "TestAuth"));
+            await next(context);
+        }));
+        SetSessionId("authenticated-migration");
 
-        SetSessionId("multi-request-session");
+        using var unidentifiedResponse = await HttpClient.PostAsync(
+            "", JsonContent(MakeEchoRequest()), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, unidentifiedResponse.StatusCode);
+        Assert.Equal(0, migrationCount);
 
-        // First request triggers migration
+        HttpClient.DefaultRequestHeaders.Add("X-Test-User", "Alice");
         await CallEchoAndValidateAsync();
+        Assert.Equal(1, migrationCount);
 
-        // Second request should use the now-local session without triggering another migration.
+        HttpClient.DefaultRequestHeaders.Remove("X-Test-User");
+        HttpClient.DefaultRequestHeaders.Add("X-Test-User", "ChangedByMigration");
+        using var otherUserResponse = await HttpClient.PostAsync(
+            "", JsonContent(MakeEchoRequest()), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, otherUserResponse.StatusCode);
+
+        HttpClient.DefaultRequestHeaders.Remove("X-Test-User");
+        HttpClient.DefaultRequestHeaders.Add("X-Test-User", "Alice");
         await CallEchoAndValidateAsync();
-
         Assert.Equal(1, migrationCount);
     }
 
@@ -213,7 +235,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
         Assert.Equal(HttpStatusCode.OK, getResponse.StatusCode);
     }
 
-    private async Task StartAsync(ISessionMigrationHandler? migrationHandler = null)
+    private async Task StartAsync(ISessionMigrationHandler? migrationHandler = null, Action<WebApplication>? configureApplication = null)
     {
         Builder.Services.AddMcpServer(options =>
         {
@@ -230,6 +252,7 @@ public class SessionMigrationTests(ITestOutputHelper outputHelper) : KestrelInMe
         }
 
         _app = Builder.Build();
+        configureApplication?.Invoke(_app);
         _app.MapMcp();
         await _app.StartAsync(TestContext.Current.CancellationToken);
 

@@ -138,6 +138,31 @@ Stage 5  Verify                                      [verify-release skill, orch
 
 ## Operating rules
 
+- **Separate package and docs provenance.** Packages remain pinned to the exact approved release
+  tag/SHA. Release events and default manual docs runs use each major's discovered release tag.
+  Manual `docs_source=latest-branches` instead selects `origin/release/{MAJOR}.x` for every
+  published major, enabling post-release docs updates without a new product release/tag.
+  Resolve each selected content ref once, validate its major, and log its immutable SHA separately
+  from orchestration; missing refs/mismatches fail without fallback. Servicing follows the latest
+  shipped MINOR, preserving ancestry on promotion. Docs orchestration/scripts/tests/picker assets
+  always come from current `main`, regardless of the triggering ref. Keep shared AI release skills/instructions on
+  `main`, which supports ongoing next-version feature development rather than a fixed next-MAJOR
+  plan. Requiring AI release instructions from trusted `main` prevents an unprotected or untrusted
+  invoking/work branch from overriding the release process. Runtime docs orchestration also uses
+  current `main`, independently of the selected tag/branch content. Follow the shared release branch reference.
+- **PR-only servicing changes.** Initial release-branch establishment starts at an explicitly
+  approved baseline and may require separate creation/push authorization. Every later `release/*` change, including docs,
+  infrastructure, versions, and promotion, must use a reviewed work-branch PR. Never commit/push
+  changes directly to servicing branches or reset/force-push for promotion. Give servicing children
+  the current main-based instructions/reference SHA, not stale forked skills; do not copy shared
+  process files into release content. See [delegation](release-manager/references/delegation.md).
+- **Coordinated releases are opt-in.** When requested, keep per-line targets, versions, PRs,
+  audits, approved SHAs, and CI evidence separate. All approved SHA-pinned drafts must exist before
+  any human publication; publication is not atomic. Agree on the publication order and GitHub Latest
+  designation separately from the docs publication-date default.
+  Require a successful deployed combined run covering all intended labels/content SHAs,
+  not merely a cancelled earlier run. Follow the
+  [shared guidance](../skills/shared-resources/release-branches.md#coordinated-releases-opt-in).
 - **Human-gated and sequential.** Complete stages strictly in order. Never start a stage whose
   predecessor's gate has not been satisfied. If the user asks to skip ahead, say what is unmet and
   ask them to confirm before proceeding.
