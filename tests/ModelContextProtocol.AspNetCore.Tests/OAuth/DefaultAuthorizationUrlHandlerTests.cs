@@ -1,5 +1,6 @@
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Tests.Utils;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
 
@@ -31,7 +32,7 @@ public class DefaultAuthorizationUrlHandlerTests(ITestOutputHelper outputHelper)
 
         try
         {
-            var ex = await Assert.ThrowsAsync<McpException>(() => McpClient.CreateAsync(
+            var ex = await Assert.ThrowsAsync<McpException>(() => TestMcpClient.CreateAsync(
                 transport,
                 loggerFactory: LoggerFactory,
                 cancellationToken: TestContext.Current.CancellationToken));

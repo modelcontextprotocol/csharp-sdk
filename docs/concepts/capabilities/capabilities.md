@@ -63,6 +63,8 @@ Server capabilities are automatically inferred from the configured features. For
 
 Before using an optional feature, check whether the other side declared the corresponding capability.
 
+Within a server request handler, <xref:ModelContextProtocol.Server.McpServer.ClientCapabilities> can reflect the current request's declarations, including on stateless servers using `2026-07-28`. These declarations describe client features, not transport support for direct server-to-client requests. A stateless transport still cannot deliver direct sampling, roots, or elicitation requests without an appropriate outgoing-request interceptor; use [MRTR](xref:mrtr) for request-bound input instead.
+
 #### Check server capabilities from the client
 
 ```csharp
@@ -106,6 +108,12 @@ if (client.ServerCapabilities.Completions is not null)
         argumentValue: "py");
 }
 ```
+
+### Optional server identity
+
+<xref:ModelContextProtocol.Client.McpClient.ServerInfo> is nullable because `2026-07-28` servers may omit identity metadata. After connecting, handle missing metadata explicitly, for example with `client.ServerInfo?.Name ?? "Unknown server"`. Existing non-nullable assignments and dereferences may produce nullable warnings when upgrading to SDK 2.3.0. Accessing the property before the client connects still throws `InvalidOperationException`.
+
+Server identity metadata is self-reported; do not use it to make authentication or authorization decisions.
 
 ### Protocol version negotiation
 

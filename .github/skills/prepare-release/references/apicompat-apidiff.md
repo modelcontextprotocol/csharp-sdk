@@ -198,8 +198,18 @@ The `Microsoft.DotNet.ApiDiff.Tool` is published on the .NET **transport feed**,
 
 3. **Verify installation**:
    ```sh
-   dotnet apidiff --help
+   apidiff --help
    ```
+   With a session-local `--tool-path`, invoke `apidiff` from that directory rather than installing
+   another copy globally.
+
+4. **Locate the shipped attribute exclusions.** The tool defaults to `AttributesToExclude.txt`
+   relative to the current directory, which may not contain it. Resolve the file from the installed
+   tool package using its actual version/path: beneath `{tool-path}/.store` for a `--tool-path`
+   install, or the global tools `.store` directory for a global install. The package contains
+   `tools/{tool-tfm}/any/AttributesToExclude.txt`. Pass that full path explicitly with
+   `--attributesToExclude` (`-eattrs`) on every invocation. Preserve the shipped exclusions; do not
+   create an empty file to silence a missing-file error.
 
 If the tool is already installed, update it with `dotnet tool update` using the same flags.
 
@@ -222,27 +232,44 @@ If the tool is already installed, update it with `dotnet tool update` using the 
    dotnet restore
    ```
 
-3. **Run the diff** for each package, comparing the baseline assembly against the current build. Use `dotnet apidiff` with `-l` (left/baseline) and `-r` (right/current):
+3. **Run the diff** for each package, comparing the baseline assembly folder against the current
+   build folder. The installed command is `apidiff` (or the executable in a session-local
+   `--tool-path`), not `dotnet apidiff`. Use `--before`/`-b` and `--after`/`-a` with **folders**,
+   not DLL paths. `--output`/`-o`, `--beforeFriendlyName`/`-bfn`, and
+   `--afterFriendlyName`/`-afn` are also required:
    ```sh
    # ModelContextProtocol.Core
-   dotnet apidiff \
-     -l ~/.nuget/packages/modelcontextprotocol.core/{baseline-version}/lib/net10.0/ModelContextProtocol.Core.dll \
-     -r ../artifacts/bin/ModelContextProtocol.Core/Release/net10.0/ModelContextProtocol.Core.dll
+   apidiff \
+     --before ~/.nuget/packages/modelcontextprotocol.core/{baseline-version}/lib/net10.0 \
+     --after ../artifacts/bin/ModelContextProtocol.Core/Release/net10.0 \
+     --output ./reports/Core --beforeFriendlyName {baseline-version} --afterFriendlyName {version} \
+     --attributesToExclude "{installed-tool-attributes-path}"
 
    # ModelContextProtocol
-   dotnet apidiff \
-     -l ~/.nuget/packages/modelcontextprotocol/{baseline-version}/lib/net10.0/ModelContextProtocol.dll \
-     -r ../artifacts/bin/ModelContextProtocol/Release/net10.0/ModelContextProtocol.dll
+   apidiff \
+     --before ~/.nuget/packages/modelcontextprotocol/{baseline-version}/lib/net10.0 \
+     --after ../artifacts/bin/ModelContextProtocol/Release/net10.0 \
+     --output ./reports/ModelContextProtocol --beforeFriendlyName {baseline-version} --afterFriendlyName {version} \
+     --attributesToExclude "{installed-tool-attributes-path}"
 
    # ModelContextProtocol.AspNetCore
-   dotnet apidiff \
-     -l ~/.nuget/packages/modelcontextprotocol.aspnetcore/{baseline-version}/lib/net10.0/ModelContextProtocol.AspNetCore.dll \
-     -r ../artifacts/bin/ModelContextProtocol.AspNetCore/Release/net10.0/ModelContextProtocol.AspNetCore.dll
+   apidiff \
+     --before ~/.nuget/packages/modelcontextprotocol.aspnetcore/{baseline-version}/lib/net10.0 \
+     --after ../artifacts/bin/ModelContextProtocol.AspNetCore/Release/net10.0 \
+     --output ./reports/AspNetCore --beforeFriendlyName {baseline-version} --afterFriendlyName {version} \
+     --attributesToExclude "{installed-tool-attributes-path}"
    ```
 
-   > **Note:** The exact CLI flags may vary by version. Run `dotnet apidiff --help` to confirm the available options. If the tool uses different argument names (e.g., `--left`/`--right`, `--before`/`--after`, or positional arguments), adapt accordingly.
+   Run `apidiff --help` for the installed version before use. If output folders include dependency
+   DLLs, stage only the intended package assemblies as inputs and supply dependency folders through
+   `--refbefore`/`-rb` and `--refafter`/`-ra`, so dependencies do not become reported packages.
 
-4. **Capture the output** for each package and format as markdown fenced code blocks with `diff` syntax highlighting.
+4. **Capture the generated markdown** from each package's output folder for the release report.
+   Preserve the tool's report rather than treating standard output as the API diff.
+   Require a newly generated, non-empty `api_diff.md` in a fresh output directory and inspect it.
+   `--help` or exit code zero alone is not proof: a missing exclusions file can produce an
+   unhandled exception, return zero, and write no report. A same-version smoke comparison should
+   generate a report with no assembly changes before using the tool for release evidence.
 
 5. **Repeat for other target frameworks** if a more comprehensive report is desired (e.g., `net9.0`, `net8.0`, `netstandard2.0`). At minimum, diff the highest TFM (`net10.0`).
 

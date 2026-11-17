@@ -2,15 +2,71 @@
 
 Shared reference for release skills. Describes the branch roles used by the release workflow and the rules each skill follows for selecting a branch and looking up the previous release.
 
+This guidance is release-independent. Do not encode particular releases' product inclusion/exclusion
+decisions or one-off version/publication-order choices in documentation, agents, skills, or authored
+planning artifacts, and do not relocate those decisions into another artifact when removing them.
+
 ## Branch roles
 
 | Branch              | Purpose                                         | CI behavior                            |
 | ------------------- | ----------------------------------------------- | -------------------------------------- |
-| `main`              | Next-MAJOR preview/development line             | Nightly `cron` build → GitHub Packages |
-| `release/{MAJOR}.x` | Long-lived servicing branch for a shipped MAJOR | Every push → GitHub Packages           |
+| `main`              | Ongoing next-version feature development; shared AI release instructions | Nightly `cron` build → GitHub Packages |
+| `release/{MAJOR}.x` | Latest shipped MINOR's servicing and docs content for a MAJOR | Every push → GitHub Packages           |
 | `release-{version}` | Short-lived release preparation branch          | Built by PR CI; no package publishing  |
 
 Official NuGet.org publishes happen only when a GitHub Release is created from a branch's tag.
+
+Servicing branches follow the **latest shipped MINOR**, not the original `.0` line.
+A `release/{MAJOR}.x` branch services the latest shipped MINOR and may promote to a newly approved
+MINOR while preserving all servicing ancestry. This does not prescribe the next version on `main`.
+
+### Servicing branch changes
+
+Initial branch establishment starts at an explicitly approved baseline commit and may require
+separate creation/push authorization. After establishment, **every change** to `release/*` — fixes, docs, infrastructure,
+versions, and MINOR promotions — must arrive through a reviewed work-branch PR targeting that
+servicing branch. Never commit or push changes directly to a servicing branch. Promotion preserves
+servicing ancestry through that PR, never reset/recreation or a force-push.
+
+Shared AI release automation skills and agent references stay on `main`, and are not copied into
+release content. Runtime docs scripts, fixture tests, and picker assets also come from current
+`main`; the triggering workflow must retain the checkout and source-selection contract.
+Servicing children must receive and follow the current main-based instruction/reference version;
+see [delegation](../../agents/release-manager/references/delegation.md#delegating-stage-1).
+
+## Coordinated releases (opt-in)
+
+Use this only when the user requests coordinated shipping of multiple lines. Keep each line's
+target branch, version, approved full SHA, PR, audit range/results, and CI evidence separate.
+All approved SHA-pinned drafts must exist before any is handed off for human publication.
+Publishing is **not atomic**: agree on the order and verify each package run against its exact tag.
+
+Agree on the intended GitHub **Latest** designation separately from the docs default, which follows
+publication date. After publication, require a successful deployed combined docs run whose discovered
+labels and recorded selected-content SHAs demonstrably cover all intended releases. Cancellation of an
+earlier Pages run alone is not success; see [verification](../verify-release/SKILL.md#step-4-evaluate-the-publish-docs-workflow).
+
+## Documentation content and orchestration
+
+Release publication and manual docs refreshes discover published majors, labels, and default
+ordering from GitHub release metadata. Release events and default manual runs use **release-tags**:
+each major's discovered published tag supplies its content. A manual `docs_source=latest-branches`
+run instead uses `origin/release/{MAJOR}.x` for every discovered major. The selection applies to all
+majors, not just the triggering release. Fetch refs, resolve every selected ref once to a full SHA,
+validate its `VersionPrefix` major against the slug, and build that immutable SHA. Missing selected
+refs and mismatches fail explicitly; never silently substitute another source or `main`.
+
+The workflow explicitly checks out **current `main`** for scripts, fixture tests, and picker assets,
+regardless of the triggering release tag or manual ref. Log that orchestration HEAD SHA separately
+from each selected content ref/SHA. Do not copy product docs/source or shared AI process guidance
+merely to propagate runtime infrastructure. Preserve existing Pages environment rules, permissions,
+and repository guards; selecting a ref does not authorize deployment or bypass protections.
+
+After explicit approval, use `gh workflow run docs.yml --ref main --field docs_source=release-tags`
+to rebuild tag content or `--field docs_source=latest-branches` for a content-only branch refresh.
+Branch-sourced docs can advance beyond a package tag without requiring a new product release/tag;
+picker labels still come from published metadata. Verify docs against the selected source's logged
+SHA. Package verification remains pinned to the exact released tag/SHA and package version.
 
 ## Selecting a source/base branch (`prepare-release` Step 1)
 
@@ -36,9 +92,9 @@ gh release list --exclude-drafts --limit 50
 - On `release/{MAJOR}.x`: restrict candidates to tags matching `v{MAJOR}.*`.
 
 **"Highest semver" and "most recent by date" are not the same rule, and the difference is not
-hypothetical.** Ship `v2.1.0` from `main`, then a `v2.0.1` servicing patch from `release/2.0.x`, and
-the most recently *published* release is `v2.0.1` while the highest semver is `v2.1.0`. Ordering by
-date picks a tag that is not on `main` at all, which produces a bogus PR range and makes ApiCompat
+hypothetical.** A lower-version servicing release can be published after a higher-version
+development-line release. Ordering by publication date can pick a tag that is not on `main` at all,
+which produces a bogus PR range and makes ApiCompat
 report the entire API surface as removed. Order by version, not by publication time.
 
 The ancestry constraint is what makes this safe across branches, so verify it rather than assuming
@@ -66,9 +122,9 @@ The slug is derived from the **MAJOR component of the version being released**, 
 | `2.0.0-preview.1`      | `https://csharp.sdk.modelcontextprotocol.io/v2/versioning.html` |
 | `2.0.0`                | `https://csharp.sdk.modelcontextprotocol.io/v2/versioning.html` |
 
-The branch is normally consistent with this — `release/1.x` releases `1.x` versions and `main`
-currently releases `2.x` — but the version is what determines the slug. If a release's MAJOR ever
-disagrees with its branch's MAJOR, follow the version.
+The released version determines the slug. In branch mode, `release/{MAJOR}.x` supplies content for
+that MAJOR; in tag mode the discovered published tag supplies it. The docs workflow fails if the
+selected source's `VersionPrefix` has a different MAJOR.
 
 Prerelease suffixes do not affect the slug: `2.0.0-preview.1` and `2.0.0` both use `/v2/`.
 

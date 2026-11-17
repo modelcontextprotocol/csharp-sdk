@@ -61,7 +61,7 @@ public static class McpTasksServerExtensions
                 Method = method,
                 Params = paramsNode is null
                     ? default
-                    : JsonSerializer.SerializeToElement(paramsNode, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonNode>()),
+                    : JsonSerializer.SerializeToElement(paramsNode, McpJsonUtilities.ProtocolOptions.GetTypeInfo<JsonNode>()),
             };
 
             var tcs = new TaskCompletionSource<InputResponse>(TaskCreationOptions.RunContinuationsAsynchronously);

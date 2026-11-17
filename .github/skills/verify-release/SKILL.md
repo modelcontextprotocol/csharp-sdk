@@ -61,9 +61,16 @@ including a servicing patch published from another branch minutes later — can 
 release's result, showing a green run for the wrong tag. Confirm `headBranch` equals `v{version}`
 on every run before evaluating it.
 
-Cross-check `headSha` against the release's target commitish recorded in Step 1. A mismatch means
-the tag moved between drafting and publishing, and the run validated something other than what was
-reviewed — stop and report it rather than evaluating the run.
+Resolve the exact tag to its full commit SHA (peel annotated tags), rather than treating a mutable
+`targetCommitish` branch name as the released commit. Cross-check the Release workflow's `headSha`
+against that tag SHA and the approved full SHA, if available. A mismatch means the run did not
+validate the reviewed release — stop and report it. Keep package verification pinned to this
+exact tag/SHA; do not substitute the docs checkout or content SHA.
+
+For docs, release-event `headBranch`/`headSha` identify the triggering release, not its content.
+The workflow explicitly checks out current `main` for orchestration and resolves selected tags or
+release branches for content. Read the source selection, logged orchestration HEAD SHA, and each
+content ref/SHA in Step 4; do not confuse the triggering tag SHA with the main checkout.
 
 If more than one run matches the tag, the workflow was re-run; evaluate the **latest attempt** and
 say that earlier attempts existed rather than silently reporting only the newest.
@@ -96,22 +103,34 @@ first move. Recommend it, but **do not re-run without explicit user confirmation
 
 Report the run's conclusion, accounting for these docs-specific behaviors:
 
-- **Superseded runs are not failures.** The workflow uses a `pages` concurrency group with
+- **Cancellation alone is not success.** The workflow uses a `pages` concurrency group with
   `cancel-in-progress: true`. Every run rediscovers the current releases and rebuilds the whole site
-  from scratch, so a newer run fully supersedes the one it cancels. Report a cancelled run as
-  *superseded* and follow the newer run instead.
+  from scratch. Follow the newer run, but only report the earlier run as covered once the newer
+  combined run succeeds **and deploys**, and its discovery metadata/labels and recorded selected
+  content SHAs demonstrably cover the intended releases. For a coordinated pair, require coverage
+  of both intended versions/labels and their selected content SHAs. A run that started before the
+  second publication or failed deployment is not proof. Verify the deployed manifest/site as well
+  as logs; continue tracking or report a blocker when coverage is missing.
 - **Version discovery reads published releases.** For each major version >= 1, the workflow takes
   the most recently published non-draft release tagged `v{MAJOR}.*`. A draft release contributes
   nothing.
-- **Every major is rebuilt.** A release-triggered run builds each major from its latest release tag
-  into its own path (`/v1/`, `/v2/`). A manual dispatch defaults to the same release-tag content,
-  or can build every major from `release/{MAJOR}.x`, using `main` for its matching major,
-  by selecting `docs_source=latest-branches`. A new MAJOR adds a new path; the site root redirects
+- **Every major uses the selected source.** Release events and default manual runs use
+  `release-tags`: each major's discovered published tag. A manual `docs_source=latest-branches`
+  run selects `origin/release/{MAJOR}.x` for every major. Every selected ref resolves once to a full
+  SHA and its `VersionPrefix` major is validated before any build. Missing refs and mismatches fail
+  explicitly, with no fallback to another mode or `main`.
+  A new MAJOR adds a new path; the site root redirects
   to the newest release, prereleases included.
-- **Orchestration comes from `main`.** The scripts and picker assets are always checked out from
-  `main`. Release-triggered and default manual runs use release-tag content; a manual
-  `docs_source=latest-branches` run uses source-branch content. A docs fix that lives only in a
-  release branch will not affect orchestration.
+- **Orchestration stays current with `main`.** Scripts, fixture tests, and picker assets use an
+  explicit `main` checkout regardless of the event ref. Record its HEAD SHA separately from every
+  selected content ref/SHA. Content worktrees supply docs and their build inputs, not orchestration
+  scripts/picker assets. Branch-mode docs can be ahead of a package tag; picker labels still
+  come from published releases, not branch versions.
+- **GitHub Latest is independent.** Verify its intended designation separately from the docs
+  default, which is chosen by publication date. Package workflow runs still require exact-tag/SHA
+  checks for each line; a successful combined docs run cannot substitute for either package run.
+  Use the [opt-in coordinated-release guidance](../shared-resources/release-branches.md#coordinated-releases-opt-in)
+  when shipping multiple lines together.
 
 If it failed, summarize the failing step. Common causes are a docs build failure in one version's
 worktree (`make generate-docs`) or a Pages deployment error.
@@ -131,7 +150,8 @@ Report each package with its status, and flag any shipping package missing from 
 Confirm <https://csharp.sdk.modelcontextprotocol.io> reflects this release:
 
 1. **Version path** — the major-version path for this release (for example `/v2/`) is live and
-   serving the new content.
+   serving the selected tag/branch content SHA logged by the deployed run. In branch mode, content
+   may have advanced beyond the package tag; tag mode instead uses the discovered published tag.
 2. **Version picker** — the picker offers this release's major version.
 3. **Root redirect** — the site root redirects to the expected default version, which is the newest
    release by publish date, prereleases included.
@@ -167,26 +187,27 @@ Both remediations require explicit user confirmation.
 gh run rerun {run-id} --failed
 ```
 
-**Rebuild the released docs** — use the default `release-tags` source to retry a failed Pages
-deployment after a release, without minting a product release:
+**Rebuild published tag content** — use the release-event default for every published major,
+with current-main orchestration:
 
 ```
-gh workflow run docs.yml --field docs_source=release-tags
+gh workflow run docs.yml --ref main --field docs_source=release-tags
 ```
 
-**Refresh docs without a new release** — select `latest-branches` to rebuild every published major
-from its current source branch (`release/{MAJOR}.x`, using `main` for its matching major):
+**Refresh branch content without a new release/tag** — select the current release branch for every
+published major, while scripts and picker assets remain current with `main`:
 
 ```
-gh workflow run docs.yml --field docs_source=latest-branches
+gh workflow run docs.yml --ref main --field docs_source=latest-branches
 ```
 
-The workflow fails instead of silently using a release tag when any major has no matching branch.
+Both selections resolve and validate every selected ref before building, with no silent fallback.
+Existing Pages environment deployment rules still apply; do not change protections to bypass them.
 
 ## Edge Cases
 
 - **Release is still a draft** — stop; neither workflow has run. The user must publish in the GitHub UI.
-- **Docs run cancelled** — expected under the `pages` concurrency group; report as superseded and follow the newer run.
+- **Docs run cancelled** — follow the newer run; cancellation alone is not success. Require a successful deployed combined run whose labels and recorded selected-content SHAs cover every intended release before reporting coverage.
 - **Only one workflow ran** — check whether the other is disabled, or whether the repository guard excluded it (forks do not run either workflow).
 - **Workflow succeeded but NuGet version not listed** — indexing lag; re-check before reporting a failure.
 - **Workflow succeeded but docs not visible** — Pages caching; re-check before reporting a failure.
@@ -194,4 +215,5 @@ The workflow fails instead of silently using a release tag when any major has no
 - **Root redirects to an unexpected version** — the default is the newest release *by publish date*, including prereleases. A prerelease published after a stable release becomes the default; this is by design.
 - **Release workflow failed after partial publish** — some packages may already be on NuGet.org. NuGet versions cannot be unpublished; re-running skips already-published versions. Report exactly which packages are listed before recommending a re-run.
 - **Versioning link is unslugged or points at the wrong MAJOR** — release notes must link to `/v{MAJOR}/versioning.html` for the released version. Report it so the user can correct the body; the unslugged form tracks the site default and will repoint when a later MAJOR ships.
-- **Verifying an older release** — the docs workflow only ever reflects each major's *latest* release, so an older release's docs path will have been overwritten by a newer one. Verify packages only and note this.
+- **Missing or mismatched selected source** — correct the selected tag/branch before retrying; do not silently substitute another mode or `main`. Branch establishment/push needs separate approval.
+- **Verifying an older release** — tag mode uses each major's latest discovered published tag; branch mode follows its servicing branch. Neither archives every release. Verify packages against the exact old tag/SHA and report docs against the deployed selected-content SHA separately.

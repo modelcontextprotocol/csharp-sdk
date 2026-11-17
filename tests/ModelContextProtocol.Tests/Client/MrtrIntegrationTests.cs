@@ -155,7 +155,8 @@ public class MrtrIntegrationTests : ClientServerTestBase
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
-        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = "2026-07-28";
         clientOptions.Handlers.ElicitationHandler = (request, ct) =>
             new ValueTask<ElicitResult>(new ElicitResult { Action = "accept" });
         clientOptions.Handlers.SamplingHandler = (request, progress, ct) =>
@@ -411,7 +412,8 @@ public class MrtrIntegrationTests : ClientServerTestBase
 
         // Pin to the 2026-07-28 protocol so the client performs the server/discover handshake and
         // treats InputRequiredResult as an MRTR round-trip.
-        var clientOptions = new McpClientOptions { ProtocolVersion = "2026-07-28" };
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = "2026-07-28";
         clientOptions.Handlers.ElicitationHandler = (_, _) =>
             new ValueTask<ElicitResult>(new ElicitResult
             {

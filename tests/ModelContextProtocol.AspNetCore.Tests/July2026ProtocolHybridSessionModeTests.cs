@@ -4,6 +4,7 @@ using ModelContextProtocol.AspNetCore.Tests.Utils;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using ModelContextProtocol.Tests.Utils;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -109,7 +110,8 @@ public class July2026ProtocolHybridSessionModeTests(ITestOutputHelper outputHelp
 
         // A null ProtocolVersion prefers 2026-07-28 and probes with server/discover before considering a
         // fallback to the initialize handshake. Pinning an older version forces the initialize handshake.
-        var clientOptions = new McpClientOptions { ProtocolVersion = protocolVersion };
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = protocolVersion;
         configureClient?.Invoke(clientOptions);
         return McpClient.CreateAsync(transport, clientOptions, LoggerFactory, TestContext.Current.CancellationToken);
     }
