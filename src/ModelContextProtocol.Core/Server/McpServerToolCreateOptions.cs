@@ -155,6 +155,12 @@ public sealed class McpServerToolCreateOptions
     /// <value>
     /// The default is <see cref="McpJsonUtilities.DefaultOptions"/>.
     /// </value>
+    /// <remarks>
+    /// Set <see cref="JsonSerializerOptions.UnmappedMemberHandling"/> to
+    /// <see cref="System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow"/> to reject
+    /// undeclared tool arguments. The resulting <see cref="McpException"/> names the unexpected keys
+    /// and lists the valid argument names; it never includes argument values.
+    /// </remarks>
     public JsonSerializerOptions? SerializerOptions { get; set; }
 
     /// <summary>
