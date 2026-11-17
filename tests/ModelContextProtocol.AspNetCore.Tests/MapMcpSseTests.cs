@@ -41,6 +41,38 @@ public class MapMcpSseTests(ITestOutputHelper outputHelper) : MapMcpTests(output
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("/json")]
+    public async Task MessagePost_IsUnsupportedMediaType_WithMissingOrUnparseableContentType(string? contentType)
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(options => { options.EnableLegacySse = true; options.Stateless = false; });
+        await using var app = Builder.Build();
+
+        app.MapMcp();
+
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var sseResponse = await HttpClient.GetAsync("http://localhost:5000/sse", HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        sseResponse.EnsureSuccessStatusCode();
+        using var sseStream = await sseResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        using var sseStreamReader = new StreamReader(sseStream, System.Text.Encoding.UTF8);
+        Assert.Equal("event: endpoint", await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken));
+        var dataLine = await sseStreamReader.ReadLineAsync(TestContext.Current.CancellationToken);
+        Assert.NotNull(dataLine);
+
+        using var content = new StringContent("""{"jsonrpc":"2.0","method":"notifications/initialized"}""", System.Text.Encoding.UTF8);
+        content.Headers.Remove("Content-Type");
+        if (contentType is not null)
+        {
+            content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+        }
+
+        using var response = await HttpClient.PostAsync($"http://localhost:5000{dataLine["data: ".Length..]}", content, TestContext.Current.CancellationToken);
+        Assert.Equal(System.Net.HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+    }
+
+    [Theory]
     [InlineData("/a", "/a/sse")]
     [InlineData("/a/", "/a/sse")]
     [InlineData("/a/b", "/a/b/sse")]

@@ -111,6 +111,13 @@ internal sealed class SseHandler(
             return;
         }
 
+        // See StreamableHttpHandler.HandlePostRequestAsync: routing lets an absent or unparseable Content-Type through.
+        if (!context.Request.HasJsonContentType())
+        {
+            await Results.StatusCode(StatusCodes.Status415UnsupportedMediaType).ExecuteAsync(context);
+            return;
+        }
+
         var message = await StreamableHttpHandler.ReadJsonRpcMessageAsync(context);
         if (message is null)
         {
