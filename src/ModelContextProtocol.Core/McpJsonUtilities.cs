@@ -239,7 +239,7 @@ public static partial class McpJsonUtilities
     [JsonSerializable(typeof(DynamicClientRegistrationResponse))]
 
     // For Enterprise Managed Authorization flow as specified at
-    // https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx
+    // https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization/2026-07-28/enterprise-managed-authorization.mdx
     [JsonSerializable(typeof(JagTokenExchangeResponse))]
     [JsonSerializable(typeof(JwtBearerAccessTokenResponse))]
     [JsonSerializable(typeof(OAuthErrorResponse))]

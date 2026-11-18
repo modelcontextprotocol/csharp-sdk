@@ -8,7 +8,7 @@ namespace ModelContextProtocol.Authentication;
 /// </summary>
 /// <remarks>
 /// Implements the Enterprise Managed Authorization flow as specified at
-/// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx"/>.
+/// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization/2026-07-28/enterprise-managed-authorization.mdx"/>.
 /// </remarks>
 internal static class IdentityAssertionGrant
 {
@@ -29,7 +29,7 @@ internal static class IdentityAssertionGrant
     /// <summary>
     /// Token type URN for Identity Assertion JWT Authorization Grants.
     /// As specified at
-    /// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx"/>.
+    /// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization/2026-07-28/enterprise-managed-authorization.mdx"/>.
     /// </summary>
     public const string TokenTypeIdJag = "urn:ietf:params:oauth:token-type:id-jag";
 
