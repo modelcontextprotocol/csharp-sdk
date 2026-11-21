@@ -347,6 +347,35 @@ public class McpServerTests : LoggedTest
     }
 
     [Fact]
+    public async Task AsSamplingChatClient_Should_Use_Interceptor_When_Client_Does_Not_Support_Sampling()
+    {
+        await using var transport = new TestServerTransport();
+        await using var server = McpServer.Create(transport, _options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+        await InitializeServerAsync(transport, new ClientCapabilities(), TestContext.Current.CancellationToken);
+
+        string? interceptedMethod = null;
+#pragma warning disable MCPEXP002
+        var interceptingServer = server.WithOutgoingRequestInterceptor((method, _, _) =>
+        {
+            interceptedMethod = method;
+            return new(JsonNode.Parse("""{"role":"assistant","content":{"type":"text","text":"intercepted-sample"},"model":"test-model"}"""));
+        });
+#pragma warning restore MCPEXP002
+
+        var sample = await interceptingServer.SampleAsync([new ChatMessage(ChatRole.User, "Where am I?")], cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(RequestMethods.SamplingCreateMessage, interceptedMethod);
+        Assert.Equal("intercepted-sample", sample.Text);
+
+        var response = await interceptingServer.AsSamplingChatClient().GetResponseAsync("Where am I?", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("intercepted-sample", response.Text);
+        Assert.Single(transport.SentMessages);
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
     public async Task Can_Handle_Ping_Requests()
     {
         await Can_Handle_Requests(
