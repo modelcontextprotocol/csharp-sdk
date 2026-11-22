@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace EverythingServer.Core;
@@ -13,7 +14,7 @@ public class SubscriptionMessageSender(McpServer server, ConcurrentDictionary<st
         {
             foreach (var uri in subscriptions.Keys)
             {
-                await server.SendNotificationAsync("notifications/resource/updated",
+                await server.SendNotificationAsync(NotificationMethods.ResourceUpdatedNotification,
                     new
                     {
                         Uri = uri,
