@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Extensions.Skills;
@@ -15,6 +16,7 @@ namespace ModelContextProtocol.Extensions.Skills;
 [JsonSerializable(typeof(ListSkillsResult))]
 [JsonSerializable(typeof(GetSkillRequestParams))]
 [JsonSerializable(typeof(GetSkillResult))]
+[Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
 public sealed partial class McpSkillsJsonContext : JsonSerializerContext
 {
 }

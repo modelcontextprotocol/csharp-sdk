@@ -1202,6 +1202,12 @@ internal sealed partial class McpServerImpl : McpServer
                     $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has an empty {nameof(McpServerRequestHandler.RoutingNameParameter)}.");
             }
 
+            if (entry.Handler is not { } handler)
+            {
+                throw new InvalidOperationException(
+                    $"The custom request handler for '{entry.Method}' has a null {nameof(McpServerRequestHandler.Handler)}.");
+            }
+
             // Custom handlers are registered after all built-in handlers, so a method already present
             // belongs to a built-in method (e.g. initialize, tools/call) or an earlier custom handler.
             // Silently overwriting it would bypass the built-in handler's filters and protocol gating,
@@ -1213,14 +1219,15 @@ internal sealed partial class McpServerImpl : McpServer
                     $"uses the method '{entry.Method}', which is already handled by the server. Custom handlers cannot replace built-in methods or other custom handlers.");
             }
 
-            SetRawHandler(entry.Method, entry.Handler);
+            SetRawHandler(entry.Method, handler);
         }
 #pragma warning restore MCPEXP002
     }
 
-    private void SetRawHandler(string method, Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> handler)
+    private void SetRawHandler(string method, McpRequestHandler<JsonNode?, JsonNode?> handler)
     {
-        _requestHandlers[method] = (request, ct) => handler(request, ct).AsTask();
+        _requestHandlers[method] = (request, ct) =>
+            InvokeHandlerAsync(handler, request.Params, request, ct).AsTask();
     }
 
     private void ConfigureResources(McpServerOptions options)

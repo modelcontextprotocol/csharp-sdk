@@ -6,8 +6,7 @@ using System.Text.Json.Nodes;
 namespace ModelContextProtocol.Extensions.Skills;
 
 /// <summary>
-/// Validates skill entries against the structural requirements of the Skills extension specification, so that
-/// a server never publishes an entry a conforming host would refuse to load.
+/// Validates skill entries against the structural requirements of the Skills extension specification.
 /// </summary>
 internal static class SkillValidation
 {
@@ -121,16 +120,36 @@ internal static class SkillValidation
     /// </summary>
     public static void ValidateUriShape(string uri, string what, string paramName)
     {
+        if (GetUriShapeError(uri, out _) is { } error)
+        {
+            throw new ArgumentException($"{what} '{uri}' {error}", paramName);
+        }
+    }
+
+    internal static bool TryValidateUriShape(string uri, out Uri? parsedUri)
+    {
+        if (GetUriShapeError(uri, out parsedUri) is null)
+        {
+            return true;
+        }
+
+        parsedUri = null;
+        return false;
+    }
+
+    private static string? GetUriShapeError(string uri, out Uri? parsedUri)
+    {
+        parsedUri = null;
         int schemeEnd = uri.IndexOf(':');
         if (schemeEnd <= 0 ||
-            !System.Uri.TryCreate(uri, UriKind.Absolute, out _))
+            !System.Uri.TryCreate(uri, UriKind.Absolute, out parsedUri))
         {
-            throw new ArgumentException($"{what} '{uri}' must be a syntactically valid absolute URI with a scheme, such as skill://name/SKILL.md.", paramName);
+            return "must be a syntactically valid absolute URI with a scheme, such as skill://name/SKILL.md.";
         }
 
         if (uri.IndexOf('?') >= 0 || uri.IndexOf('#') >= 0)
         {
-            throw new ArgumentException($"{what} '{uri}' must not contain a query or fragment.", paramName);
+            return "must not contain a query or fragment.";
         }
 
         // Check the raw text rather than System.Uri's view of it, which decodes and compacts dot segments, so that
@@ -158,34 +177,21 @@ internal static class SkillValidation
             if (segment.Length == 0 &&
                 (i > 0 || !hasAuthority))
             {
-                throw new ArgumentException($"{what} '{uri}' must not contain empty path segments.", paramName);
+                return "must not contain empty path segments.";
             }
 
             string decoded = System.Uri.UnescapeDataString(segment);
             if (decoded == "." || decoded == ".." || decoded.IndexOf('/') >= 0 || decoded.IndexOf('\\') >= 0)
             {
-                throw new ArgumentException(
-                    $"{what} '{uri}' must not contain '.', '..', or encoded separator path segments, which would resolve outside the skill.",
-                    paramName);
+                return "must not contain '.', '..', or encoded separator path segments, which would resolve outside the skill.";
             }
         }
+
+        return null;
     }
 
     /// <summary>
-    /// Returns a copy of <paramref name="skill"/> that shares no mutable state with it.
-    /// </summary>
-    public static Skill Snapshot(Skill skill) => new()
-    {
-        Uri = skill.Uri,
-        Frontmatter = (JsonObject)skill.Frontmatter.DeepClone(),
-        Meta = (JsonObject?)skill.Meta?.DeepClone(),
-        Resources = skill.Resources.IsDynamic
-            ? SkillResources.Dynamic
-            : SkillResources.FromResources(skill.Resources.Resources!.Select(static r => new SkillResource { Uri = r.Uri, Digest = r.Digest, Size = r.Size })),
-    };
-
-    /// <summary>
-    /// Validates an entry received from a server, throwing <see cref="SkillVerificationException"/> describing the
+    /// Validates an entry received from a server, throwing <see cref="InvalidDataException"/> describing the
     /// first violation found. Hosts must not load invalid entries, so an invalid entry is a verification failure.
     /// </summary>
     public static void ValidateReceived(Skill skill, string method)
@@ -196,22 +202,23 @@ internal static class SkillValidation
         }
         catch (ArgumentException e)
         {
-            throw new SkillVerificationException($"The server returned an invalid skill entry from '{method}': {e.Message}", e);
+            throw new InvalidDataException($"The server returned an invalid skill entry from '{method}': {e.Message}", e);
         }
     }
 
     /// <summary>
     /// Validates a complete skill entry, throwing <see cref="ArgumentException"/> describing the first violation found.
     /// </summary>
-    public static void Validate(Skill skill, string paramName)
+    public static void Validate(Skill skill, string paramName, string? uriParamName = null)
     {
         if (skill is null)
         {
             throw new ArgumentNullException(paramName);
         }
 
-        string root = GetSkillRoot(skill.Uri, paramName);
-        ValidateUriShape(skill.Uri, "The skill URI", paramName);
+        uriParamName ??= paramName;
+        string root = GetSkillRoot(skill.Uri, uriParamName);
+        ValidateUriShape(skill.Uri, "The skill URI", uriParamName);
         string nameSegment = GetNameSegment(root);
 
         if (skill.Frontmatter is null)
@@ -230,14 +237,6 @@ internal static class SkillValidation
             throw new ArgumentException(
                 $"Skill '{skill.Uri}' has the name '{name}', which does not satisfy the Agent Skills naming rules " +
                 "(1 to 64 lowercase or caseless letters, digits, and single hyphens, not starting or ending with a hyphen).",
-                paramName);
-        }
-
-        if (!string.Equals(name, nameSegment, StringComparison.Ordinal))
-        {
-            throw new ArgumentException(
-                $"Skill '{skill.Uri}' has the name '{name}', but the path segment preceding /{SkillsProtocol.SkillFileName} is '{nameSegment}'. " +
-                "The specification requires them to be equal.",
                 paramName);
         }
 
@@ -281,6 +280,16 @@ internal static class SkillValidation
 
         ValidateOptionalStringType(skill, "allowed-tools", "a space-separated string of tools", paramName);
 
+        int authorityStart = root.IndexOf("://", StringComparison.Ordinal);
+        bool nameIsAuthority = authorityStart >= 0 && root.IndexOf('/', authorityStart + 3) < 0;
+        if (!string.Equals(name, nameSegment, nameIsAuthority ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Skill '{skill.Uri}' has the name '{name}', but the path segment preceding /{SkillsProtocol.SkillFileName} is '{nameSegment}'. " +
+                "The specification requires them to be equal.",
+                uriParamName);
+        }
+
         if (skill.Resources is null)
         {
             throw new ArgumentException($"Skill '{skill.Uri}' has no resources manifest. Use SkillResources.Dynamic for generated content.", paramName);
@@ -291,7 +300,7 @@ internal static class SkillValidation
             return;
         }
 
-        var resources = skill.Resources.Resources!;
+        var resources = skill.Resources.Entries;
         if (resources.Count == 0)
         {
             throw new ArgumentException(
@@ -299,17 +308,9 @@ internal static class SkillValidation
                 paramName);
         }
 
-        if (resources.Count > SkillsProtocol.MaxResourcesPerSkill)
-        {
-            throw new ArgumentException(
-                $"Skill '{skill.Uri}' lists {resources.Count} files, exceeding the limit of {SkillsProtocol.MaxResourcesPerSkill} per skill.",
-                paramName);
-        }
-
-        string rootPrefix = root + "/";
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var rootUri = new Uri(root + "/");
+        var seen = new HashSet<string>(SkillUriComparer.Instance);
         bool hasSkillFile = false;
-        long totalSize = 0;
 
         foreach (var resource in resources)
         {
@@ -324,7 +325,7 @@ internal static class SkillValidation
             }
 
             ValidateUriShape(resource.Uri, $"Skill '{skill.Uri}' lists the resource", paramName);
-            if (!resource.Uri.StartsWith(rootPrefix, StringComparison.Ordinal))
+            if (!rootUri.IsBaseOf(new Uri(resource.Uri)))
             {
                 throw new ArgumentException(
                     $"Skill '{skill.Uri}' lists the resource '{resource.Uri}', which is not within the skill's directory '{root}'.",
@@ -349,15 +350,7 @@ internal static class SkillValidation
                 throw new ArgumentException($"Skill '{skill.Uri}' lists the resource '{resource.Uri}' with a negative size.", paramName);
             }
 
-            if (resource.Size > SkillsProtocol.MaxTotalSizeBytes - totalSize)
-            {
-                throw new ArgumentException(
-                    $"Skill '{skill.Uri}' totals more than the limit of {SkillsProtocol.MaxTotalSizeBytes} bytes per skill.",
-                    paramName);
-            }
-
-            totalSize += resource.Size;
-            hasSkillFile |= string.Equals(resource.Uri, skill.Uri, StringComparison.Ordinal);
+            hasSkillFile |= SkillUriComparer.Instance.Equals(resource.Uri, skill.Uri);
         }
 
         if (!hasSkillFile)
@@ -366,7 +359,6 @@ internal static class SkillValidation
                 $"Skill '{skill.Uri}' does not list its own {SkillsProtocol.SkillFileName} in its resources manifest.",
                 paramName);
         }
-
     }
 
     private const int MaxDescriptionLength = 1024;

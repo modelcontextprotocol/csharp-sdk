@@ -5,15 +5,10 @@ using ModelContextProtocol.Server;
 
 namespace ModelContextProtocol.Tests.Server;
 
-/// <summary>
-/// Tests that a server has one Skills registration, rejected early when repeated through any public method, and
-/// that each Skills file is the only resource at its URI.
-/// </summary>
 public sealed class McpServerSkillsRegistrationTests : IDisposable
 {
     private const string GitWorkflowUri = "skill://git-workflow/SKILL.md";
     private const string GitWorkflowMarkdown = "---\nname: git-workflow\ndescription: Git conventions\n---\n# Git\n";
-
     private readonly string _root = Path.Combine(Path.GetTempPath(), "mcp-skills-registration-" + Guid.NewGuid().ToString("N"));
 
     public McpServerSkillsRegistrationTests()
@@ -25,208 +20,258 @@ public sealed class McpServerSkillsRegistrationTests : IDisposable
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     [Theory]
-    [InlineData("skills")]
-    [InlineData("directory")]
-    [InlineData("directory-with-hidden-files")]
-    [InlineData("catalog")]
-    public void SecondRegistrationOnTheSameBuilder_ThrowsBeforeRegisteringAnything(string method)
+    [InlineData("bad scheme://git-workflow/SKILL.md")]
+    [InlineData("skill://other/SKILL.md")]
+    [InlineData("skill://git-workflow/missing.md")]
+    public void ExplicitUriErrorsNameOptionsAcrossAuthoringEntrypoints(string uri)
     {
+        var options = new McpServerSkillPackageCreateOptions { Uri = uri };
+        Assert.Throws<ArgumentException>("options", () => McpServerSkillPackage.Create(
+            [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)], options));
+        string directory = Path.Combine(_root, "git-workflow");
+        Assert.Throws<ArgumentException>("options", () => McpServerSkillPackage.CreateFromDirectory(directory, options));
         var services = new ServiceCollection();
         var builder = services.AddMcpServer();
-        builder.WithSkills([CreateGitWorkflow()]);
-        int registrationCount = services.Count;
+        var before = services.ToArray();
 
-        var exception = Assert.Throws<InvalidOperationException>(() => Register(builder, method));
+        Assert.Throws<ArgumentException>("options", () => builder.WithSkillFromDirectory(directory, options));
 
-        Assert.Contains("Skills are already registered", exception.Message);
-        Assert.Equal(registrationCount, services.Count);
+        Assert.Equal(before, services);
     }
 
     [Theory]
-    [InlineData("skills")]
-    [InlineData("directory")]
-    [InlineData("directory-with-hidden-files")]
-    [InlineData("catalog")]
-    public void SecondRegistrationThroughAnotherBuilderForTheSameServices_Throws(string method)
+    [InlineData("bad scheme://")]
+    [InlineData("skill://catalog?query/")]
+    [InlineData("skill://catalog#fragment/")]
+    public void InvalidDiscoveryPrefixesNameOptionsBeforeRegisteringServices(string prefix)
     {
-        // For example a library and the application each enabling Skills on the same service collection.
+        var options = new McpServerSkillPackageDiscoveryOptions { UriPrefix = prefix };
+        Assert.Throws<ArgumentException>("options", () => McpServerSkillPackage.CreateFromSubdirectories(_root, options));
         var services = new ServiceCollection();
-        Register(services.AddMcpServer(), method);
-        var secondBuilder = services.AddMcpServer();
-        int registrationCount = services.Count;
+        var builder = services.AddMcpServer();
+        var before = services.ToArray();
 
-        var exception = Assert.Throws<InvalidOperationException>(() => secondBuilder.WithSkillsFromDirectory(_root));
+        Assert.Throws<ArgumentException>("options", () => builder.WithSkillsFromSubdirectories(_root, options));
 
-        Assert.Contains("Skills are already registered", exception.Message);
-        Assert.Equal(registrationCount, services.Count);
+        Assert.Equal(before, services);
     }
 
     [Theory]
-    [InlineData("skills")]
-    [InlineData("directory")]
-    [InlineData("directory-with-hidden-files")]
-    [InlineData("catalog")]
-    public void SingleRegistration_InstallsEachSkillsMethodOnce(string method)
+    [InlineData("# no frontmatter\n")]
+    [InlineData("---\nname: git-workflow\n---\n")]
+    [InlineData("---\nname: 42\ndescription: Git conventions\n---\n")]
+    public void InvalidFileFrontmatterKeepsFileAttributionWithMetadataOrAValidUriOption(string markdown)
     {
-        var services = new ServiceCollection();
-        Register(services.AddMcpServer(), method);
-        using var provider = services.BuildServiceProvider();
+        string directory = Path.Combine(_root, "git-workflow");
+        File.WriteAllText(Path.Combine(directory, "SKILL.md"), markdown);
+        McpServerSkillPackageCreateOptions[] optionSets =
+        [
+            new() { Metadata = ["application-tag"] },
+            new() { Uri = GitWorkflowUri },
+        ];
+        foreach (var options in optionSets)
+        {
+            Assert.Throws<ArgumentException>("files", () => McpServerSkillPackage.Create(
+                [McpServerSkillFile.FromText("SKILL.md", markdown)], options));
+            Assert.Throws<ArgumentException>("directoryPath", () => McpServerSkillPackage.CreateFromDirectory(directory, options));
+            var services = new ServiceCollection();
+            var builder = services.AddMcpServer();
+            var before = services.ToArray();
 
-        var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+            Assert.Throws<ArgumentException>("directoryPath", () => builder.WithSkillFromDirectory(directory, options));
 
-#pragma warning disable MCPEXP002 // RequestHandlers is experimental.
-        Assert.Single(options.RequestHandlers!, handler => handler.Method == "skills/list");
-        Assert.Single(options.RequestHandlers!, handler => handler.Method == "skills/get");
-#pragma warning restore MCPEXP002
+            Assert.Equal(before, services);
+        }
     }
 
     [Fact]
-    public void FailedRegistration_DoesNotBlockALaterOne()
+    public async Task ContributionsAreAdditive_AndInstallEachWireHandlerOnce()
     {
-        var empty = Path.Combine(_root, "not-a-skill");
-        Directory.CreateDirectory(empty);
+        var alpha = McpServerSkillPackage.Create([McpServerSkillFile.FromText("SKILL.md", "---\nname: alpha\ndescription: Alpha\n---\n")]);
+        var package = CreateGitWorkflow();
         var services = new ServiceCollection();
-
-        Assert.Throws<ArgumentException>(() => services.AddMcpServer().WithSkillsFromDirectory(empty));
-        services.AddMcpServer().WithSkillsFromDirectory(_root);
-    }
-
-    [Theory]
-    [InlineData("conflicting-file", typeof(ArgumentException))]
-    [InlineData("duplicate-skill", typeof(ArgumentException))]
-    [InlineData("configure", typeof(InvalidOperationException))]
-    public void FailedRegistration_LeavesNoResources_AndARetryWithNewSkillsSucceeds(string failure, Type expectedException)
-    {
-        var services = new ServiceCollection();
-        var builder = services.AddMcpServer();
-        int registrationCount = services.Count;
-
-        Assert.Throws(expectedException, () => RegisterFailing(builder, failure));
-        Assert.Equal(registrationCount, services.Count);
-
-        // New skill instances: a resource left behind by the failed call would conflict with them.
-        builder.WithSkills([CreateGitWorkflow()]);
-        using var provider = services.BuildServiceProvider();
+        services.AddMcpServer()
+            .WithSkills([alpha.Skill])
+            .WithSkillPackages([package])
+            .WithSkills([alpha.Skill])
+            .WithSkills();
+        await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
         var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-
-        Assert.Equal([GitWorkflowUri], options.ResourceCollection!.PrimitiveNames);
+        var skills = provider.GetRequiredService<IOptions<McpSkillsOptions>>().Value.SkillCollection;
+#pragma warning disable MCPEXP002
+        Assert.Single(options.RequestHandlers!, handler => handler.Method == SkillsProtocol.MethodSkillsList);
+        Assert.Single(options.RequestHandlers!, handler => handler.Method == SkillsProtocol.MethodSkillsGet);
+#pragma warning restore MCPEXP002
+        Assert.Same(alpha.Skill, skills[alpha.Skill.Id]);
+        Assert.Same(package.Skill, skills[package.Skill.Id]);
+        Assert.Equal(2, skills.Count);
+        Assert.Same(package.Resources[0], Assert.Single(options.ResourceCollection!));
     }
 
     [Theory]
-    [InlineData(true, GitWorkflowUri)]
-    [InlineData(false, GitWorkflowUri)]
-    [InlineData(true, "skill://GIT-WORKFLOW/SKILL.md")]
-    [InlineData(false, "SKILL://git-workflow/SKILL.md")]
-    public void ApplicationResourceAtASkillFileUri_FailsWhenTheOptionsAreBuilt(bool applicationResourceFirst, string applicationUri)
+    [InlineData("enumeration")]
+    [InlineData("null")]
+    [InlineData("conflict")]
+    [InlineData("null-manifest")]
+    [InlineData("null-manifest-entry")]
+    [InlineData("identity")]
+    public async Task PackageFailuresLeaveTheCallsServicesUntouched(string failure)
     {
-        // The reported shape: an application resource whose parameterless template is a Skills file's URI.
-        var applicationResource = McpServerResource.Create(
-            () => "application content",
-            new McpServerResourceCreateOptions { UriTemplate = applicationUri });
+        var first = CreateGitWorkflow();
+        var changed = McpServerSkillPackage.Create(
+            [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown + "changed")]);
+        var entry = changed.Skill.ProtocolSkill!;
+        switch (failure)
+        {
+            case "null-manifest": entry.Resources = null!; break;
+            case "null-manifest-entry":
+                Assert.IsAssignableFrom<IList<SkillResource>>(entry.Resources.Entries)[0] = null!;
+                break;
+            case "identity":
+                entry.Uri = "skill://other/git-workflow/SKILL.md";
+                entry.Resources = SkillResources.Dynamic;
+                break;
+        }
+
         var services = new ServiceCollection();
         var builder = services.AddMcpServer();
-        if (applicationResourceFirst)
+        var before = services.ToArray();
+        int enumerations = 0;
+        var exception = Record.Exception(() => builder.WithSkillPackages(Packages()));
+
+        Assert.IsType(failure == "enumeration" ? typeof(InvalidOperationException) : typeof(ArgumentException), exception);
+        if (failure is "null" or "null-manifest" or "null-manifest-entry" or "identity")
         {
-            builder.WithResources([applicationResource]).WithSkillsFromDirectory(_root);
+            Assert.Equal("packages", Assert.IsType<ArgumentException>(exception).ParamName);
+        }
+        Assert.Equal(before, services);
+        Assert.Equal(1, enumerations);
+
+        enumerations = 0;
+        builder.WithSkillPackages(ValidPackages());
+        Assert.Equal(1, enumerations);
+        await using var provider = services.BuildServiceProvider();
+        Assert.Same(first.Skill, Assert.Single(provider.GetRequiredService<IOptions<McpSkillsOptions>>().Value.SkillCollection));
+        Assert.Same(first.Resources[0], Assert.Single(provider.GetRequiredService<IOptions<McpServerOptions>>().Value.ResourceCollection!));
+
+        IEnumerable<McpServerSkillPackage> Packages()
+        {
+            enumerations++;
+            yield return first;
+            if (failure == "enumeration") throw new InvalidOperationException("Enumeration failed.");
+            yield return failure == "null" ? null! : changed;
+        }
+
+        IEnumerable<McpServerSkillPackage> ValidPackages()
+        {
+            enumerations++;
+            yield return first;
+        }
+    }
+
+    [Fact]
+    public async Task EmptyPackagesEnableSkills_AndPackageRegistrationRejectsNullArguments()
+    {
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        Assert.Throws<ArgumentNullException>("builder", () => McpSkillsBuilderExtensions.WithSkillPackages(null!, []));
+        Assert.Throws<ArgumentNullException>("packages", () => builder.WithSkillPackages(null!));
+        Assert.Same(builder, builder.WithSkillPackages([]));
+        await using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
+        Assert.True(options.Capabilities!.Extensions!.ContainsKey(SkillsProtocol.ExtensionId));
+        Assert.NotNull(options.Capabilities.Resources);
+        Assert.Empty(provider.GetRequiredService<IOptions<McpSkillsOptions>>().Value.SkillCollection);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConfigureCanRemoveSkills_WithoutSuppressingTheirResources(bool laterCallback)
+    {
+        var package = CreateGitWorkflow();
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer().WithSkillPackages([package]);
+        if (laterCallback) services.Configure<McpSkillsOptions>(RemoveSkill);
+        else builder.WithSkills(RemoveSkill);
+        await using var provider = services.BuildServiceProvider();
+
+        Assert.Empty(provider.GetRequiredService<IOptions<McpSkillsOptions>>().Value.SkillCollection);
+        Assert.Same(package.Resources[0], Assert.Single(provider.GetRequiredService<IOptions<McpServerOptions>>().Value.ResourceCollection!));
+
+        void RemoveSkill(McpSkillsOptions options)
+        {
+            Assert.Same(package.Skill, Assert.Single(options.SkillCollection));
+            options.SkillCollection.Clear();
+        }
+    }
+
+    [Fact]
+    public async Task SeparatePackageCallsDoNotHideResourcesFromAnIgnoredSkillIdentity()
+    {
+        var first = CreateGitWorkflow();
+        var duplicate = McpServerSkillPackage.Create(
+        [
+            McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown + "changed"),
+            McpServerSkillFile.FromText("extra.md", "extra"),
+        ]);
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithSkillPackages([first]).WithSkillPackages([duplicate]);
+        await using var provider = services.BuildServiceProvider();
+
+        var skills = provider.GetRequiredService<IOptions<McpSkillsOptions>>().Value.SkillCollection;
+        var resources = provider.GetRequiredService<IOptions<McpServerOptions>>().Value.ResourceCollection!;
+        Assert.Same(first.Skill, Assert.Single(skills));
+        Assert.Equal(2, resources.Count);
+        Assert.Same(first.Resources[0], resources[first.Skill.Id]);
+        Assert.Same(duplicate.Resources[1], resources["skill://git-workflow/extra.md"]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IndependentRegistrationsCanDescribeDifferentSharedFileSnapshots(bool packages)
+    {
+        var outer = CreateOuter();
+        var conflicting = McpServerSkillPackage.Create(
+            [McpServerSkillFile.FromText("SKILL.md", InnerMarkdown + "changed")], new() { Uri = "skill://catalog/inner/SKILL.md" });
+        var collection = new McpServerSkillCollection { outer.Skill, conflicting.Skill };
+        var services = new ServiceCollection();
+        var builder = services.AddMcpServer();
+        if (packages)
+        {
+            builder.WithSkillPackages([outer]).WithSkillPackages([conflicting]);
         }
         else
         {
-            builder.WithSkillsFromDirectory(_root).WithResources([applicationResource]);
+            builder.WithSkills(options => options.SkillCollection = collection);
         }
 
-        using var provider = services.BuildServiceProvider();
-
-        var exception = Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IOptions<McpServerOptions>>().Value);
-        Assert.Contains(GitWorkflowUri, exception.Message);
-        Assert.Contains(applicationUri, exception.Message);
-    }
-
-    [Fact]
-    public void ResourceAddedDirectlyToTheOptions_ConflictsLikeARegisteredOne()
-    {
-        var applicationResource = McpServerResource.Create(
-            () => "application content",
-            new McpServerResourceCreateOptions { UriTemplate = GitWorkflowUri });
-        var services = new ServiceCollection();
-        services.AddMcpServer(options => options.ResourceCollection = [applicationResource])
-            .WithSkills([CreateGitWorkflow()]);
-        using var provider = services.BuildServiceProvider();
-
-        var exception = Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<IOptions<McpServerOptions>>().Value);
-        Assert.Contains(GitWorkflowUri, exception.Message);
-    }
-
-    [Fact]
-    public void SharedNestedFiles_TheSkillsOwnResources_AndOtherUris_DoNotConflict()
-    {
-        const string InnerMarkdown = "---\nname: inner\ndescription: nested\n---\n";
-        var outer = McpServerSkill.Create("skill://acme/SKILL.md",
-        [
-            McpServerSkillFile.FromText("SKILL.md", "---\nname: acme\ndescription: outer\n---\n"),
-            McpServerSkillFile.FromText("inner/SKILL.md", InnerMarkdown),
-        ]);
-        var inner = McpServerSkill.Create("skill://acme/inner/SKILL.md", [McpServerSkillFile.FromText("SKILL.md", InnerMarkdown)]);
-        var services = new ServiceCollection();
-        services.AddMcpServer()
-            .WithSkills([outer, inner])
-            .WithResources(outer.Resources)
-            .WithResources(
-            [
-                McpServerResource.Create(() => "a different path", new McpServerResourceCreateOptions { UriTemplate = "skill://acme/skill.md" }),
-                McpServerResource.Create((string name) => name, new McpServerResourceCreateOptions { UriTemplate = "skill://{name}/SKILL.md" }),
-            ]);
-        using var provider = services.BuildServiceProvider();
-
+        await using var provider = services.BuildServiceProvider();
         var options = provider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-
-        Assert.Equal(
-            ["skill://acme/SKILL.md", "skill://acme/inner/SKILL.md", "skill://acme/skill.md", "skill://{name}/SKILL.md"],
-            options.ResourceCollection!.PrimitiveNames);
-        Assert.Same(outer.Resources[1], options.ResourceCollection["skill://acme/inner/SKILL.md"]);
-    }
-
-    private void Register(IMcpServerBuilder builder, string method)
-    {
-        switch (method)
+        var registered = provider.GetRequiredService<IOptions<McpSkillsOptions>>().Value.SkillCollection;
+        Assert.Same(outer.Skill, registered[outer.Skill.Id]);
+        Assert.Same(conflicting.Skill, registered[conflicting.Skill.Id]);
+        if (packages)
         {
-            case "skills":
-                builder.WithSkills([CreateGitWorkflow()]);
-                break;
-            case "directory":
-                builder.WithSkillsFromDirectory(_root);
-                break;
-            case "directory-with-hidden-files":
-                builder.WithSkillsFromDirectory(_root, includeHiddenAndSystemFiles: true);
-                break;
-            case "catalog":
-                builder.WithSkills(new InMemoryMcpSkillCatalog([CreateGitWorkflow().ProtocolSkill]));
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(method), method, "Unknown registration method.");
+            Assert.Same(outer.Resources[1], options.ResourceCollection![conflicting.Skill.Id]);
         }
-    }
-
-    private void RegisterFailing(IMcpServerBuilder builder, string failure)
-    {
-        switch (failure)
+        else
         {
-            case "conflicting-file":
-                // The second skill lists the first one's file with different content.
-                var changed = McpServerSkill.Create(GitWorkflowUri, [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown + "Changed.\n")]);
-                builder.WithSkills([CreateGitWorkflow(), changed]);
-                break;
-            case "duplicate-skill":
-                // Identical files are shared, so this fails later, when the catalog sees the same skill URI twice.
-                builder.WithSkills([CreateGitWorkflow(), CreateGitWorkflow()]);
-                break;
-            case "configure":
-                builder.WithSkills([CreateGitWorkflow()], _ => throw new InvalidOperationException("The configuration failed."));
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(failure), failure, "Unknown failure.");
+            Assert.Same(collection, registered);
         }
+
+        Assert.Equal(2, registered.Count);
     }
 
-    private McpServerSkill CreateGitWorkflow() =>
-        McpServerSkill.Create(GitWorkflowUri, [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)]);
+    private const string InnerMarkdown = "---\nname: inner\ndescription: Inner\n---\n";
+
+    private static McpServerSkillPackage CreateOuter() => McpServerSkillPackage.Create(
+    [
+        McpServerSkillFile.FromText("SKILL.md", "---\nname: catalog\ndescription: Outer\n---\n"),
+        McpServerSkillFile.FromText("inner/SKILL.md", InnerMarkdown),
+    ], new() { Uri = "skill://catalog/SKILL.md" });
+
+    private static McpServerSkillPackage CreateGitWorkflow() => McpServerSkillPackage.Create(
+        [McpServerSkillFile.FromText("SKILL.md", GitWorkflowMarkdown)], new() { Uri = GitWorkflowUri });
 }

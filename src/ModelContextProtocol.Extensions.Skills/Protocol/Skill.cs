@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -8,16 +9,17 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// </summary>
 /// <remarks>
 /// <para>
-/// An entry is a complete, point-in-time snapshot of a skill: the URI of its <c>SKILL.md</c>, the verbatim
+/// An entry describes a skill: the URI of its <c>SKILL.md</c>, the verbatim
 /// frontmatter of that file, and a manifest of the skill's files with their digests and sizes. A host that
 /// pages through a listing has everything it needs to build its registry, present a skill for approval, and
 /// verify every file it later reads, without a second round-trip per skill.
 /// </para>
 /// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx">Skills extension specification</see>
+/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/beta/skills.mdx">Skills extension specification</see>
 /// for details.
 /// </para>
 /// </remarks>
+[Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
 public sealed class Skill
 {
     /// <summary>
@@ -35,7 +37,7 @@ public sealed class Skill
     /// </summary>
     /// <remarks>
     /// Every field the author wrote is passed through, not a curated subset. <c>name</c> and <c>description</c>
-    /// are always present. Hosts re-parse the fetched <c>SKILL.md</c> and compare its frontmatter against this
+    /// must be present in valid entries. Hosts re-parse the fetched <c>SKILL.md</c> and compare its frontmatter against this
     /// object field by field, treating any discrepancy as a verification failure, so this must reproduce the
     /// authored frontmatter exactly. Structural validation of the entry does not read the file to check that.
     /// </remarks>
@@ -47,6 +49,7 @@ public sealed class Skill
     /// <see cref="SkillResources.Dynamic"/> when the skill's content is generated and cannot be digested.
     /// </summary>
     [JsonPropertyName("resources")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public required SkillResources Resources { get; set; }
 
     /// <summary>

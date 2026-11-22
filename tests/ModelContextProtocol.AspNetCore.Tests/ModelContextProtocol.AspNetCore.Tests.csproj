@@ -8,7 +8,7 @@
     <IsTestProject>true</IsTestProject>
     <RootNamespace>ModelContextProtocol.AspNetCore.Tests</RootNamespace>
     <!-- The test suite intentionally exercises the obsoleted stateful Streamable HTTP surface. -->
-    <NoWarn>$(NoWarn);MCP9006</NoWarn>
+    <NoWarn>$(NoWarn);MCP9006;MCPEXP005</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net9.0'">

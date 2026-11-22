@@ -61,11 +61,7 @@ public class Program
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = stateless)
             .WithDistributedCacheEventStreamStore()
-            .WithSkills(ConformanceSkills.CreateCatalog(), options =>
-            {
-                options.TimeToLive = TimeSpan.FromMinutes(5);
-                options.CacheScope = CacheScope.Public;
-            })
+            .WithSkills(ConformanceSkills.CreateSkills())
             .WithResources(ConformanceSkills.CreateResources())
             .WithTasks(
                 new InMemoryMcpTaskStore

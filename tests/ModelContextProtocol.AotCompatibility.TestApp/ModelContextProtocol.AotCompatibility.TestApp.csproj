@@ -8,7 +8,7 @@
     <PublishAot>true</PublishAot>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
     <!-- Suppress warnings for the experimental APIs exercised by this test app. -->
-    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP003</NoWarn>
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP003;MCPEXP005</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

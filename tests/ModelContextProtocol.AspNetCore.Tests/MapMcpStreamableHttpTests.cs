@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Security.Claims;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -911,54 +912,59 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         }
     }
 
-    [Fact]
-    public async Task DeleteRequest_FromDifferentUser_IsRejected_AndSessionSurvives()
+    [Theory]
+    [InlineData(ClaimTypes.NameIdentifier, "Bob", "issuer-A")]
+    [InlineData("sub", "Bob", "issuer-A")]
+    [InlineData(ClaimTypes.Upn, "Bob", "issuer-A")]
+    [InlineData(ClaimTypes.NameIdentifier, "Alice", "issuer-B")]
+    [InlineData("sub", "Alice", "issuer-B")]
+    [InlineData(ClaimTypes.Upn, "Alice", "issuer-B")]
+    public async Task DeleteRequest_FromDifferentIdentity_IsRejected_AndSessionSurvives(string claimType, string otherUser, string otherIssuer)
     {
         Assert.SkipWhen(Stateless, "Sessions don't exist in stateless mode.");
 
-        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<EchoHttpContextUserTools>();
-        Builder.Services.AddHttpContextAccessor();
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless).WithTools<ClaimsPrincipalTools>();
+        Builder.Services.AddAuthorization();
 
         await using var app = Builder.Build();
 
+        app.UseRouting();
         // Pick the user from a test header so different HttpClient requests can act as different users.
         app.Use(next => async context =>
         {
             var name = context.Request.Headers["X-Test-User"].ToString();
             if (!string.IsNullOrEmpty(name))
             {
-                context.User = new ClaimsPrincipal(new ClaimsIdentity(
-                    [new Claim("name", name), new Claim(ClaimTypes.NameIdentifier, name)],
-                    "TestAuthType", "name", "role"));
+                context.User = new ClaimsPrincipal([
+                    new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "untrusted")]),
+                    new ClaimsIdentity(claimType == ClaimTypes.Upn ? [] : [new Claim(ClaimTypes.Upn, "fallback")], "OtherAuth"),
+                    new ClaimsIdentity(
+                        [new Claim("name", name), new Claim(claimType, name, ClaimValueTypes.String,
+                            context.Request.Headers["X-Test-Issuer"].FirstOrDefault() ?? "issuer-A")],
+                        "TestAuthType", "name", "role"),
+                    new ClaimsIdentity([new Claim(claimType, "later-identity")], "OtherAuth"),
+                ]);
             }
             await next(context);
         });
 
-        app.MapMcp();
+        app.UseAuthorization();
+        app.MapMcp().RequireAuthorization();
         await app.StartAsync(TestContext.Current.CancellationToken);
 
-        const string initializeRequest = """
-            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
-            """;
-
-        using var initRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
-        {
-            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json"),
-        };
+        using var initRequest = CreateInitializeRequest();
         initRequest.Headers.Add("X-Test-User", "Alice");
-        initRequest.Headers.Accept.ParseAdd("application/json");
-        initRequest.Headers.Accept.ParseAdd("text/event-stream");
 
         using var initResponse = await HttpClient.SendAsync(initRequest, TestContext.Current.CancellationToken);
         Assert.True(initResponse.IsSuccessStatusCode);
         var sessionId = Assert.Single(initResponse.Headers.GetValues("Mcp-Session-Id"));
 
-        // A DELETE from a different authenticated user must not be able to tear down Alice's session.
-        using var bobDelete = new HttpRequestMessage(HttpMethod.Delete, "http://localhost:5000/");
-        bobDelete.Headers.Add("X-Test-User", "Bob");
-        bobDelete.Headers.Add("Mcp-Session-Id", sessionId);
-        using var bobDeleteResponse = await HttpClient.SendAsync(bobDelete, TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Forbidden, bobDeleteResponse.StatusCode);
+        using var otherDelete = new HttpRequestMessage(HttpMethod.Delete, "http://localhost:5000/");
+        otherDelete.Headers.Add("X-Test-User", otherUser);
+        otherDelete.Headers.Add("X-Test-Issuer", otherIssuer);
+        otherDelete.Headers.Add("Mcp-Session-Id", sessionId);
+        using var otherDeleteResponse = await HttpClient.SendAsync(otherDelete, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.Forbidden, otherDeleteResponse.StatusCode);
 
         // Alice should still be able to use the session.
         const string toolCallRequest = """
@@ -981,5 +987,136 @@ public class MapMcpStreamableHttpTests(ITestOutputHelper outputHelper) : MapMcpT
         aliceDelete.Headers.Add("Mcp-Session-Id", sessionId);
         using var aliceDeleteResponse = await HttpClient.SendAsync(aliceDelete, TestContext.Current.CancellationToken);
         Assert.True(aliceDeleteResponse.IsSuccessStatusCode);
+    }
+
+    [Theory]
+    [InlineData("initialize", null)]
+    [InlineData("initialize", "")]
+    [InlineData("GET", null)]
+    [InlineData("POST", "")]
+    [InlineData("DELETE", null)]
+    [InlineData("DELETE", "")]
+    public async Task StatefulSession_AuthenticatedPrincipalWithoutStableIdentity_IsRejected(string operation, string? userId)
+    {
+        Assert.SkipWhen(Stateless, "Sessions don't exist in stateless mode.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+
+        await using var app = Builder.Build();
+
+        app.Use(next => async context =>
+        {
+            if (context.Request.Headers.ContainsKey("X-Test-Authenticated"))
+            {
+                List<Claim> claims = [new Claim("custom-user-id", "Alice")];
+                if (userId is not null)
+                {
+                    claims.AddRange([new Claim(ClaimTypes.NameIdentifier, userId), new Claim("sub", "must-not-fall-back")]);
+                }
+                context.User = new ClaimsPrincipal([
+                    new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "untrusted")]),
+                    new ClaimsIdentity(claims, "TestAuthType"),
+                ]);
+            }
+            await next(context);
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var owner = operation == "initialize" ? null :
+            await ConnectAsync(transportOptions: new()
+            {
+                Endpoint = new("http://localhost:5000/"),
+                TransportMode = HttpTransportMode.StreamableHttp,
+                EnableStandaloneGetStream = false,
+            }, configureClient: options => options.ProtocolVersion = "2025-06-18");
+        using var request = CreateInitializeRequest();
+        request.Headers.Add("X-Test-Authenticated", "true");
+        if (owner is not null)
+        {
+            request.Method = new HttpMethod(operation);
+            request.Headers.Add("Mcp-Session-Id", owner.SessionId);
+            request.Content?.Dispose();
+            request.Content = operation == "POST" ? new StringContent(
+                """{"jsonrpc":"2.0","id":2,"method":"ping"}""", System.Text.Encoding.UTF8, "application/json") : null;
+        }
+        using var response = await HttpClient.SendAsync(
+            request, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var error = document.RootElement.GetProperty("error").GetProperty("message").GetString();
+        Assert.Contains("ClaimTypes.NameIdentifier, 'sub', or ClaimTypes.Upn", error);
+        Assert.Contains("Configure authentication", error);
+
+        if (owner is not null)
+        {
+            await owner.PingAsync(cancellationToken: TestContext.Current.CancellationToken);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RequestWithoutStableIdentity_IsAllowedWhenAnonymousOrStateless(bool authenticated)
+    {
+        Assert.SkipWhen(authenticated && !Stateless, "Authenticated stateful requests require a user ID.");
+
+        Builder.Services.AddMcpServer().WithHttpTransport(ConfigureStateless);
+
+        await using var app = Builder.Build();
+
+        app.Use(next => async context =>
+        {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim("name", "Alice")], authenticated ? "TestAuthType" : null));
+            await next(context);
+        });
+
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        using var request = CreateInitializeRequest();
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+
+        Assert.True(response.IsSuccessStatusCode);
+        Assert.Equal(!Stateless, response.Headers.Contains("Mcp-Session-Id"));
+    }
+
+    [Fact]
+    public async Task PerRequestMetadata_AuthenticatedPrincipalWithoutStableIdentity_IsAllowed()
+    {
+        Builder.Services.AddMcpServer().WithHttpTransport(options =>
+            options.SessionMode = HttpServerSessionMode.StatefulForInitializeClients)
+            .WithTools([McpServerTool.Create(() => "ok", new() { Name = "test" })]);
+
+        await using var app = Builder.Build();
+        app.Use(next => async context =>
+        {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim("name", "Alice")], "TestAuthType"));
+            await next(context);
+        });
+        app.MapMcp();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+
+        await using var client = await ConnectAsync(configureClient: options => options.ProtocolVersion = "2026-07-28");
+        await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Null(client.SessionId);
+    }
+
+    private static HttpRequestMessage CreateInitializeRequest()
+    {
+        const string initializeRequest = """
+            {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}
+            """;
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/")
+        {
+            Content = new StringContent(initializeRequest, System.Text.Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+        return request;
     }
 }

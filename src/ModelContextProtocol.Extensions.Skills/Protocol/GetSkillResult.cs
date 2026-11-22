@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace ModelContextProtocol.Extensions.Skills;
@@ -12,10 +13,11 @@ namespace ModelContextProtocol.Extensions.Skills;
 /// result. The result carries no pagination cursor.
 /// </para>
 /// <para>
-/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/stable/skills.mdx">Skills extension specification</see>
+/// See the <see href="https://github.com/modelcontextprotocol/ext-skills/blob/main/specification/beta/skills.mdx">Skills extension specification</see>
 /// for details.
 /// </para>
 /// </remarks>
+[Experimental(Experimentals.Skills_DiagnosticId, UrlFormat = Experimentals.Skills_Url)]
 public sealed class GetSkillResult : Result, ICacheableResult
 {
     /// <summary>

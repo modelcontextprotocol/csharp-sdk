@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Tests.Server;
 
 /// <summary>
 /// End-to-end regression tests for two integrity properties of the Skills extension: the bytes a
-/// <see cref="McpServerSkill"/> serves are the bytes its manifest describes, even if the caller mutates its
+/// <see cref="McpServerSkillPackage"/> serves are the bytes its manifest describes, even if the caller mutates its
 /// buffer afterwards; and a verified read is bound to the file that was requested, not merely to files of the
 /// same skill.
 /// </summary>
@@ -31,10 +31,8 @@ public class McpServerSkillsIntegrityTests : ClientServerTestBase
         // A fresh buffer per fixture instance: ConfigureServices runs once per test, and the mutation below must
         // not leak into the next test's skill.
         byte[] callerOwnedBuffer = Encoding.UTF8.GetBytes(OriginalMarkdown);
-        var snapshot = McpServerSkill.Create(
-            SnapshotUri,
-            new JsonObject { ["name"] = "snapshot", ["description"] = "d" },
-            [new McpServerSkillFile { Path = "SKILL.md", Content = callerOwnedBuffer }]);
+        var snapshot = McpServerSkillPackage.Create(
+            [new McpServerSkillFile { Path = "SKILL.md", Content = callerOwnedBuffer }], new McpServerSkillPackageCreateOptions { Uri = SnapshotUri, Frontmatter = new JsonObject { ["name"] = "snapshot", ["description"] = "d" } });
 
         // Mutate the caller's buffer after the skill was created. The served content must not change.
         callerOwnedBuffer[callerOwnedBuffer.Length - 2] = (byte)'X';
@@ -55,8 +53,14 @@ public class McpServerSkillsIntegrityTests : ClientServerTestBase
         };
 
         mcpServerBuilder
-            .WithSkills(new InMemoryMcpSkillCatalog([snapshot.ProtocolSkill, swapEntry]))
-            .WithResources(snapshot.Resources)
+            .WithSkillPackages([snapshot]).WithSkills(options =>
+            {
+                options.ListSkillsHandler = (_, _) => new(new ListSkillsResult { Skills = [swapEntry] });
+                options.GetSkillHandler = (context, _) => new(new GetSkillResult
+                {
+                    Skill = context.Params.Uri == SwapUri ? swapEntry : snapshot.Skill.ProtocolSkill!,
+                });
+            })
             .WithResources(
             [
                 McpServerResource.Create(
@@ -72,9 +76,9 @@ public class McpServerSkillsIntegrityTests : ClientServerTestBase
     public async Task ServedContent_IsTheContentTheManifestDescribes_EvenAfterCallerMutatesItsBuffer()
     {
         await using McpClient client = await CreateMcpClientForServer();
-        var skill = await client.GetSkillAsync(SnapshotUri, TestContext.Current.CancellationToken);
+        var skill = await client.GetSkillAsync(SnapshotUri, cancellationToken: TestContext.Current.CancellationToken);
 
-        var result = await client.ReadSkillResourceAsync(skill, SnapshotUri, TestContext.Current.CancellationToken);
+        var result = await client.ReadSkillResourceAsync(skill, SnapshotUri, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(OriginalMarkdown, Assert.IsType<TextResourceContents>(Assert.Single(result.Contents)).Text);
     }
@@ -83,17 +87,17 @@ public class McpServerSkillsIntegrityTests : ClientServerTestBase
     public async Task ReadSkillResourceAsync_RejectsAResponseContainingOnlyADifferentFileOfTheSkill()
     {
         await using McpClient client = await CreateMcpClientForServer();
-        var skill = await client.GetSkillAsync(SwapUri, TestContext.Current.CancellationToken);
+        var skill = await client.GetSkillAsync(SwapUri, cancellationToken: TestContext.Current.CancellationToken);
 
         // Sanity check: the substituted response is for a listed, correctly digested file.
         var raw = await client.ReadResourceAsync(SwapUri, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(SwapOtherUri, Assert.Single(raw.Contents).Uri);
 
-        var exception = await Assert.ThrowsAsync<SkillVerificationException>(
-            async () => await client.ReadSkillResourceAsync(skill, SwapUri, TestContext.Current.CancellationToken));
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await client.ReadSkillResourceAsync(skill, SwapUri, cancellationToken: TestContext.Current.CancellationToken));
         Assert.Contains(SwapUri, exception.Message);
 
         // Reading the other file directly still verifies.
-        await client.ReadSkillResourceAsync(skill, SwapOtherUri, TestContext.Current.CancellationToken);
+        await client.ReadSkillResourceAsync(skill, SwapOtherUri, cancellationToken: TestContext.Current.CancellationToken);
     }
 }

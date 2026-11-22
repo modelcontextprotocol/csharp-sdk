@@ -9,43 +9,40 @@ namespace ModelContextProtocol.ConformanceServer.Skills;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The three static skills are authored through <see cref="McpServerSkill"/>, so their frontmatter is read from
+/// The three static skills are authored through <see cref="McpServerSkillPackage"/>, so their frontmatter is read from
 /// their <c>SKILL.md</c> and their manifests are computed from the same bytes their resources serve. A fourth,
-/// dynamically generated skill is included in the same catalog: it is listed and answerable through
+/// dynamically generated skill is included in the same collection: it is listed and answerable through
 /// <c>skills/get</c>, but its dynamic manifest carries no digests and so cannot be content-bound.
 /// </para>
 /// <para>
-/// The page size is deliberately small so the scenarios exercise cursor pagination.
+/// Registered skills are returned on the initial page; application-owned sources may implement pagination.
 /// </para>
 /// </remarks>
 public static class ConformanceSkills
 {
     private const string GeneratedReportUri = "skill://generated-report/SKILL.md";
 
-    private static readonly McpServerSkill[] s_skills =
+    private static readonly McpServerSkillPackage[] s_packages =
     [
-        McpServerSkill.Create(
-            "skill://git-workflow/SKILL.md",
+        McpServerSkillPackage.Create(
             [
                 SkillFile("git-workflow", "Follow this team's Git conventions for branching and commits", "# Git workflow\n"),
-            ]),
+            ], new McpServerSkillPackageCreateOptions { Uri = "skill://git-workflow/SKILL.md" }),
 
-        McpServerSkill.Create(
-            "skill://pdf-processing/SKILL.md",
+        McpServerSkillPackage.Create(
             [
                 SkillFile("pdf-processing", "Extract, fill, and assemble PDF documents", "# PDF processing\n"),
                 McpServerSkillFile.FromText("references/FORMS.md", "# Forms\n\nField reference for PDF form filling.\n"),
                 McpServerSkillFile.FromText("scripts/extract.py", "import sys\n\nprint('extract')\n"),
                 McpServerSkillFile.FromText("templates/invoice.md", "# Invoice\n"),
                 McpServerSkillFile.FromText("templates/regional/eu-invoice.md", "# EU Invoice\n"),
-            ]),
+            ], new McpServerSkillPackageCreateOptions { Uri = "skill://pdf-processing/SKILL.md" }),
 
-        McpServerSkill.Create(
-            "skill://acme/billing/refunds/SKILL.md",
+        McpServerSkillPackage.Create(
             [
                 SkillFile("refunds", "Process customer refund requests per company policy", "# Refunds\n"),
                 McpServerSkillFile.FromText("examples/email.md", "Subject: Your refund\n"),
-            ]),
+            ], new McpServerSkillPackageCreateOptions { Uri = "skill://acme/billing/refunds/SKILL.md" }),
     ];
 
     private static readonly Skill s_generatedReport = new()
@@ -56,10 +53,9 @@ public static class ConformanceSkills
     };
 
     /// <summary>
-    /// Creates the catalog backing <c>skills/list</c> and <c>skills/get</c>.
+    /// Creates the primitives backing <c>skills/list</c> and <c>skills/get</c>.
     /// </summary>
-    public static IMcpSkillCatalog CreateCatalog() =>
-        new InMemoryMcpSkillCatalog([.. s_skills.Select(s => s.ProtocolSkill), s_generatedReport], pageSize: 2);
+    public static IEnumerable<McpServerSkill> CreateSkills() => [.. s_packages.Select(package => package.Skill), McpServerSkill.Create(s_generatedReport)];
 
     /// <summary>
     /// Creates the resources serving every skill file, so the files are enumerable through <c>resources/list</c>
@@ -67,9 +63,9 @@ public static class ConformanceSkills
     /// </summary>
     public static IEnumerable<McpServerResource> CreateResources()
     {
-        foreach (var skill in s_skills)
+        foreach (var package in s_packages)
         {
-            foreach (var resource in skill.Resources)
+            foreach (var resource in package.Resources)
             {
                 yield return resource;
             }

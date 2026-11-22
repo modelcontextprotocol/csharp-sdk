@@ -475,11 +475,11 @@ public class SkillFrontmatterTests
     {
         const string Markdown = "---\nname: git-workflow\ndescription: Git conventions\n---\n\n# Git workflow\n";
 
-        var skill = McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", Markdown)]);
+        var skill = McpServerSkillPackage.Create([McpServerSkillFile.FromText("SKILL.md", Markdown)]).Skill;
 
-        Assert.Equal("skill://git-workflow/SKILL.md", skill.ProtocolSkill.Uri);
-        Assert.Equal("git-workflow", skill.ProtocolSkill.Name);
-        Assert.Equal("Git conventions", skill.ProtocolSkill.Description);
+        Assert.Equal("skill://git-workflow/SKILL.md", skill.ProtocolSkill!.Uri);
+        Assert.Equal("git-workflow", skill.ProtocolSkill!.Name);
+        Assert.Equal("Git conventions", skill.ProtocolSkill!.Description);
     }
 
     [Fact]

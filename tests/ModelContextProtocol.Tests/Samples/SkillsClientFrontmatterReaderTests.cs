@@ -24,7 +24,7 @@ public class SkillsClientFrontmatterReaderTests
             markdown = markdown.Replace("\n", "\r\n");
         }
 
-        var served = McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]).ProtocolSkill.Frontmatter;
+        var served = McpServerSkillPackage.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]).Skill.ProtocolSkill!.Frontmatter;
 
         var fetched = new YamlFrontmatterReader().Read(markdown);
 
@@ -144,7 +144,7 @@ public class SkillsClientFrontmatterReaderTests
         var markdown = "\uFEFF\uFEFF---\nname: alpha\ndescription: d\n---\n";
 
         Assert.Throws<FormatException>(() => new YamlFrontmatterReader().Read(markdown));
-        Assert.Throws<ArgumentException>(() => McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]));
+        Assert.Throws<ArgumentException>(() => McpServerSkillPackage.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]).Skill);
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class SkillsClientFrontmatterReaderTests
     {
         var markdown = "---\nname: alpha\ndescription: \"x\\0y\"\n---\n";
 
-        var served = McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]).ProtocolSkill.Frontmatter;
+        var served = McpServerSkillPackage.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]).Skill.ProtocolSkill!.Frontmatter;
         var fetched = new YamlFrontmatterReader().Read(markdown);
 
         Assert.Equal("x\0y", fetched["description"]!.GetValue<string>());
@@ -168,7 +168,7 @@ public class SkillsClientFrontmatterReaderTests
     {
         var markdown = "---\nname: alpha\ndescription: \"x" + escape + "y\"\n---\n";
 
-        var served = McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]).ProtocolSkill.Frontmatter;
+        var served = McpServerSkillPackage.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]).Skill.ProtocolSkill!.Frontmatter;
         var fetched = new YamlFrontmatterReader().Read(markdown);
 
         Assert.Equal("x" + char.ConvertFromUtf32(codePoint) + "y", fetched["description"]!.GetValue<string>());
@@ -180,7 +180,7 @@ public class SkillsClientFrontmatterReaderTests
         var markdown = $"---\nname: alpha\n{entry}\n---\n";
 
         var sampleException = Record.Exception(() => new YamlFrontmatterReader().Read(markdown));
-        var serverException = Record.Exception(() => McpServerSkill.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]));
+        var serverException = Record.Exception(() => McpServerSkillPackage.Create([McpServerSkillFile.FromText("SKILL.md", markdown)]).Skill);
 
         string character = $"U+{codePoint:X4}";
         Assert.Contains(character, Assert.IsType<FormatException>(sampleException).Message);

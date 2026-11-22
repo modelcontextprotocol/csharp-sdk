@@ -44,8 +44,6 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
 
                     var json = request.Params?["cursor"]?.GetValue<string>() switch
                     {
-                        "no-skills-array" => """{ "skills": null }""",
-                        "missing-skills-array" => "{}",
                         "empty-skills-array" => """{ "skills": [] }""",
                         _ => """
                             { "skills": [ { "uri": "skill://good/SKILL.md", "frontmatter": { "name": "good", "description": "d" },
@@ -86,26 +84,44 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
     }
 
     [Fact]
+    public void SupportsSkillsChecksTheExtensionDeclaration()
+    {
+        var capabilities = new ServerCapabilities();
+        Assert.False(capabilities.SupportsSkills());
+
+        capabilities.Extensions = new Dictionary<string, object> { ["example.com/other"] = new JsonObject() };
+        Assert.False(capabilities.SupportsSkills());
+
+        capabilities.Extensions[SkillsProtocol.ExtensionId] = new JsonObject();
+        Assert.True(capabilities.SupportsSkills());
+
+        Assert.Throws<ArgumentNullException>("capabilities", () => McpSkillsClientExtensions.SupportsSkills(null!));
+    }
+
+    [Fact]
     public async Task ListSkillsAsync_RejectsAnInvalidEntry()
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var exception = await Assert.ThrowsAsync<SkillVerificationException>(
-            async () => await client.ListSkillsAsync(TestContext.Current.CancellationToken));
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("skills/list", exception.Message);
         Assert.Contains("skill://bad/SKILL.md", exception.Message);
     }
 
     [Theory]
-    [InlineData("no-skills-array")]
-    [InlineData("missing-skills-array")]
-    public async Task ListSkillsAsync_RejectsAPageWithoutASkillsArray(string cursor)
+    [InlineData("""{"skills":null}""")]
+    [InlineData("{}")]
+    public async Task ListSkillsAsync_RejectsAPageWithoutASkillsArray(string json)
     {
+        _listResponse = JsonNode.Parse(json)!.AsObject();
         await using McpClient client = await CreateMcpClientForServer();
 
         await Assert.ThrowsAsync<System.Text.Json.JsonException>(
-            async () => await client.ListSkillsAsync(new ListSkillsRequestParams { Cursor = cursor }, TestContext.Current.CancellationToken));
+            async () => await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(
+            async () => await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -113,7 +129,7 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var result = await client.ListSkillsAsync(new ListSkillsRequestParams { Cursor = "empty-skills-array" }, TestContext.Current.CancellationToken);
+        var result = await client.ListSkillsAsync(new ListSkillsRequestParams { Cursor = "empty-skills-array" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(result.Skills);
     }
@@ -126,7 +142,7 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         _listResponse = CreateListResponse(name);
         await using McpClient client = await CreateMcpClientForServer();
 
-        var result = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
+        var result = await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(name, Assert.Single(result).Name);
     }
@@ -143,16 +159,12 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         _getResponse = new JsonObject { ["skill"] = entry.DeepClone() };
         await using var client = await CreateMcpClientForServer();
 
-        var listed = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
-        var fetched = await client.GetSkillAsync(uri, TestContext.Current.CancellationToken);
-        var diagnostic = await client.ListSkillsWithDiagnosticsAsync(
-            new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
+        var listed = await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var fetched = await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(uri, Assert.Single(listed).Uri);
         Assert.Equal(name, fetched.Name);
         Assert.Equal(uri, fetched.Uri);
-        Assert.Empty(diagnostic.RejectedEntries);
-        Assert.Equal(uri, Assert.Single(diagnostic.Page.Skills).Uri);
     }
 
     [Theory]
@@ -167,8 +179,8 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         _getResponse = new JsonObject { ["skill"] = entry.DeepClone() };
         await using var client = await CreateMcpClientForServer();
 
-        var listed = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
-        var fetched = await client.GetSkillAsync(uri, TestContext.Current.CancellationToken);
+        var listed = await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var fetched = await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(uri, Assert.Single(listed).Uri);
         Assert.Equal(uri, fetched.Uri);
     }
@@ -191,33 +203,21 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
 
         if (overLimit)
         {
-            var listError = await Assert.ThrowsAsync<SkillVerificationException>(
-                async () => await client.ListSkillsAsync(TestContext.Current.CancellationToken));
-            var getError = await Assert.ThrowsAsync<SkillVerificationException>(
-                async () => await client.GetSkillAsync(uri, TestContext.Current.CancellationToken));
+            var listError = await Assert.ThrowsAsync<InvalidDataException>(
+                async () => await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken));
+            var getError = await Assert.ThrowsAsync<InvalidDataException>(
+                async () => await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken));
             Assert.Contains($"{length} characters", listError.Message);
             Assert.Contains($"{length} characters", getError.Message);
         }
         else
         {
-            var listed = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
-            var fetched = await client.GetSkillAsync(uri, TestContext.Current.CancellationToken);
+            var listed = await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            var fetched = await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(text, Assert.Single(listed).Frontmatter[field]!.GetValue<string>());
             Assert.Equal(text, fetched.Frontmatter[field]!.GetValue<string>());
         }
 
-        var diagnostic = await client.ListSkillsWithDiagnosticsAsync(
-            new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
-        if (overLimit)
-        {
-            Assert.Empty(diagnostic.Page.Skills);
-            Assert.Contains($"{length} characters", Assert.Single(diagnostic.RejectedEntries).Error.Message);
-        }
-        else
-        {
-            Assert.Empty(diagnostic.RejectedEntries);
-            Assert.Equal(text, Assert.Single(diagnostic.Page.Skills).Frontmatter[field]!.GetValue<string>());
-        }
     }
 
     [Fact]
@@ -232,20 +232,15 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         var uri = entry["uri"]!.GetValue<string>();
         await using var client = await CreateMcpClientForServer();
 
-        var page = await client.ListSkillsAsync(new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
+        var page = await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken);
         var listed = Assert.Single(page.Skills);
         Assert.True(JsonNode.DeepEquals(meta, listed.Meta));
         Assert.Equal("page", page.Meta!["scope"]!.GetValue<string>());
         Assert.Equal("2.1", listed.Frontmatter["metadata"]!["version"]!.GetValue<string>());
         listed.Meta!["example.com/extension"]!["items"]![0]!["value"] = "changed";
 
-        var fetched = await client.GetSkillAsync(uri, TestContext.Current.CancellationToken);
+        var fetched = await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(JsonNode.DeepEquals(meta, fetched.Meta));
-        var diagnostic = await client.ListSkillsWithDiagnosticsAsync(
-            new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
-        Assert.Empty(diagnostic.RejectedEntries);
-        Assert.True(JsonNode.DeepEquals(meta, Assert.Single(diagnostic.Page.Skills).Meta));
-        Assert.Equal("page", diagnostic.Page.Meta!["scope"]!.GetValue<string>());
     }
 
     [Fact]
@@ -254,8 +249,8 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         _listResponse = CreateListResponse("\u01c5");
         await using McpClient client = await CreateMcpClientForServer();
 
-        await Assert.ThrowsAsync<SkillVerificationException>(
-            async () => await client.ListSkillsAsync(TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -269,8 +264,8 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         _listResponse = CreateListResponse("alpha", new JsonObject { ["value"] = JsonNode.Parse(value) });
         await using McpClient client = await CreateMcpClientForServer();
 
-        var exception = await Assert.ThrowsAsync<SkillVerificationException>(
-            async () => await client.ListSkillsAsync(TestContext.Current.CancellationToken));
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("metadata", exception.Message);
     }
@@ -283,76 +278,41 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         frontmatter["custom"] = new JsonObject { ["count"] = 1, ["values"] = new JsonArray(true) };
         await using McpClient client = await CreateMcpClientForServer();
 
-        var result = await client.ListSkillsAsync(TestContext.Current.CancellationToken);
+        var result = await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(JsonNode.DeepEquals(frontmatter, Assert.Single(result).Frontmatter));
     }
 
-    [Fact]
-    public async Task DiagnosticListingKeepsValidEntriesAndReportsTheInvalidOne()
-    {
-        await using var client = await CreateMcpClientForServer();
-
-        var result = await client.ListSkillsWithDiagnosticsAsync(
-            new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
-
-        Assert.Equal("good", Assert.Single(result.Page.Skills).Name);
-        var rejected = Assert.Single(result.RejectedEntries);
-        Assert.Equal(1, rejected.Index);
-        Assert.IsType<SkillVerificationException>(rejected.Error);
-    }
-
-    [Fact]
-    public async Task DiagnosticListingReportsMalformedEntriesAndPreservesPageHints()
+    [Theory]
+    [InlineData("null")]
+    [InlineData("42")]
+    [InlineData("{}")]
+    public async Task ListingRejectsMalformedEntriesWithoutReturningPartialSuccess(string malformed)
     {
         _listResponse = CreateListResponse("alpha");
         var entries = _listResponse["skills"]!.AsArray();
-        entries.Add(null);
-        entries.Add(JsonNode.Parse("42"));
-        entries.Add(new JsonObject());
+        entries.Add(JsonNode.Parse(malformed));
         _listResponse["nextCursor"] = "next-page";
         _listResponse["ttlMs"] = 3000;
         _listResponse["cacheScope"] = "public";
         _listResponse["resultType"] = "complete";
         await using var client = await CreateMcpClientForServer();
 
-        var result = await client.ListSkillsWithDiagnosticsAsync(
-            new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
-
-        Assert.Single(result.Page.Skills);
-        Assert.Equal(new[] { 1, 2, 3 }, result.RejectedEntries.Select(rejected => rejected.Index));
-        Assert.Equal("next-page", result.Page.NextCursor);
-        Assert.Equal(TimeSpan.FromSeconds(3), result.Page.TimeToLive);
-        Assert.Equal(CacheScope.Public, result.Page.CacheScope);
-        Assert.Equal("complete", result.Page.ResultType);
-        Assert.Equal(4, entries.Count);
-    }
-
-    [Theory]
-    [InlineData("no-skills-array")]
-    [InlineData("missing-skills-array")]
-    public async Task DiagnosticListingStillRejectsAnInvalidPageEnvelope(string cursor)
-    {
-        await using var client = await CreateMcpClientForServer();
-
         await Assert.ThrowsAsync<System.Text.Json.JsonException>(
-            async () => await client.ListSkillsWithDiagnosticsAsync(
-                new ListSkillsRequestParams { Cursor = cursor }, TestContext.Current.CancellationToken));
+            async () => await client.ListSkillsAsync(new ListSkillsRequestParams(), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(
+            async () => await client.ListSkillsAsync(cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal(2, entries.Count);
     }
 
     [Fact]
-    public async Task DiagnosticListingReportsAnAllInvalidPageRatherThanHidingItsFailure()
+    public async Task GetSkillAsync_RejectsAnExplicitNullSkill()
     {
-        _listResponse = CreateListResponse("alpha", new JsonObject { ["version"] = 1 });
-        _listResponse["nextCursor"] = "next-page";
+        _getResponse = new JsonObject { ["skill"] = null };
         await using var client = await CreateMcpClientForServer();
 
-        var result = await client.ListSkillsWithDiagnosticsAsync(
-            new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
-
-        Assert.Empty(result.Page.Skills);
-        Assert.Contains("metadata", Assert.Single(result.RejectedEntries).Error.Message);
-        Assert.Equal("next-page", result.Page.NextCursor);
+        await Assert.ThrowsAsync<System.Text.Json.JsonException>(
+            async () => await client.GetSkillAsync("skill://alpha/SKILL.md", cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -375,18 +335,14 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         var uri = entry["uri"]!.GetValue<string>();
         await using var client = await CreateMcpClientForServer();
 
-        var listError = await Assert.ThrowsAsync<SkillVerificationException>(
-            async () => await client.ListSkillsAsync(TestContext.Current.CancellationToken));
-        var getError = await Assert.ThrowsAsync<SkillVerificationException>(
-            async () => await client.GetSkillAsync(uri, TestContext.Current.CancellationToken));
-        var diagnostic = await client.ListSkillsWithDiagnosticsAsync(
-            new ListSkillsRequestParams(), TestContext.Current.CancellationToken);
+        var listError = await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await client.ListSkillsAsync(new ListSkillsRequestParams(), cancellationToken: TestContext.Current.CancellationToken));
+        var getError = await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await client.GetSkillAsync(uri, cancellationToken: TestContext.Current.CancellationToken));
 
         var expected = $"'{field}' frontmatter field that is not a string";
         Assert.Contains(expected, listError.Message);
         Assert.Contains(expected, getError.Message);
-        Assert.Empty(diagnostic.Page.Skills);
-        Assert.Contains(expected, Assert.Single(diagnostic.RejectedEntries).Error.Message);
     }
 
     [Fact]
@@ -395,14 +351,14 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
         await using McpClient client = await CreateMcpClientForServer();
 
         // The entry itself is valid; it is just not the skill that was asked for.
-        var exception = await Assert.ThrowsAsync<SkillVerificationException>(
-            async () => await client.GetSkillAsync("skill://other/SKILL.md", TestContext.Current.CancellationToken));
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await client.GetSkillAsync("skill://other/SKILL.md", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("skill://other/SKILL.md", exception.Message);
         Assert.Contains("skill://good/SKILL.md", exception.Message);
 
         // Asking for the URI the server actually returns succeeds.
-        var good = await client.GetSkillAsync("skill://good/SKILL.md", TestContext.Current.CancellationToken);
+        var good = await client.GetSkillAsync("skill://good/SKILL.md", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("good", good.Name);
     }
 
@@ -411,8 +367,8 @@ public class McpSkillsClientValidationTests : ClientServerTestBase
     {
         await using McpClient client = await CreateMcpClientForServer();
 
-        var exception = await Assert.ThrowsAsync<SkillVerificationException>(
-            async () => await client.GetSkillAsync("skill://escape/SKILL.md", TestContext.Current.CancellationToken));
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            async () => await client.GetSkillAsync("skill://escape/SKILL.md", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains("skills/get", exception.Message);
         Assert.Contains("'..'", exception.Message);

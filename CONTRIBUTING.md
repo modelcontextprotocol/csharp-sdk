@@ -26,6 +26,9 @@ Before you begin, ensure you have the following installed:
 - **.NET SDK 10.0 or later** - Required to build and test the project
   - Download from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download)
   - Verify installation: `dotnet --version`
+- **Node.js 22 or later and npm** - Required for integration and conformance tests
+  - Run `npm ci` from the repository root before running tests to install the pinned test dependencies.
+  - Integration tests launch the installed servers directly with `node`, avoiding npm installation and shared-cache access during parallel tests.
 
 The dev container configuration in this repository includes all the necessary tools and SDKs to get started quickly.
 

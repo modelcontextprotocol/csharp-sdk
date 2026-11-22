@@ -8,7 +8,7 @@
     <Description>MCP Skills extension (SEP-2640) for the .NET Model Context Protocol (MCP) SDK</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress the experimental MCP warnings for internal usage -->
-    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002</NoWarn>
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002;MCPEXP005</NoWarn>
     <!--
       Package validation stays enabled so cross-target-framework API compatibility is checked. The
       repo-wide baseline is cleared because this package has not shipped yet; set it to the first
@@ -36,6 +36,8 @@
     <Compile Remove="..\Common\Polyfills\**\*.cs" />
     <Compile Include="..\Common\Polyfills\System\Diagnostics\CodeAnalysis\ExperimentalAttribute.cs"
              Link="Polyfills\ExperimentalAttribute.cs" />
+    <Compile Include="..\Common\Polyfills\System\Diagnostics\CodeAnalysis\NullableAttributes.cs"
+             Link="Polyfills\NullableAttributes.cs" />
     <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\CompilerFeatureRequiredAttribute.cs"
              Link="Polyfills\CompilerFeatureRequiredAttribute.cs" />
     <Compile Include="..\Common\Polyfills\System\Runtime\CompilerServices\IsExternalInit.cs"
