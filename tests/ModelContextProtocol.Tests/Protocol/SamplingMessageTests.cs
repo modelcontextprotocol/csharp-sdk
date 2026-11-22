@@ -108,4 +108,72 @@ public class SamplingMessageTests
         var textBlock = Assert.IsType<TextContentBlock>(toolResult.Content[0]);
         Assert.Equal("Result", textBlock.Text);
     }
+    [Fact]
+    public void WithSingleImage_SerializesDataAsBase64Once()
+    {
+        byte[] imageBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFB, 0xFF, 0xFE];
+        SamplingMessage message = new()
+        {
+            Role = Role.User,
+            Content = [ImageContentBlock.FromBytes(imageBytes, "image/png")]
+        };
+
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
+
+        using var document = JsonDocument.Parse(json);
+        var content = document.RootElement.GetProperty("content");
+        Assert.Equal("image", content.GetProperty("type").GetString());
+        Assert.Equal(Convert.ToBase64String(imageBytes), content.GetProperty("data").GetString());
+
+        var deserialized = JsonSerializer.Deserialize<SamplingMessage>(json, McpJsonUtilities.DefaultOptions);
+        var image = Assert.IsType<ImageContentBlock>(Assert.Single(deserialized!.Content));
+        Assert.Equal(imageBytes, image.DecodedData.ToArray());
+    }
+
+    [Fact]
+    public void WithMultipleContentBlocks_SerializesImageDataAsBase64Once()
+    {
+        byte[] imageBytes = [0xFF, 0xD8, 0xFF, 0xE0, 0xFB, 0xFF, 0xFE];
+        SamplingMessage message = new()
+        {
+            Role = Role.User,
+            Content =
+            [
+                new TextContentBlock { Text = "Describe this image" },
+                ImageContentBlock.FromBytes(imageBytes, "image/jpeg")
+            ]
+        };
+
+        var json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
+
+        using var document = JsonDocument.Parse(json);
+        var image = document.RootElement.GetProperty("content")[1];
+        Assert.Equal("image", image.GetProperty("type").GetString());
+        Assert.Equal(Convert.ToBase64String(imageBytes), image.GetProperty("data").GetString());
+
+        var deserialized = JsonSerializer.Deserialize<SamplingMessage>(json, McpJsonUtilities.DefaultOptions);
+        Assert.Equal(2, deserialized!.Content.Count);
+        Assert.Equal(imageBytes, Assert.IsType<ImageContentBlock>(deserialized.Content[1]).DecodedData.ToArray());
+    }
+
+    [Fact]
+    public void CreateMessageResult_WithImage_SerializesDataAsBase64Once()
+    {
+        byte[] imageBytes = [0x89, 0x50, 0x4E, 0x47, 0xFB, 0xFF, 0xFE];
+        CreateMessageResult result = new()
+        {
+            Role = Role.Assistant,
+            Model = "test-model",
+            Content = [ImageContentBlock.FromBytes(imageBytes, "image/png")]
+        };
+
+        var json = JsonSerializer.Serialize(result, McpJsonUtilities.DefaultOptions);
+
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(Convert.ToBase64String(imageBytes), document.RootElement.GetProperty("content").GetProperty("data").GetString());
+
+        var deserialized = JsonSerializer.Deserialize<CreateMessageResult>(json, McpJsonUtilities.DefaultOptions);
+        var image = Assert.IsType<ImageContentBlock>(Assert.Single(deserialized!.Content));
+        Assert.Equal(imageBytes, image.DecodedData.ToArray());
+    }
 }

@@ -50,15 +50,18 @@ public sealed class SingleItemOrListConverter<T> : JsonConverter<IList<T>>
                 writer.WriteNullValue();
                 return;
 
+            // Serialize items as T (not object) so that a converter declared on T, such as
+            // ContentBlock.Converter, is used; serializing via object resolves the derived
+            // type's default contract, which base64-encodes the already-encoded image/audio data again.
             case { Count: 1 }:
-                JsonSerializer.Serialize(writer, value[0], options.GetTypeInfo(typeof(object)));
+                JsonSerializer.Serialize(writer, value[0], options.GetTypeInfo(typeof(T)));
                 return;
 
             default:
                 writer.WriteStartArray();
                 foreach (var item in value)
                 {
-                    JsonSerializer.Serialize(writer, item, options.GetTypeInfo(typeof(object)));
+                    JsonSerializer.Serialize(writer, item, options.GetTypeInfo(typeof(T)));
                 }
                 writer.WriteEndArray();
                 return;
