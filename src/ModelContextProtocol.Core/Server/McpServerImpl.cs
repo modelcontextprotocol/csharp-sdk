@@ -282,7 +282,10 @@ internal sealed partial class McpServerImpl : McpServer
 
             ProjectModernMetadata(request, meta!, metadataProtocolVersion);
 
-            if (!protocolVersionAlreadyEstablished)
+            // Discovery is a probe, not a commitment to use the modern protocol. A client may have
+            // timed out waiting for this response and already sent an initialize fallback on the same
+            // stream. Only an ordinary modern request should prevent that fallback.
+            if (!protocolVersionAlreadyEstablished && request.Method != RequestMethods.ServerDiscover)
             {
                 SetNegotiatedProtocolVersion(metadataProtocolVersion);
             }
@@ -389,7 +392,7 @@ internal sealed partial class McpServerImpl : McpServer
     private void ValidateInitializeRequestBoundary(JsonRpcRequest request)
     {
         // Modern revisions removed initialize. An established modern session is authoritative even when
-        // the new request has no version header; a failed discovery probe does not establish a version.
+        // the new request has no version header; a discovery probe does not establish a version.
         string? modernProtocolVersion =
             McpProtocolVersions.RequiresPerRequestMetadata(request.Context?.ProtocolVersion) ? request.Context!.ProtocolVersion :
             McpProtocolVersions.RequiresPerRequestMetadata(_negotiatedProtocolVersion) ? _negotiatedProtocolVersion :
@@ -946,7 +949,8 @@ internal sealed partial class McpServerImpl : McpServer
         // Initialize-handshake clients never open a subscriptions/listen stream, so they keep the session-wide broadcast.
         // subscriptions/listen is a SEP-2575 feature, so clients on the 2026-07-28 or later revision instead get
         // a fan-out limited to the notification types they explicitly subscribed to.
-        if (!IsJuly2026OrLaterProtocol())
+        // An uncommitted discovery probe is not an initialized legacy client.
+        if (McpProtocolVersions.SupportsInitializeHandshake(_negotiatedProtocolVersion))
         {
             await this.SendNotificationAsync(notificationMethod).ConfigureAwait(false);
             return;
@@ -1198,6 +1202,12 @@ internal sealed partial class McpServerImpl : McpServer
                     $"A custom request handler registered through {nameof(McpServerOptions)}.{nameof(McpServerOptions.RequestHandlers)} has an empty {nameof(McpServerRequestHandler.RoutingNameParameter)}.");
             }
 
+            if (entry.Handler is not { } handler)
+            {
+                throw new InvalidOperationException(
+                    $"The custom request handler for '{entry.Method}' has a null {nameof(McpServerRequestHandler.Handler)}.");
+            }
+
             // Custom handlers are registered after all built-in handlers, so a method already present
             // belongs to a built-in method (e.g. initialize, tools/call) or an earlier custom handler.
             // Silently overwriting it would bypass the built-in handler's filters and protocol gating,
@@ -1209,14 +1219,15 @@ internal sealed partial class McpServerImpl : McpServer
                     $"uses the method '{entry.Method}', which is already handled by the server. Custom handlers cannot replace built-in methods or other custom handlers.");
             }
 
-            SetRawHandler(entry.Method, entry.Handler);
+            SetRawHandler(entry.Method, handler);
         }
 #pragma warning restore MCPEXP002
     }
 
-    private void SetRawHandler(string method, Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> handler)
+    private void SetRawHandler(string method, McpRequestHandler<JsonNode?, JsonNode?> handler)
     {
-        _requestHandlers[method] = (request, ct) => handler(request, ct).AsTask();
+        _requestHandlers[method] = (request, ct) =>
+            InvokeHandlerAsync(handler, request.Params, request, ct).AsTask();
     }
 
     private void ConfigureResources(McpServerOptions options)
@@ -1534,15 +1545,23 @@ internal sealed partial class McpServerImpl : McpServer
                     // to "object", any other non-object schema wrapped in
                     // {"type":"object","properties":{"result":<schema>}}). Clients on
                     // 2026-07-28+ receive the natural JSON Schema 2020-12 document stored
-                    // on Tool.OutputSchema. Only AIFunctionMcpServerTool tools go through
-                    // reshaping; custom McpServerTool subclasses build their Tool directly
-                    // and pass through unchanged at every protocol version.
+                    // on Tool.OutputSchema. AIFunctionMcpServerTool tools, including those
+                    // behind delegating tools, go through reshaping; custom tools build their
+                    // Tool directly and pass through unchanged at every protocol version.
                     bool useNaturalSchemas = McpSessionHandler.SupportsNaturalOutputSchemas(request.Server.NegotiatedProtocolVersion);
                     foreach (var t in tools)
                     {
-                        Tool wireTool = useNaturalSchemas || t is not AIFunctionMcpServerTool aiFunctionTool
+                        McpServerTool innerTool = t;
+                        bool hasCustomInvocation = false;
+                        while (!useNaturalSchemas && innerTool is DelegatingMcpServerTool delegatingTool)
+                        {
+                            hasCustomInvocation |= delegatingTool.HasCustomInvocation;
+                            innerTool = delegatingTool.InnerTool;
+                        }
+
+                        Tool wireTool = useNaturalSchemas || innerTool is not AIFunctionMcpServerTool aiFunctionTool
                             ? t.ProtocolTool
-                            : aiFunctionTool.BuildLegacyWireProtocolTool();
+                            : aiFunctionTool.BuildLegacyWireProtocolTool(t.ProtocolTool, hasCustomInvocation);
                         result.Tools.Add(wireTool);
                     }
                 }

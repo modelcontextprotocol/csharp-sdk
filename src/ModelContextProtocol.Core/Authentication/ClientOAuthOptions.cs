@@ -3,6 +3,15 @@ namespace ModelContextProtocol.Authentication;
 /// <summary>
 /// Provides configuration options for the <see cref="ClientOAuthProvider"/>.
 /// </summary>
+/// <remarks>
+/// Authorization server metadata must advertise the <c>S256</c> PKCE method. If metadata discovery fails,
+/// authorization fails before requesting an authorization code or exchanging tokens. For trusted legacy
+/// deployments without protected resource metadata and without usable authorization server metadata, the process-wide
+/// <c>ModelContextProtocol.Authentication.AllowLegacyOAuthMetadataFallback</c> <see cref="AppContext"/> switch
+/// can explicitly enable the 2025-03-26 default endpoint fallback. It is disabled by default and does not
+/// bypass PKCE validation of discovered metadata. Hosts enabling it must independently establish that
+/// their authorization servers correctly enforce PKCE, including downgrade defenses.
+/// </remarks>
 public sealed class ClientOAuthOptions
 {
     /// <summary>

@@ -28,6 +28,8 @@ public sealed class Program
     private readonly ConcurrentDictionary<string, ClientInfo> _clients = new();
 
     private readonly ConcurrentQueue<string> _metadataRequests = new();
+    private int _authorizationRequestCount;
+    private int _tokenRequestCount;
     private int _authorizationCodeTokenRequestCount;
 
     private readonly RSA _rsa;
@@ -57,6 +59,12 @@ public sealed class Program
 
     // Track if we've already issued an already-expired token for the CanAuthenticate_WithTokenRefresh test which uses the test-refresh-client registration.
     public bool HasRefreshedToken { get; set; }
+
+    /// <summary>Gets or sets whether token responses include refresh tokens.</summary>
+    public bool IssueRefreshTokens { get; set; } = true;
+
+    /// <summary>Gets or sets whether refresh grants replace and invalidate the previous refresh token.</summary>
+    public bool RotateRefreshTokens { get; set; } = true;
 
     /// <summary>
     /// Gets or sets a value indicating whether the server supports the Enterprise Managed
@@ -137,6 +145,12 @@ public sealed class Program
 
     public HashSet<string> DisabledMetadataPaths { get; } = new(StringComparer.OrdinalIgnoreCase);
     public IReadOnlyCollection<string> MetadataRequests => _metadataRequests.ToArray();
+
+    /// <summary>Gets the number of requests received by the authorization endpoint.</summary>
+    public int AuthorizationRequestCount => Volatile.Read(ref _authorizationRequestCount);
+
+    /// <summary>Gets the number of requests received by the token endpoint.</summary>
+    public int TokenRequestCount => Volatile.Read(ref _tokenRequestCount);
 
     /// <summary>Gets the number of authorization-code token exchange requests received.</summary>
     public int AuthorizationCodeTokenRequestCount => Volatile.Read(ref _authorizationCodeTokenRequestCount);
@@ -343,6 +357,8 @@ public sealed class Program
             [FromQuery] string? state,
             [FromQuery] string? resource) =>
         {
+            Interlocked.Increment(ref _authorizationRequestCount);
+
             // Validate client
             if (!_clients.TryGetValue(client_id, out var client))
             {
@@ -428,6 +444,8 @@ public sealed class Program
         // Token endpoint
         app.MapPost("/token", async (HttpContext context) =>
         {
+            Interlocked.Increment(ref _tokenRequestCount);
+
             var form = await context.Request.ReadFormAsync();
 
             // Authenticate client
@@ -510,7 +528,7 @@ public sealed class Program
                 }
 
                 // Generate JWT token response
-                var response = GenerateJwtTokenResponse(client.ClientId, codeInfo.Scope, codeInfo.Resource);
+                var response = GenerateJwtTokenResponse(client.ClientId, codeInfo.Scope, codeInfo.Resource, issueRefreshToken: IssueRefreshTokens);
                 return Results.Ok(response);
             }
             else if (grant_type == "refresh_token")
@@ -528,10 +546,10 @@ public sealed class Program
                 }
 
                 // Generate new token response, keeping the same scopes
-                var response = GenerateJwtTokenResponse(client.ClientId, tokenInfo.Scopes, tokenInfo.Resource);
+                var response = GenerateJwtTokenResponse(client.ClientId, tokenInfo.Scopes, tokenInfo.Resource, issueRefreshToken: IssueRefreshTokens && RotateRefreshTokens);
 
-                // Remove the old refresh token
-                if (!string.IsNullOrEmpty(refresh_token))
+                // Non-rotating refresh tokens remain valid for subsequent refresh grants.
+                if (RotateRefreshTokens)
                 {
                     _tokens.TryRemove(refresh_token, out _);
                 }
@@ -575,7 +593,7 @@ public sealed class Program
                     ? ["mcp:tools"]
                     : scope.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
 
-                var response = GenerateJwtTokenResponse(client.ClientId, scopes, resourceUri);
+                var response = GenerateJwtTokenResponse(client.ClientId, scopes, resourceUri, issueRefreshToken: IssueRefreshTokens);
                 return Results.Ok(response);
             }
             else
@@ -822,8 +840,9 @@ public sealed class Program
     /// <param name="clientId">The client ID.</param>
     /// <param name="scopes">The approved scopes.</param>
     /// <param name="resource">The resource URI.</param>
+    /// <param name="issueRefreshToken">Whether this grant should issue a refresh token.</param>
     /// <returns>A token response.</returns>
-    private TokenResponse GenerateJwtTokenResponse(string clientId, List<string> scopes, Uri? resource)
+    private TokenResponse GenerateJwtTokenResponse(string clientId, List<string> scopes, Uri? resource, bool issueRefreshToken)
     {
         var expiresIn = TimeSpan.FromHours(1);
         var issuedAt = DateTimeOffset.UtcNow;
@@ -865,7 +884,7 @@ public sealed class Program
         var jwtToken = $"{headerBase64}.{payloadBase64}.{signatureBase64}";
 
         // Generate opaque refresh token
-        var refreshToken = GenerateRandomToken();
+        var refreshToken = issueRefreshToken ? GenerateRandomToken() : null;
 
         // Store token info (for refresh token and introspection)
         var tokenInfo = new TokenInfo
@@ -878,7 +897,10 @@ public sealed class Program
             JwtId = jwtId
         };
 
-        _tokens[refreshToken] = tokenInfo;
+        if (refreshToken is not null)
+        {
+            _tokens[refreshToken] = tokenInfo;
+        }
 
         return new TokenResponse
         {

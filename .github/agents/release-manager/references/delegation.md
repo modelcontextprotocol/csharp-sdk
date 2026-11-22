@@ -4,15 +4,30 @@ The release-manager session is an **orchestrator**. It stays on whatever branch 
 never checks out or mutates a release branch. Work that creates commits happens in a **child session
 on its own worktree**, based on the target release branch.
 
-This mirrors how [`docs.yml`](../../../workflows/docs.yml) already works: the orchestration scripts run
-from a single fixed checkout, while each version's content is built from its own tag in a separate
-worktree.
+In [`docs.yml`](../../../workflows/docs.yml), orchestration/scripts/tests/picker assets come
+from current `main`. Content is built in separate worktrees at immutable full SHAs resolved once
+from each discovered published tag by default, or from `origin/release/{MAJOR}.x` for every major
+when a manual `latest-branches` refresh is selected. Missing refs and major mismatches fail without
+silently substituting another source or `main` content.
+
+Shared AI release instructions also remain on trusted `main`; the child handoff below must not
+substitute stale or untrusted skills from a servicing fork. Do not copy AI process files into
+servicing content merely to propagate runtime infrastructure.
+
+`main` supports ongoing next-version development as well as shared AI release instructions, not a permanent
+next-MAJOR-only plan. Initial release-branch establishment starts at an explicitly approved baseline
+and may require separate creation/push authorization. Every subsequent servicing change, including
+docs/infrastructure and promotion, must use a reviewed work-branch PR into `release/*`; never commit
+or push changes directly there. Promotion preserves ancestry, never reset/force-push. See the
+[shared branch policy](../../../skills/shared-resources/release-branches.md#servicing-branch-changes).
 
 ## Why
 
-- **Current orchestration.** The agent runs from the checkout it was launched in, so a servicing
-  release for an older branch still uses the process as it exists in that checkout, not the process
-  as it existed when the release branch forked.
+- **Trusted, current instructions.** AI release skills/instructions come from trusted `main`,
+  including the version handed to servicing children, not from an unprotected/untrusted work
+  branch or stale servicing fork. This prevents those branches from overriding the release
+  process. Runtime docs infrastructure also uses current `main`. Selecting release-branch content
+  for a manual refresh allows docs updates after publication without a new product release or tag.
 - **A clean working tree.** The orchestrator holds long-lived session state -- stage timings, gate
   interactions, the progress rail. Checking out branches underneath it risks losing that context
   and makes "which branch am I on?" a source of error at exactly the moment precision matters.
@@ -89,6 +104,18 @@ The child's kickoff prompt must carry everything it needs, because it does not s
    the previous release tag is not an ancestor of the target.
 7. The requirement to **stop at the skill's Step 10b gate** and bring the categorization table and
    acknowledgements roster back to you, so the user reviews notes content before a PR exists.
+8. The current **main-based release instructions and reference version**: record the full
+   orchestration SHA and provide the relevant skill/reference content or read-only paths from that
+   main checkout. Require the child to follow that version, not blindly invoke stale skills in its
+   servicing fork. If main references are inaccessible, report the blocker instead of substituting
+   old instructions. Do not copy shared process files into servicing content.
+
+For user-requested coordinated releases, apply the
+[opt-in coordination guidance](../../../skills/shared-resources/release-branches.md#coordinated-releases-opt-in).
+Keep each child's target/version/PR/audit/CI evidence separate; all approved SHA-pinned drafts
+must exist before any human publication. Agree on the order and intended GitHub Latest designation
+separately from the docs publication-date default. Publication is not atomic, and a superseding
+combined docs deployment must prove coverage of all intended releases.
 
 If app-native child sessions are not available in the current environment, fall back to a git
 worktree created from the source/base branch and run the skill there, keeping the orchestrator's

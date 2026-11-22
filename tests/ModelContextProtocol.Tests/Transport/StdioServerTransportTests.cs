@@ -117,6 +117,30 @@ public class StdioServerTransportTests : LoggedTest
     }
 
     [Fact]
+    public async Task ReadMessagesAsync_Should_Match_Error_Properties_Case_Sensitively()
+    {
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(
+            input,
+            Stream.Null,
+            loggerFactory: LoggerFactory);
+
+        await pipe.Writer.WriteAsync(
+            Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","id":7,"error":{"code":-32603,"message":"boom","Code":1,"Message":"other"}}""" + "\n"),
+            TestContext.Current.CancellationToken);
+
+        var canRead = await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(canRead, "Nothing to read here from transport message reader");
+        Assert.True(transport.MessageReader.TryPeek(out var readMessage));
+        var error = Assert.IsType<JsonRpcError>(readMessage);
+        Assert.Equal(-32603, error.Error.Code);
+        Assert.Equal("boom", error.Error.Message);
+    }
+
+    [Fact]
     public async Task CleanupAsync_Should_Cleanup_Resources()
     {
         var transport = new StreamServerTransport(Stream.Null, Stream.Null, loggerFactory: LoggerFactory);

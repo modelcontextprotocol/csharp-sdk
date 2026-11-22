@@ -55,6 +55,8 @@ items:
     uid: apps
   - name: Tasks
     uid: tasks
+  - name: Skills
+    uid: skills
   - name: Identity and Roles
     uid: identity
 - name: API Reference

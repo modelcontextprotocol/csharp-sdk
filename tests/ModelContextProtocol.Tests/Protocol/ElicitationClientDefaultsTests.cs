@@ -43,6 +43,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(s_elicitParamsWithDefaults);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) =>
@@ -69,6 +70,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(s_elicitParamsWithDefaults);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) =>
@@ -94,6 +96,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(s_elicitParamsWithDefaults);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) =>
@@ -132,6 +135,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(s_elicitParamsWithDefaults);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) =>
@@ -168,6 +172,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(s_elicitParamsWithDefaults);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) =>
@@ -188,6 +193,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(s_elicitParamsWithDefaults);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) => new(new ElicitResult { Action = "cancel" }),
@@ -220,6 +226,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(paramsNoDefaults);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) =>
@@ -271,6 +278,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(paramsMultiSelect);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) =>
@@ -318,6 +326,7 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
         await using ClientElicitationTestTransport transport = new(paramsTitledEnum);
         await using var client = await McpClient.CreateAsync(transport, new McpClientOptions
         {
+            ProtocolVersion = "2025-03-26",
             Handlers = new()
             {
                 ElicitationHandler = (_, _) =>
@@ -381,6 +390,10 @@ public class ElicitationClientDefaultsTests(ITestOutputHelper testOutputHelper) 
                         }, McpJsonUtilities.DefaultOptions),
                     }, CancellationToken.None);
                 });
+            }
+            else if (message is JsonRpcRequest request)
+            {
+                throw new InvalidOperationException($"The elicitation defaults test transport only supports initialize, not '{request.Method}'.");
             }
             else if (message is JsonRpcResponse response)
             {
