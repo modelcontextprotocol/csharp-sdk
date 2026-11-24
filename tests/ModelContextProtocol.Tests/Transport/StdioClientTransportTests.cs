@@ -87,6 +87,48 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
     }
 
     [Fact]
+    public async Task DisposeAsync_DrainsFinalNotificationsBeforeStoppingReadLoop()
+    {
+        string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
+        string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
+
+        StdioClientTransport transport = new(new()
+        {
+            Name = "TestServer",
+            Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => "mono",
+                (_, true) => testServerExecutable,
+                _ => "dotnet",
+            },
+            Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => [testServerExecutable, "--write-large-notifications-after-stdin-eof"],
+                (_, true) => ["--write-large-notifications-after-stdin-eof"],
+                _ => [testServerDll, "--write-large-notifications-after-stdin-eof"],
+            },
+            ShutdownTimeout = TestConstants.DefaultTimeout,
+        }, LoggerFactory);
+
+        await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        await session.DisposeAsync().AsTask().WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+        int notificationCount = 0;
+        while (session.MessageReader.TryRead(out JsonRpcMessage? message))
+        {
+            Assert.IsType<JsonRpcNotification>(message);
+            notificationCount++;
+        }
+
+        Assert.Equal(1024, notificationCount);
+        var exception = await Assert.ThrowsAsync<ClientTransportClosedException>(
+            async () => await session.MessageReader.Completion.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        var completionDetails = Assert.IsType<StdioClientCompletionDetails>(exception.Details);
+        Assert.Equal(0, completionDetails.ExitCode);
+    }
+
+    [Fact]
     public async Task ConnectAsync_DoesNotLogEnvironmentVariablesAtTrace()
     {
         string secretName = $"MCP_TEST_SECRET_{Guid.NewGuid():N}";

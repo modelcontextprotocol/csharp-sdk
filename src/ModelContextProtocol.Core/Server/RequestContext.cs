@@ -61,9 +61,15 @@ public sealed class RequestContext<TParams> : MessageContext
 
     internal sealed class StructuredContentRecoveryState(McpServerTool tool, JsonElement? schema)
     {
+        // Recovery callbacks retain serialized projections until the dispatch completes.
+        private const long MaxRetainedStructuredContentBytes = 4 * 1024 * 1024;
+        private const int MaxRetainedRecoveryIdentities = 4096;
         private readonly object _lock = new();
         private readonly Dictionary<JsonElement, Action<McpServerTool, CallToolResult>> _plans = [];
         private bool _isActive = true;
+        private bool _retentionBudgetExhausted;
+        private long _retainedBytes;
+        private int _retainedIdentityCount;
 
         internal McpServerTool Tool { get; } = tool;
         internal JsonElement? Schema { get; } = schema;
@@ -73,15 +79,98 @@ public sealed class RequestContext<TParams> : MessageContext
         {
             lock (_lock)
             {
-                if (!_isActive)
+                if (!_isActive || _retentionBudgetExhausted)
+                {
+                    return;
+                }
+            }
+
+            List<JsonElement> retainedIdentities = [];
+            long registrationBytes = 0;
+            foreach (JsonElement identity in identities)
+            {
+                retainedIdentities.Add(identity);
+                if (retainedIdentities.Count > MaxRetainedRecoveryIdentities)
+                {
+                    registrationBytes = MaxRetainedStructuredContentBytes + 1;
+                    break;
+                }
+
+                long remainingBytes = MaxRetainedStructuredContentBytes - registrationBytes;
+                registrationBytes += GetSerializedByteCount(identity, remainingBytes);
+                if (registrationBytes > MaxRetainedStructuredContentBytes)
+                {
+                    break;
+                }
+            }
+
+            lock (_lock)
+            {
+                if (!_isActive || _retentionBudgetExhausted)
                 {
                     return;
                 }
 
-                foreach (JsonElement identity in identities)
+                if (registrationBytes > MaxRetainedStructuredContentBytes - _retainedBytes ||
+                    retainedIdentities.Count > MaxRetainedRecoveryIdentities - _retainedIdentityCount)
+                {
+                    // Keep existing plans usable and leave later results unchanged after the budget is exhausted.
+                    _retentionBudgetExhausted = true;
+                    return;
+                }
+
+                foreach (JsonElement identity in retainedIdentities)
                 {
                     _plans[identity] = recovery;
                 }
+
+                _retainedBytes += registrationBytes;
+                _retainedIdentityCount += retainedIdentities.Count;
+            }
+        }
+
+        private static long GetSerializedByteCount(JsonElement element, long limit)
+        {
+            using CountingStream stream = new(limit);
+            using Utf8JsonWriter writer = new(stream);
+            element.WriteTo(writer);
+            writer.Flush();
+            return stream.BytesWritten;
+        }
+
+        private sealed class CountingStream(long limit) : Stream
+        {
+            internal long BytesWritten { get; private set; }
+
+            public override bool CanRead => false;
+            public override bool CanSeek => false;
+            public override bool CanWrite => true;
+            public override long Length => BytesWritten;
+            public override long Position
+            {
+                get => BytesWritten;
+                set => throw new NotSupportedException();
+            }
+
+            public override void Flush()
+            {
+            }
+
+            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+
+            public override void Write(byte[] buffer, int offset, int count) => AddBytes(count);
+
+#if NET
+            public override void Write(ReadOnlySpan<byte> buffer) => AddBytes(buffer.Length);
+#endif
+
+            public override void WriteByte(byte value) => AddBytes(1);
+
+            private void AddBytes(int count)
+            {
+                BytesWritten = BytesWritten > limit - count ? limit + 1 : BytesWritten + count;
             }
         }
 
@@ -109,6 +198,8 @@ public sealed class RequestContext<TParams> : MessageContext
             {
                 _isActive = false;
                 _plans.Clear();
+                _retainedBytes = 0;
+                _retainedIdentityCount = 0;
             }
         }
     }

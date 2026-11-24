@@ -43,6 +43,42 @@ public partial class DelegatingToolOutputSchemaTests
         });
     }
 
+    [Fact]
+    public async Task CallTool_RepeatedLargeInnerInvocations_BoundsRetainedRecoveryPlans()
+    {
+        int sequence = 0;
+        string payload = new('x', 256 * 1024);
+        McpServerTool inner = McpServerTool.Create(
+            () => new LargePayload(Interlocked.Increment(ref sequence), payload, null), new()
+            {
+                Name = "large_payload",
+                UseStructuredContent = true,
+                OutputSchema = ParseJson("""{"type":"object"}"""),
+                SerializerOptions = new(JsonSerializerDefaults.Web)
+                {
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                    TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                },
+            });
+        var repeated = new BoundedRecoveryTool(inner, invocationCount: 32);
+        McpServerTool tool = new SchemaOverrideTool(repeated,
+            ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}"""));
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(
+                tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(true, result.IsError);
+            JsonElement structuredContent = result.StructuredContent ?? throw new InvalidOperationException("Structured content was not returned.");
+            Assert.False(structuredContent.TryGetProperty("note", out _));
+            Assert.True(repeated.RetainedIdentityCount > 0);
+            Assert.True(repeated.RetainedIdentityCount < repeated.InvocationCount * 2);
+            Assert.True(repeated.RetainedBytes > 0);
+            Assert.InRange(repeated.RetainedBytes, 0L, 4L * 1024 * 1024);
+        });
+    }
+
     [Theory]
     [InlineData("2025-06-18", false)]
     [InlineData("2025-06-18", true)]
@@ -1736,6 +1772,8 @@ public partial class DelegatingToolOutputSchemaTests
         public int Count { get; set; }
     }
 
+    private sealed record LargePayload(int Sequence, string Payload, string? Note);
+
     private sealed class ExpiringOutput
     {
         [JsonIgnore]
@@ -1897,6 +1935,35 @@ public partial class DelegatingToolOutputSchemaTests
                 await base.InvokeAsync(request, cancellationToken);
             }
             return first;
+        }
+    }
+
+    private sealed class BoundedRecoveryTool(McpServerTool inner, int invocationCount) : DelegatingMcpServerTool(inner)
+    {
+        public int InvocationCount { get; } = invocationCount;
+        public int RetainedIdentityCount { get; private set; }
+        public long RetainedBytes { get; private set; }
+
+        public override async ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
+        {
+            CallToolResult? result = null;
+            for (int i = 0; i < InvocationCount; i++)
+            {
+                result = await base.InvokeAsync(request, cancellationToken);
+            }
+
+            object target = typeof(RequestContext<CallToolRequestParams>)
+                .GetProperty("StructuredContentRecoveryTarget", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(request)
+                ?? throw new InvalidOperationException("Structured content recovery state was not available.");
+            var plans = Assert.IsType<Dictionary<JsonElement, Action<McpServerTool, CallToolResult>>>(
+                target.GetType().GetField("_plans", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(target)
+                ?? throw new InvalidOperationException("Structured content recovery plans were not available."));
+            RetainedIdentityCount = plans.Count;
+            RetainedBytes = Assert.IsType<long>(
+                target.GetType().GetField("_retainedBytes", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(target)
+                ?? throw new InvalidOperationException("Structured content recovery byte count was not available."));
+            return result ?? throw new InvalidOperationException("No inner tool invocation completed.");
         }
     }
 

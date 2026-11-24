@@ -73,11 +73,6 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
             LogStandardInputCloseFailed(Name, ex);
         }
 
-        // Stop the read loop before waiting for the process. If the server has
-        // already closed stdout but is still waiting on another inherited handle,
-        // waiting first can leave the transport and its reader blocked together.
-        CancelShutdown();
-
         // Ensure all pending ErrorDataReceived events are drained before detaching
         // the handler. GetUnexpectedExitExceptionAsync does this when HasExited is
         // true, but there is a narrow window on Linux where the process has closed
@@ -86,6 +81,10 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         // wait here covers that gap. When the drain already happened above, the
         // call returns immediately.
         await WaitForProcessExitAsync().ConfigureAwait(false);
+
+        // Keep draining stdout while the server flushes its final messages after stdin closes.
+        // The process wait is bounded; cancel the read loop afterward so a stuck server can be killed.
+        CancelShutdown();
 
         // Detach the stderr handler so no further ErrorDataReceived events
         // are dispatched during or after process disposal.

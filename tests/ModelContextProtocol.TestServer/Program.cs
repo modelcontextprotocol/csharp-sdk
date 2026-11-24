@@ -41,6 +41,12 @@ internal static class Program
             return;
         }
 
+        if (args.Contains("--write-large-notifications-after-stdin-eof"))
+        {
+            await WriteLargeNotificationsAfterStdinEofAsync();
+            return;
+        }
+
         Log.Logger.Information("Starting server...");
 
         string? cliArg = ParseCliArgument(args);
@@ -66,6 +72,22 @@ internal static class Program
         _ = RunBackgroundLoop(server);
 
         await server.RunAsync();
+    }
+
+    private static async Task WriteLargeNotificationsAfterStdinEofAsync()
+    {
+        while (await Console.In.ReadLineAsync() is not null)
+        {
+        }
+
+        string payload = new('x', 4096);
+        string notification = $"{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/test/shutdown\",\"params\":{{\"payload\":\"{payload}\"}}}}";
+        for (int i = 0; i < 1024; i++)
+        {
+            await Console.Out.WriteLineAsync(notification);
+        }
+
+        await Console.Out.FlushAsync();
     }
 
     private static async Task RunBackgroundLoop(McpServer server, CancellationToken cancellationToken = default)
