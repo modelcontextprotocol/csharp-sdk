@@ -297,6 +297,35 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("tools/call", "name", "42")]
+    [InlineData("tools/call", "name", "true")]
+    [InlineData("tools/call", "name", "{}")]
+    [InlineData("tools/call", "name", "[]")]
+    [InlineData("prompts/get", "name", "42")]
+    [InlineData("resources/read", "uri", "{}")]
+    public async Task Server_RejectsNonStringRoutingNameInBody_WithJsonRpcError(string method, string routingParameter, string bodyValue)
+    {
+        await StartAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
+
+        var callJson = "{\"jsonrpc\":\"2.0\",\"id\":77,\"method\":\"" + method + "\",\"params\":{\"" + routingParameter + "\":" + bodyValue +
+            @",""_meta"":{""io.modelcontextprotocol/protocolVersion"":""2026-07-28"",""io.modelcontextprotocol/clientInfo"":{""name"":""TestClient"",""version"":""1.0""},""io.modelcontextprotocol/clientCapabilities"":{}}}}";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = new StringContent(callJson, Encoding.UTF8, "application/json");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", method);
+        request.Headers.Add("Mcp-Name", "42");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var json = JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
+        Assert.Equal(77, json["id"]!.GetValue<int>());
+        Assert.Equal((int)McpErrorCode.HeaderMismatch, json["error"]!["code"]!.GetValue<int>());
+    }
+
     [Fact]
     public async Task Server_AcceptsBase64EncodedHeaderWithControlChars()
     {
