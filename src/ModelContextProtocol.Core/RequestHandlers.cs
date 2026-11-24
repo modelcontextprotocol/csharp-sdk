@@ -1,4 +1,6 @@
 using ModelContextProtocol.Protocol;
+using System.Net.ServerSentEvents;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization.Metadata;
@@ -40,7 +42,7 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
 
         this[method] = async (request, cancellationToken) =>
         {
-            TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
+            TParams typedRequest = DeserializeParams(request.Params, requestTypeInfo)!;
             object? result = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
             return JsonSerializer.SerializeToNode(result, responseTypeInfo);
         };
@@ -65,7 +67,7 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
 
         this[method] = async (request, cancellationToken) =>
         {
-            TParams typedRequest = JsonSerializer.Deserialize(request.Params, requestTypeInfo)!;
+            TParams typedRequest = DeserializeParams(request.Params, requestTypeInfo)!;
             var augmented = await handler(typedRequest, request, cancellationToken).ConfigureAwait(false);
 
             if (augmented.IsAlternate)
@@ -77,4 +79,73 @@ internal sealed class RequestHandlers : Dictionary<string, Func<JsonRpcRequest, 
         };
     }
 #pragma warning restore MCPEXP002
+
+    /// <summary>
+    /// Deserializes request parameters into their typed representation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deserializing a <see cref="JsonNode"/> directly re-serializes it and then re-parses every property. For the
+    /// <see cref="RequestParams.Meta"/> property this means System.Text.Json copies the entire <c>_meta</c> payload
+    /// into a new, unpooled buffer, which for large metadata lands on the large object heap on every request.
+    /// </para>
+    /// <para>
+    /// When <c>_meta</c> is an object, it is therefore excluded from the re-parse and assigned afterwards via
+    /// <see cref="JsonNode.DeepClone"/>. The params node is backed by a non-disposable document, so cloning shares
+    /// the already-parsed UTF-8 bytes instead of copying them while still producing an independent node.
+    /// Any other shape uses the standard deserialization path so behavior, including errors, is unchanged.
+    /// </para>
+    /// </remarks>
+    internal static TParams? DeserializeParams<TParams>(JsonNode? parameters, JsonTypeInfo<TParams> typeInfo)
+    {
+        if (parameters is not JsonObject paramsObject ||
+            typeInfo.Kind is not JsonTypeInfoKind.Object ||
+            !typeof(RequestParams).IsAssignableFrom(typeof(TParams)) ||
+            !paramsObject.TryGetPropertyValue("_meta", out JsonNode? metaNode) ||
+            metaNode is not JsonObject meta)
+        {
+            return JsonSerializer.Deserialize(parameters, typeInfo);
+        }
+
+        using var buffer = new PooledByteBufferWriter();
+        try
+        {
+            using (var writer = new Utf8JsonWriter(buffer))
+            {
+                writer.WriteStartObject();
+                foreach (KeyValuePair<string, JsonNode?> property in paramsObject)
+                {
+                    if (property.Key == "_meta")
+                    {
+                        continue;
+                    }
+
+                    writer.WritePropertyName(property.Key);
+                    if (property.Value is null)
+                    {
+                        writer.WriteNullValue();
+                    }
+                    else
+                    {
+                        property.Value.WriteTo(writer, typeInfo.Options);
+                    }
+                }
+
+                writer.WriteEndObject();
+            }
+
+            TParams? result = JsonSerializer.Deserialize(buffer.WrittenMemory.Span, typeInfo);
+            if (result is RequestParams requestParams)
+            {
+                requestParams.Meta = (JsonObject)meta.DeepClone();
+            }
+
+            return result;
+        }
+        finally
+        {
+            // The buffer is returned to a shared pool; don't leave request content behind in it.
+            MemoryMarshal.AsMemory(buffer.WrittenMemory).Span.Clear();
+        }
+    }
 }
