@@ -8,6 +8,7 @@
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <CompatibilitySuppressionFilePath>$(MSBuildThisFileDirectory)CompatibilitySuppressions.xml</CompatibilitySuppressionFilePath>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Suppress the experimental extensions warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
     <!-- Core implements the Roots, Sampling, and Logging features deprecated by SEP-2577 (MCP9005).
@@ -36,11 +37,12 @@
     <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
     <Compile Include="..\Common\HttpResponseMessageExtensions.cs" Link="HttpResponseMessageExtensions.cs" />
     <Compile Include="..\Common\ServerSentEvents\**\*.cs" Link="ServerSentEvents\%(RecursiveDir)%(FileName)%(Extension)" />
+    <Compile Include="..\Common\CancellableStreamReader\*.cs" Exclude="..\Common\CancellableStreamReader\TextReaderExtensions.cs" />
   </ItemGroup>
 
   <!-- Dependencies only needed by netstandard2.0 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-    <Compile Include="..\Common\CancellableStreamReader\**\*.cs" />
+    <Compile Include="..\Common\CancellableStreamReader\TextReaderExtensions.cs" />
     <PackageReference Include="Microsoft.Bcl.Memory" />
     <PackageReference Include="Microsoft.Bcl.TimeProvider" />
     <PackageReference Include="System.Collections.Immutable" />

@@ -607,6 +607,36 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.Equal("44", ((JsonRpcRequest)readMessage).Id.ToString());
     }
 
+    [Fact]
+    public async Task ReadMessagesAsync_DispatchesLineAtInternalBufferBoundary()
+    {
+        Pipe serverInputPipe = new();
+        Pipe serverOutputPipe = new();
+        var transport = new StreamClientTransport(serverInputPipe.Writer.AsStream(), serverOutputPipe.Reader.AsStream(), LoggerFactory);
+        await using var sessionTransport = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        var message = new JsonRpcRequest { Method = string.Empty, Id = new RequestId(44) };
+        int methodLength = 1024 - JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions).Length - 1;
+        message.Method = new string('a', methodLength);
+        string json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
+        byte[] line = Encoding.UTF8.GetBytes(json + "\n");
+        Assert.Equal(1024, line.Length);
+
+        await serverOutputPipe.Writer.WriteAsync(line, TestContext.Current.CancellationToken);
+
+        try
+        {
+            JsonRpcRequest received = Assert.IsType<JsonRpcRequest>(
+                await sessionTransport.MessageReader.ReadAsync(TestContext.Current.CancellationToken).AsTask()
+                    .WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
+            Assert.Equal(message.Method, received.Method);
+        }
+        finally
+        {
+            await serverOutputPipe.Writer.CompleteAsync();
+        }
+    }
+
     [Theory]
     [InlineData("\r", false)]
     [InlineData("", true)]

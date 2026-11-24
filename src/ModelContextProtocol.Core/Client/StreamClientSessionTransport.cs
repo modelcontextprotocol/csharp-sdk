@@ -15,7 +15,7 @@ internal class StreamClientSessionTransport : TransportBase
 
     internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
 
-    private readonly TextReader _serverOutput;
+    private readonly CancellableStreamReader _serverOutput;
     private readonly Stream _serverInputStream;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly CancellationTokenSource _shutdownCts = new();
@@ -52,11 +52,7 @@ internal class StreamClientSessionTransport : TransportBase
         Throw.IfNull(serverOutput);
 
         _serverInputStream = serverInput;
-#if NET
-        _serverOutput = new StreamReader(serverOutput, encoding ?? NoBomUtf8Encoding);
-#else
         _serverOutput = new CancellableStreamReader(serverOutput, encoding ?? NoBomUtf8Encoding);
-#endif
 
         SetConnected();
 
@@ -181,12 +177,7 @@ internal class StreamClientSessionTransport : TransportBase
             }
 
             int charsRead;
-#if NET
             while ((charsRead = await _serverOutput.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) != 0)
-#else
-            CancellableStreamReader serverOutput = (CancellableStreamReader)_serverOutput;
-            while ((charsRead = await serverOutput.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) != 0)
-#endif
             {
                 for (int i = 0; i < charsRead; i++)
                 {
