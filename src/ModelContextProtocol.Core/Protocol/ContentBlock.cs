@@ -89,6 +89,13 @@ public abstract class ContentBlock
 
         private static JsonTypeInfo<T> GetNestedTypeInfo<T>(JsonSerializerOptions options)
         {
+            // Options bound to the SDK context already resolve the nested types, and System.Text.Json
+            // doesn't allow chaining a resolver into options that are already bound to it.
+            if (ReferenceEquals(options.TypeInfoResolver, McpJsonUtilities.JsonContext.Default))
+            {
+                return options.GetTypeInfo<T>();
+            }
+
             // JsonSerializer freezes options, but direct converter callers may still change them.
             JsonSerializerOptions nestedOptions = options.IsReadOnly
                 ? s_nestedOptions.GetValue(options, CreateNestedOptions)
