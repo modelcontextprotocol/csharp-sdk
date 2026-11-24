@@ -113,6 +113,25 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("/json")]
+    public async Task PostRequest_IsUnsupportedMediaType_WithMissingOrUnparseableContentType(string? contentType)
+    {
+        await StartAsync();
+
+        using var content = new StringContent(InitializeRequest, Encoding.UTF8);
+        content.Headers.Remove(HeaderNames.ContentType);
+        if (contentType is not null)
+        {
+            content.Headers.TryAddWithoutValidation(HeaderNames.ContentType, contentType);
+        }
+
+        using var response = await HttpClient.PostAsync("", content, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+    }
+
+    [Theory]
     [InlineData("text/event-stream")]
     [InlineData("application/json")]
     [InlineData("application/json-text/event-stream")]

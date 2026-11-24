@@ -80,6 +80,16 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
+        // Routing's AcceptsMetadata rejects other well-formed media types with 415 but lets an absent, empty
+        // or unparseable Content-Type through, which ReadFromJsonAsync would reject with an unhandled exception.
+        if (!context.Request.HasJsonContentType())
+        {
+            await WriteJsonRpcErrorAsync(context,
+                "Unsupported Media Type: Content-Type must be application/json",
+                StatusCodes.Status415UnsupportedMediaType);
+            return;
+        }
+
         JsonRpcMessage? message;
         try
         {
