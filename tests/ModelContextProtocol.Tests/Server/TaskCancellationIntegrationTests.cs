@@ -327,9 +327,11 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
         var cancelResult = await client.CancelTaskAsync(taskId, ct);
         Assert.NotNull(cancelResult);
 
-        // Verify status is still completed (not flipped to cancelled).
-        var verifyResult = await client.GetTaskAsync(taskId, ct);
-        Assert.IsType<CompletedTaskResult>(verifyResult);
+        // The completing Get already served-and-dropped the terminal snapshot. Cancel must not
+        // resurrect a cancelled row.
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.GetTaskAsync(taskId, ct));
+        Assert.Contains("Unknown task", ex.Message);
     }
 
     [Fact]
@@ -357,8 +359,10 @@ public class TerminalTaskStatusTransitionTests : ClientServerTestBase
         var cancelResult = await client.CancelTaskAsync(taskId, ct);
         Assert.NotNull(cancelResult);
 
-        // Verify status is still completed (not flipped to cancelled).
-        var verifyResult = await client.GetTaskAsync(taskId, ct);
-        Assert.IsType<CompletedTaskResult>(verifyResult);
+        // The completing Get already served-and-dropped the terminal snapshot. Cancel must not
+        // resurrect a cancelled row.
+        var ex = await Assert.ThrowsAsync<McpProtocolException>(async () =>
+            await client.GetTaskAsync(taskId, ct));
+        Assert.Contains("Unknown task", ex.Message);
     }
 }
