@@ -1405,6 +1405,332 @@ public partial class McpServerToolTests
         Assert.False(regionProp.TryGetProperty("x-mcp-header", out _));
     }
 
+    [Fact]
+    public async Task Invoke_Strict_RejectsUnknownArgument()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() => InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("filters", "x"))));
+
+        Assert.Equal("Unknown argument 'filters'. Valid arguments: table, filter.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_RejectsUnknownArgument_WhenToolHasInjectedParameter()
+    {
+        McpServerTool tool = McpServerTool.Create(
+            (McpServer server, string table, string? filter = null) =>
+            {
+                Assert.NotNull(server);
+                return $"ok table={table} filter={filter ?? "<null>"}";
+            },
+            new() { Name = "query_records", SerializerOptions = CreateStrictSerializerOptions() });
+
+        McpException unknown = await Assert.ThrowsAsync<McpException>(() => InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("filters", "x"))));
+        Assert.Equal("Unknown argument 'filters'. Valid arguments: table, filter.", unknown.Message);
+
+        McpException injectedName = await Assert.ThrowsAsync<McpException>(() => InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("server", "x"))));
+        Assert.Equal("Unknown argument 'server'. Valid arguments: table, filter.", injectedName.Message);
+        Assert.DoesNotContain("Valid arguments: table, filter, server", injectedName.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_ListsMultipleUnknownArgumentsInRequestOrder()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("filters", "x"), ("extra", "y"))));
+
+        Assert.Equal("Unknown arguments 'filters', 'extra'. Valid arguments: table, filter.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_RejectsAnyArgument_WhenToolHasNoParameters()
+    {
+        McpServerTool tool = McpServerTool.Create(
+            () => "ok",
+            new() { Name = "noop", SerializerOptions = CreateStrictSerializerOptions() });
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            tool.InvokeAsync(CreateToolRequest("noop", CreateArguments(("x", "value"))), TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Equal("Unknown argument 'x'. This tool takes no arguments.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_PassesValidArgumentsIntact()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+
+        CallToolResult result = await InvokeQueryAsync(tool, CreateArguments(("table", "users"), ("filter", "active")));
+
+        Assert.Null(result.IsError);
+        Assert.Equal("ok table=users filter=active", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_ErrorMessageOmitsArgumentValues()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("filters", "secret-value"))));
+
+        Assert.Equal("Unknown argument 'filters'. Valid arguments: table, filter.", ex.Message);
+        Assert.DoesNotContain("secret-value", ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Default_IgnoresUnknownArguments()
+    {
+        McpServerTool tool = McpServerTool.Create(
+            (string table, string? filter = null) => $"ok table={table} filter={filter ?? "<null>"}",
+            new() { Name = "query_records" });
+
+        CallToolResult result = await InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("filters", "x")));
+
+        Assert.Null(result.IsError);
+        Assert.Equal("ok table=t filter=<null>", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task Invoke_CreateFromAIFunction_DoesNotRejectUnknownArguments()
+    {
+        JsonSerializerOptions strict = CreateStrictSerializerOptions();
+        string? seenTable = null;
+        string? seenFilter = "sentinel";
+        AIFunction function = AIFunctionFactory.Create(
+            (string table, string? filter = null) =>
+            {
+                seenTable = table;
+                seenFilter = filter;
+                return "ok";
+            },
+            new AIFunctionFactoryOptions
+            {
+                Name = "query_records",
+                SerializerOptions = strict,
+                ConfigureParameterBinding = pi =>
+                {
+                    if (pi.Name == "table")
+                    {
+                        return new()
+                        {
+                            BindParameter = (parameter, arguments) =>
+                            {
+                                if (arguments.TryGetValue(parameter.Name!, out object? value))
+                                {
+                                    return value switch
+                                    {
+                                        JsonElement element => element.Deserialize<string>(strict),
+                                        string s => s,
+                                        _ => value,
+                                    };
+                                }
+
+                                throw new ArgumentException("Missing required parameter 'table'.");
+                            }
+                        };
+                    }
+
+                    return default;
+                },
+            });
+
+        McpServerTool tool = McpServerTool.Create(function, new() { SerializerOptions = strict });
+
+        CallToolResult result = await InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("filters", "x")));
+
+        Assert.Null(result.IsError);
+        Assert.Equal("t", seenTable);
+        Assert.Null(seenFilter);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_RejectsMismatchedCasing()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("Filter", "x"))));
+
+        Assert.Equal("Unknown argument 'Filter'. Valid arguments: table, filter.", ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_CapsUnknownArgumentList()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+        Dictionary<string, JsonElement> arguments = CreateArguments(("table", "t"));
+        for (int i = 0; i < 15; i++)
+        {
+            arguments[$"extra{i}"] = JsonSerializer.SerializeToElement("x", McpJsonUtilities.DefaultOptions);
+        }
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() => InvokeQueryAsync(tool, arguments));
+
+        Assert.Equal(
+            "Unknown arguments 'extra0', 'extra1', 'extra2', 'extra3', 'extra4', 'extra5', 'extra6', 'extra7', 'extra8', 'extra9' and 5 more. Valid arguments: table, filter.",
+            ex.Message);
+        Assert.DoesNotContain("extra10", ex.Message);
+        Assert.DoesNotContain("extra14", ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_TruncatesVeryLongUnknownArgumentName()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+        string longKey = new('a', 100);
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), (longKey, "x"))));
+
+        Assert.Equal($"Unknown argument '{new string('a', 64)}...'. Valid arguments: table, filter.", ex.Message);
+        Assert.DoesNotContain(longKey, ex.Message);
+        Assert.DoesNotContain(new string('a', 65), ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_EscapesControlCharactersInUnknownArgumentName()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+        string badKey = "foo\nbar\0baz";
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), (badKey, "x"))));
+
+        Assert.Equal("Unknown argument 'foo\\nbar\\0baz'. Valid arguments: table, filter.", ex.Message);
+        Assert.DoesNotContain('\n', ex.Message);
+        Assert.DoesNotContain('\0', ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_DoesNotSplitSurrogatePairWhenTruncating()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+        string key = new string('a', 63) + "😀b";
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), (key, "x"))));
+
+        Assert.Equal($"Unknown argument '{new string('a', 63)}...'. Valid arguments: table, filter.", ex.Message);
+        Assert.DoesNotContain("😀", ex.Message);
+        foreach (char c in ex.Message)
+        {
+            Assert.False(char.IsSurrogate(c), $"Message contains a lone surrogate U+{(int)c:X4}.");
+        }
+
+        new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetBytes(ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_DistinguishesLiteralBackslashFromNewline()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+
+        McpException slashN = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("a\\nb", "x"))));
+        McpException newline = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), ("a\nb", "x"))));
+
+        Assert.Equal("Unknown argument 'a\\\\nb'. Valid arguments: table, filter.", slashN.Message);
+        Assert.Equal("Unknown argument 'a\\nb'. Valid arguments: table, filter.", newline.Message);
+        Assert.NotEqual(slashN.Message, newline.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_DoesNotCutInsideEscapeSequenceWhenTruncating()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+        string key = new string('a', 62) + "\u0001";
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), (key, "x"))));
+
+        Assert.Equal($"Unknown argument '{new string('a', 62)}...'. Valid arguments: table, filter.", ex.Message);
+        Assert.DoesNotContain("\\u", ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_EscapesInvisibleAndBidiFormatCharacters()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+        string key = "a\u200Bb\u202Ec\uFEFFd\u2028e\u2029f";
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), (key, "x"))));
+
+        Assert.Equal(
+            "Unknown argument 'a\\u200bb\\u202ec\\ufeffd\\u2028e\\u2029f'. Valid arguments: table, filter.",
+            ex.Message);
+        Assert.DoesNotContain('\u200B', ex.Message);
+        Assert.DoesNotContain('\u202E', ex.Message);
+        Assert.DoesNotContain('\uFEFF', ex.Message);
+        Assert.DoesNotContain('\u2028', ex.Message);
+        Assert.DoesNotContain('\u2029', ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_EscapesLoneSurrogateInUnknownArgumentName()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+        string key = "a\uD83Db";
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), (key, "x"))));
+
+        Assert.Equal("Unknown argument 'a\\ud83db'. Valid arguments: table, filter.", ex.Message);
+        foreach (char c in ex.Message)
+        {
+            Assert.False(char.IsSurrogate(c), $"Message contains a lone surrogate U+{(int)c:X4}.");
+        }
+
+        new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetBytes(ex.Message);
+    }
+
+    [Fact]
+    public async Task Invoke_Strict_TruncatesHugeUnknownArgumentNameQuickly()
+    {
+        McpServerTool tool = CreateStrictQueryTool();
+        string key = new('a', 1_000_000);
+
+        McpException ex = await Assert.ThrowsAsync<McpException>(() =>
+            InvokeQueryAsync(tool, CreateArguments(("table", "t"), (key, "x"))));
+
+        Assert.Equal($"Unknown argument '{new string('a', 64)}...'. Valid arguments: table, filter.", ex.Message);
+        Assert.True(ex.Message.Length < 200, $"Message length {ex.Message.Length} was not bounded.");
+        Assert.DoesNotContain(key, ex.Message);
+    }
+
+    private static JsonSerializerOptions CreateStrictSerializerOptions() =>
+        new(McpJsonUtilities.DefaultOptions)
+        {
+            UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        };
+
+    private static McpServerTool CreateStrictQueryTool() =>
+        McpServerTool.Create(
+            (string table, string? filter = null) => $"ok table={table} filter={filter ?? "<null>"}",
+            new() { Name = "query_records", SerializerOptions = CreateStrictSerializerOptions() });
+
+    private static Dictionary<string, JsonElement> CreateArguments(params (string Key, object? Value)[] arguments)
+    {
+        Dictionary<string, JsonElement> result = [];
+        foreach ((string key, object? value) in arguments)
+        {
+            result[key] = JsonSerializer.SerializeToElement(value, McpJsonUtilities.DefaultOptions);
+        }
+
+        return result;
+    }
+
+    private static RequestContext<CallToolRequestParams> CreateToolRequest(string name, Dictionary<string, JsonElement>? arguments) =>
+        new(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = name, Arguments = arguments });
+
+    private static Task<CallToolResult> InvokeQueryAsync(McpServerTool tool, Dictionary<string, JsonElement> arguments) =>
+        tool.InvokeAsync(CreateToolRequest("query_records", arguments), TestContext.Current.CancellationToken).AsTask();
+
     private static class McpHeaderToolType
     {
         [McpServerTool]

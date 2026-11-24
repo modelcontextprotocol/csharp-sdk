@@ -235,6 +235,10 @@ public static double Divide(double a, double b)
 }
 ```
 
+#### Unknown tool arguments
+
+By default, undeclared arguments on a tool call are ignored. To reject them, set <xref:System.Text.Json.JsonSerializerOptions.UnmappedMemberHandling> to <xref:System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow> on the <xref:ModelContextProtocol.Server.McpServerToolCreateOptions.SerializerOptions> used when creating the tool, for example the options passed to `WithTools`. The call then fails with <xref:ModelContextProtocol.Protocol.CallToolResult.IsError> set to `true` and a message that names the unexpected arguments and lists the valid ones, such as `An error occurred invoking 'query_records': Unknown argument 'filters'. Valid arguments: table, filter.` The message never includes argument values. Only top-level argument names are checked; unknown properties inside a nested object still follow the normal binding error.
+
 #### Protocol errors
 
 Throw <xref:ModelContextProtocol.McpProtocolException> to signal a protocol-level error (for example, invalid parameters or unknown tool). These exceptions propagate as JSON-RPC error responses rather than tool error results:
