@@ -1415,6 +1415,61 @@ public class McpServerTests : LoggedTest
         await runTask;
     }
 
+    [Fact]
+    public async Task Call_Tool_Result_With_Annotated_Content_Serializes()
+    {
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions(new ServerCapabilities { Tools = new() });
+        options.Handlers.CallToolHandler = (request, ct) => new ValueTask<CallToolResult>(new CallToolResult
+        {
+            Content =
+            [
+                new TextContentBlock { Text = "x", Annotations = new Annotations { Audience = [Role.User], Priority = 0.5f } },
+                new ResourceLinkBlock
+                {
+                    Uri = "https://example.com/x",
+                    Name = "x",
+                    Icons = [new Icon { Source = "https://example.com/icon.png" }],
+                    Annotations = new Annotations { Audience = [Role.Assistant] },
+                },
+            ],
+        });
+        options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var reply = new TaskCompletionSource<JsonRpcMessageWithId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        transport.OnMessageSent = message =>
+        {
+            if (message is JsonRpcResponse or JsonRpcError)
+            {
+                reply.TrySetResult((JsonRpcMessageWithId)message);
+            }
+        };
+
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(1),
+                Params = JsonNode.Parse("""{"name":"annotated"}"""),
+            },
+            TestContext.Current.CancellationToken);
+
+        var response = Assert.IsType<JsonRpcResponse>(await reply.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        var content = response.Result?["content"]?.AsArray();
+        Assert.NotNull(content);
+        Assert.Equal(2, content.Count);
+        Assert.Equal("user", content[0]?["annotations"]?["audience"]?[0]?.GetValue<string>());
+        Assert.Equal(0.5, content[0]?["annotations"]?["priority"]?.GetValue<double>());
+        Assert.Equal("assistant", content[1]?["annotations"]?["audience"]?[0]?.GetValue<string>());
+        Assert.Equal("https://example.com/icon.png", content[1]?["icons"]?[0]?["src"]?.GetValue<string>());
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
     private async Task Can_Handle_Requests(ServerCapabilities? serverCapabilities, string method, Action<McpServerOptions>? configureOptions, Action<McpServer, JsonNode?> assertResult)
     {
         await using var transport = new TestServerTransport();
