@@ -164,6 +164,106 @@ public static string GetWeather(McpServer server, string location)
 }
 ```
 
+## App-rendered elicitations
+
+MCP Apps can render standard form-mode `elicitation/create` requests. In
+protocol revision `2026-07-28`, these requests are delivered through the
+multi-round-trip request (MRTR) flow: the server returns an
+`InputRequiredResult`, the client resolves its `inputRequests`, and then retries
+the original operation with `inputResponses` and any `requestState`. This uses
+the existing `io.modelcontextprotocol/ui` extension; it does not define another
+extension or a separate result type.
+
+Call `WithMcpApps()` to advertise
+`extensions["io.modelcontextprotocol/ui"].elicitation` from the server. A host
+advertises the matching setting, the MCP Apps HTML MIME type, and the core form
+elicitation capability:
+
+```csharp
+var clientCapabilities = new ClientCapabilities();
+McpAppElicitation.AddClientCapabilities(clientCapabilities);
+```
+
+On the server, associate a form elicitation with a canonical absolute lowercase
+`ui://` resource URI (with a nonempty authority and no silent URI rewriting)
+only when the requesting client advertised all three client-side settings:
+core form elicitation (`elicitation.form` or the backwards-compatible empty
+`elicitation: {}` capability, not URL-only `elicitation.url`), the MCP Apps HTML
+MIME type, and `io.modelcontextprotocol/ui.elicitation`. The `RequestContext`
+overload uses the request-scoped capabilities required by `2026-07-28` and falls
+back to initialized session capabilities on older protocol revisions:
+
+```csharp
+var elicitation = new ElicitRequestParams
+{
+    Message = "Choose a delivery window",
+    RequestedSchema = new ElicitRequestParams.RequestSchema
+    {
+        Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
+        {
+            ["window"] = new ElicitRequestParams.TitledSingleSelectEnumSchema
+            {
+                OneOf =
+                [
+                    new() { Const = "morning", Title = "Morning" },
+                    new() { Const = "afternoon", Title = "Afternoon" },
+                ],
+            },
+        },
+        Required = ["window"],
+    },
+};
+
+McpAppElicitation.SetAppUiIfSupported(
+    elicitation,
+    requestContext,
+    "ui://delivery/choose-window.html");
+
+throw new InputRequiredException(
+    inputRequests: new Dictionary<string, InputRequest>
+    {
+        ["delivery-window"] = InputRequest.ForElicitation(elicitation),
+    },
+    requestState: "schedule-delivery:v1");
+```
+
+This adds `_meta.ui.resourceUri` without changing the core elicitation request.
+Unsupported clients receive the same request without UI metadata and can render
+their native form.
+
+The host forwards the embedded request to the selected app, validates the
+app's standard `ElicitResult` against the original request, and only then
+places the normalized result in the MRTR response:
+
+```csharp
+ElicitResult appResult =
+    await appBridge.ElicitAsync(elicitation, cancellationToken);
+
+var validation =
+    McpAppElicitation.ValidateResult(elicitation, appResult);
+
+if (validation.ValidatedResult is not { } validatedResult)
+{
+    // Errors contain schema paths and value-free messages suitable for diagnostics.
+    throw new InvalidOperationException(
+        string.Join("; ", validation.Errors.Select(
+            error => $"{error.Path}: {error.Message}")));
+}
+
+var inputResponses = new Dictionary<string, InputResponse>
+{
+    ["delivery-window"] = InputResponse.FromElicitResult(validatedResult),
+};
+
+// Retry the original operation with inputResponses and
+// requestState: "schedule-delivery:v1".
+```
+
+Only accepted results are schema-validated. Decline and cancel remain valid
+standard outcomes; `ValidatedResult` preserves `Action` and `Meta` and omits any
+`Content`. Missing fields with schema defaults are populated in
+`ValidatedResult`; submitted values are never coerced.
+
 ## Display modes
 
 The MCP Apps spec defines display modes (`inline`, `fullscreen`, `pip`) that control how the host renders the UI. Display mode is negotiated between the client and server during capability exchange and is not set per-tool — it depends on the host implementation.
@@ -195,3 +295,5 @@ MCP Apps types use source-generated JSON serialization for Native AOT compatibil
 var json = JsonSerializer.Serialize(toolMeta, McpApps.SerializerOptions);
 var deserialized = JsonSerializer.Deserialize<McpUiToolMeta>(json, McpApps.SerializerOptions);
 ```
+
+App-rendered elicitation is defined by the [MCP Apps extension draft](https://github.com/modelcontextprotocol/ext-apps/pull/733). It uses existing core elicitation and capability extension points and requires no core protocol change.
