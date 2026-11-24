@@ -284,4 +284,128 @@ public class McpServerOptionsSetupTests
         Assert.NotNull(options.Capabilities?.Completions);
     }
     #endregion
+
+    #region Registered Primitive Tests
+    [Fact]
+    public void Configure_RepeatedCreate_GivesEachOptionsItsOwnCollections()
+    {
+        var tool = McpServerTool.Create(() => "result", new() { Name = "tool" });
+        var prompt = McpServerPrompt.Create(() => "prompt", new() { Name = "prompt" });
+        var resource = McpServerResource.Create(() => "content", new() { UriTemplate = "test://resource", Name = "resource" });
+
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithTools([tool]).WithPrompts([prompt]).WithResources([resource]);
+        using var serviceProvider = services.BuildServiceProvider();
+        var factory = serviceProvider.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+
+        var options1 = factory.Create(Options.DefaultName);
+        var options2 = factory.Create(Options.DefaultName);
+
+        Assert.NotSame(options1.ToolCollection, options2.ToolCollection);
+        Assert.NotSame(options1.PromptCollection, options2.PromptCollection);
+        Assert.NotSame(options1.ResourceCollection, options2.ResourceCollection);
+        Assert.Same(tool, Assert.Single(options1.ToolCollection!));
+        Assert.Same(tool, Assert.Single(options2.ToolCollection!));
+        Assert.Same(prompt, Assert.Single(options2.PromptCollection!));
+        Assert.Same(resource, Assert.Single(options2.ResourceCollection!));
+    }
+
+    [Fact]
+    public void Configure_MutatingOneOptionsCollections_DoesNotAffectOtherOptions()
+    {
+        var tool = McpServerTool.Create(() => "result", new() { Name = "tool" });
+        var resource = McpServerResource.Create(() => "content", new() { UriTemplate = "test://resource", Name = "resource" });
+
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithTools([tool]).WithResources([resource]);
+        using var serviceProvider = services.BuildServiceProvider();
+        var factory = serviceProvider.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+
+        var options1 = factory.Create(Options.DefaultName);
+        Assert.True(options1.ToolCollection!.Remove(tool));
+        options1.ToolCollection.Add(McpServerTool.Create(() => "session", new() { Name = "sessionTool" }));
+        options1.ResourceCollection!.Clear();
+
+        var options2 = factory.Create(Options.DefaultName);
+
+        Assert.Equal(["sessionTool"], options1.ToolCollection.PrimitiveNames);
+        Assert.Empty(options1.ResourceCollection);
+        Assert.Same(tool, Assert.Single(options2.ToolCollection!));
+        Assert.Same(resource, Assert.Single(options2.ResourceCollection!));
+    }
+
+    [Fact]
+    public void Configure_PreassignedCollection_IsKeptAndRegisteredPrimitivesAdded()
+    {
+        var registered = McpServerTool.Create(() => "result", new() { Name = "registered" });
+        var preassigned = McpServerTool.Create(() => "result", new() { Name = "preassigned" });
+        McpServerPrimitiveCollection<McpServerTool> collection = [preassigned];
+
+        var services = new ServiceCollection();
+        services.Configure<McpServerOptions>(options => options.ToolCollection = collection);
+        services.AddMcpServer().WithTools([registered]);
+        using var serviceProvider = services.BuildServiceProvider();
+        var factory = serviceProvider.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+
+        for (int i = 0; i < 2; i++)
+        {
+            var options = factory.Create(Options.DefaultName);
+            Assert.Same(collection, options.ToolCollection);
+            Assert.Equal(["preassigned", "registered"], collection.PrimitiveNames);
+        }
+    }
+
+    [Fact]
+    public void Configure_DuplicateRegisteredNames_FirstRegistrationWins()
+    {
+        var first = McpServerTool.Create(() => "first", new() { Name = "tool" });
+        var second = McpServerTool.Create(() => "second", new() { Name = "tool" });
+
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithTools([first, second]);
+        using var serviceProvider = services.BuildServiceProvider();
+        var factory = serviceProvider.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+
+        for (int i = 0; i < 2; i++)
+        {
+            Assert.Same(first, Assert.Single(factory.Create(Options.DefaultName).ToolCollection!));
+        }
+    }
+
+    [Fact]
+    public void Configure_RegisteredPrimitiveRenamed_LaterOptionsUseNewName()
+    {
+        var tool = McpServerTool.Create(() => "result", new() { Name = "before" });
+
+        var services = new ServiceCollection();
+        services.AddMcpServer().WithTools([tool]);
+        using var serviceProvider = services.BuildServiceProvider();
+        var factory = serviceProvider.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+
+        var options1 = factory.Create(Options.DefaultName);
+        tool.ProtocolTool.Name = "after";
+        var options2 = factory.Create(Options.DefaultName);
+
+        Assert.Equal(["before"], options1.ToolCollection!.PrimitiveNames);
+        Assert.Equal(["after"], options2.ToolCollection!.PrimitiveNames);
+        Assert.Same(tool, options2.ToolCollection["after"]);
+    }
+
+    [Fact]
+    public void Configure_NoRegisteredPrimitives_LeavesCollectionsNull()
+    {
+        var services = new ServiceCollection();
+        services.AddMcpServer();
+        using var serviceProvider = services.BuildServiceProvider();
+        var factory = serviceProvider.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+
+        for (int i = 0; i < 2; i++)
+        {
+            var options = factory.Create(Options.DefaultName);
+            Assert.Null(options.ToolCollection);
+            Assert.Null(options.PromptCollection);
+            Assert.Null(options.ResourceCollection);
+        }
+    }
+    #endregion
 }

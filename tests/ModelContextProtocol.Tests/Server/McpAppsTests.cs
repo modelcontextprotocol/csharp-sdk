@@ -506,6 +506,54 @@ public class McpAppsTests
     }
 
     [Fact]
+    public async Task WithMcpApps_RepeatedConcurrentOptionsCreation_AppliesAppUiOncePerTool()
+    {
+        var sc = new ServiceCollection();
+        sc.AddMcpServer()
+            .WithTools([typeof(TestToolsWithAppUi)])
+            .WithMcpApps();
+
+        using var sp = sc.BuildServiceProvider();
+        var factory = sp.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+
+        var creations = Enumerable.Range(0, 8).Select(_ => Task.Run(() =>
+        {
+            for (int i = 0; i < 25; i++)
+            {
+                var options = factory.Create(Options.DefaultName);
+                Assert.True(options.Capabilities!.Extensions!.ContainsKey(McpApps.ExtensionId));
+                Assert.Equal(2, options.ToolCollection!.Count(t => t.ProtocolTool.Meta?["ui"] is not null));
+            }
+        }, TestContext.Current.CancellationToken));
+
+        await Task.WhenAll(creations);
+
+        var tools = factory.Create(Options.DefaultName).ToolCollection!;
+        var weatherTool = tools.Single(t => t.ProtocolTool.Meta?["ui"]?["resourceUri"]?.GetValue<string>() == "ui://weather/view.html");
+        Assert.Single(weatherTool.ProtocolTool.Meta!, kvp => kvp.Key == "ui");
+    }
+
+    [Fact]
+    public void WithMcpApps_ToolCreatedPerOptions_IsProcessed()
+    {
+        var method = typeof(TestToolsWithAppUi).GetMethod(nameof(TestToolsWithAppUi.WeatherTool))!;
+
+        var sc = new ServiceCollection();
+        sc.AddMcpServer(options => options.ToolCollection = [McpServerTool.Create(method)])
+            .WithMcpApps();
+
+        using var sp = sc.BuildServiceProvider();
+        var factory = sp.GetRequiredService<IOptionsFactory<McpServerOptions>>();
+
+        var tool1 = Assert.Single(factory.Create(Options.DefaultName).ToolCollection!);
+        var tool2 = Assert.Single(factory.Create(Options.DefaultName).ToolCollection!);
+
+        Assert.NotSame(tool1, tool2);
+        Assert.NotNull(tool1.ProtocolTool.Meta?["ui"]);
+        Assert.NotNull(tool2.ProtocolTool.Meta?["ui"]);
+    }
+
+    [Fact]
     public void WithMcpApps_EmptyToolCollection_DoesNotThrow()
     {
         var sc = new ServiceCollection();

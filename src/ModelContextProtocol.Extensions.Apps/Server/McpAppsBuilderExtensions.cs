@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 namespace ModelContextProtocol.Extensions.Apps;
 
@@ -49,6 +50,15 @@ public static class McpAppsBuilderExtensions
 
     private sealed class McpAppsPostConfigureOptions : IPostConfigureOptions<McpServerOptions>
     {
+        /// <summary>The tools whose <see cref="McpAppUiAttribute"/> has already been applied.</summary>
+        /// <remarks>
+        /// Options can be created many times, for example once per request by a stateless HTTP server, and registered
+        /// tools are typically shared between them, or even between service providers. Applying the attribute once per
+        /// tool avoids repeating the work and avoids concurrently mutating a shared tool's metadata. Tools are held
+        /// weakly so that tools created for a single session aren't kept alive.
+        /// </remarks>
+        private static readonly ConditionalWeakTable<McpServerTool, object> s_processedTools = new();
+
         public void PostConfigure(string? name, McpServerOptions options)
         {
             // Advertise server-side MCP Apps support in capabilities.
@@ -63,7 +73,17 @@ public static class McpAppsBuilderExtensions
             {
                 foreach (var tool in tools)
                 {
-                    McpApps.ApplyAppUiAttributes(tool);
+                    if (!s_processedTools.TryGetValue(tool, out _))
+                    {
+                        lock (s_processedTools)
+                        {
+                            if (!s_processedTools.TryGetValue(tool, out _))
+                            {
+                                McpApps.ApplyAppUiAttributes(tool);
+                                s_processedTools.Add(tool, s_processedTools);
+                            }
+                        }
+                    }
                 }
             }
         }

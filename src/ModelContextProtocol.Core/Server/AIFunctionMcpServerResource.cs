@@ -289,6 +289,13 @@ internal sealed class AIFunctionMcpServerResource : McpServerResource
     /// <summary>Gets the <see cref="AIFunction"/> wrapped by this resource.</summary>
     internal AIFunction AIFunction { get; }
 
+    /// <summary>Backing cache for <see cref="AllowedValueCompletions"/>.</summary>
+    private object? _allowedValueCompletions;
+
+    /// <summary>Gets the values that each restricted parameter of the resource allows, or <see langword="null"/> if none are restricted.</summary>
+    internal Dictionary<string, string[]>? AllowedValueCompletions =>
+        Server.AllowedValueCompletions.GetOrCreate(ref _allowedValueCompletions, AIFunction.JsonSchema);
+
     /// <summary>Initializes a new instance of the <see cref="McpServerResource"/> class.</summary>
     private AIFunctionMcpServerResource(AIFunction function, ResourceTemplate resourceTemplate, IReadOnlyList<object> metadata)
     {

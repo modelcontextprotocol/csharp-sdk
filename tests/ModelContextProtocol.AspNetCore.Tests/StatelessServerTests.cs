@@ -336,6 +336,51 @@ public class StatelessServerTests(ITestOutputHelper outputHelper) : KestrelInMem
     }
 
     [Fact]
+    public async Task ConfigureSessionOptions_MutatingRegisteredTools_DoesNotAffectOtherRequests()
+    {
+        Builder.Services.AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.Stateless = true;
+                options.ConfigureSessionOptions = (httpContext, mcpServerOptions, cancellationToken) =>
+                {
+                    if (httpContext.Request.Headers["X-Tool-Mode"] == "swap" &&
+                        mcpServerOptions.ToolCollection is { } tools &&
+                        tools.TryGetPrimitive("sharedTool", out var sharedTool))
+                    {
+                        tools.Remove(sharedTool);
+                        tools.Add(McpServerTool.Create(() => "session", new() { Name = "sessionTool" }));
+                    }
+
+                    return Task.CompletedTask;
+                };
+            })
+            .WithTools([McpServerTool.Create(() => "shared", new() { Name = "sharedTool" })]);
+
+        _app = Builder.Build();
+        _app.MapMcp();
+        await _app.StartAsync(TestContext.Current.CancellationToken);
+
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("application/json"));
+        HttpClient.DefaultRequestHeaders.Accept.Add(new("text/event-stream"));
+
+        HttpClient.DefaultRequestHeaders.Add("X-Tool-Mode", "swap");
+        await using (var swappedClient = await ConnectMcpClientAsync())
+        {
+            var swappedTools = await swappedClient.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(["sessionTool"], swappedTools.Select(t => t.Name));
+        }
+
+        HttpClient.DefaultRequestHeaders.Remove("X-Tool-Mode");
+        await using var client = await ConnectMcpClientAsync();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(["sharedTool"], tools.Select(t => t.Name));
+
+        var result = await client.CallToolAsync("sharedTool", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("shared", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
     public async Task StatelessMode_DoesNotAdvertise_ListChangedCapabilities()
     {
         Builder.Services.AddMcpServer()

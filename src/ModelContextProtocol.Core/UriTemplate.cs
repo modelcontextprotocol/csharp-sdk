@@ -513,13 +513,19 @@ internal static partial class UriTemplate
 
         public bool Equals(string? uriTemplate1, string? uriTemplate2)
         {
+            // Strings that are identical are equal under either rule, so avoid parsing them as URIs.
+            if (string.Equals(uriTemplate1, uriTemplate2, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
             if (TryParseAsNonTemplatedUri(uriTemplate1, out Uri? uri1) &&
                 TryParseAsNonTemplatedUri(uriTemplate2, out Uri? uri2))
             {
                 return uri1 == uri2;
             }
 
-            return string.Equals(uriTemplate1, uriTemplate2, StringComparison.Ordinal);
+            return false;
         }
 
         public int GetHashCode([DisallowNull] string uriTemplate)
