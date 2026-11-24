@@ -60,22 +60,43 @@ public sealed class RequestContext<TParams> : MessageContext
     internal void RecoverStructuredContent(McpServerTool tool, CallToolResult result) =>
         StructuredContentRecoveryTarget?.Recover(tool, result);
 
-    internal sealed class StructuredContentRecoveryState(McpServerTool tool, JsonElement? schema)
+    internal sealed class StructuredContentRecoveryState(
+        McpServerTool tool,
+        IReadOnlyList<(McpServerTool Tool, JsonElement? Schema)> schemas)
     {
         private const int MaxRetainedBytes = 4 * 1024 * 1024;
         private const int MaxRetainedIdentities = 128;
+        private readonly (McpServerTool Tool, JsonElement? Schema)[] _schemas = [.. schemas];
         private readonly object _lock = new();
         private readonly Dictionary<JsonElement, Action<McpServerTool, CallToolResult>> _plans = [];
         private int _retainedBytes;
         private bool _isActive = true;
         private int _requiresSchemaConformance;
+        private int _returnsExplicitResult;
 
         internal McpServerTool Tool { get; } = tool;
-        internal JsonElement? Schema { get; } = schema;
+        internal JsonElement? Schema => _schemas[0].Schema;
         internal bool IsActive => Volatile.Read(ref _isActive);
         internal bool RequiresSchemaConformance => Volatile.Read(ref _requiresSchemaConformance) != 0;
+        internal bool ReturnsExplicitResult => Volatile.Read(ref _returnsExplicitResult) != 0;
 
         internal void RequireSchemaConformance() => Volatile.Write(ref _requiresSchemaConformance, 1);
+        internal void MarkExplicitResult() => Volatile.Write(ref _returnsExplicitResult, 1);
+
+        internal bool TryGetSchema(McpServerTool tool, out JsonElement? schema)
+        {
+            foreach (var (capturedTool, capturedSchema) in _schemas)
+            {
+                if (ReferenceEquals(capturedTool, tool))
+                {
+                    schema = capturedSchema;
+                    return true;
+                }
+            }
+
+            schema = null;
+            return false;
+        }
 
         internal void Register(
             IReadOnlyList<JsonElement> identities, Action<McpServerTool, CallToolResult> recovery,

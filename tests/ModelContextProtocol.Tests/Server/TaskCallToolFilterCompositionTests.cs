@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -126,32 +128,66 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
                 _alternateServicesAfterNext = request.Services;
                 return result;
             });
+
+            options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
+            {
+                ResultOrAlternate<CallToolResult> result = await next(request, cancellationToken);
+                if (!result.IsAlternate)
+                {
+                    if (request.Params?.Name == "task-alternate-structured-filter-tool")
+                    {
+                        result.Result!.StructuredContent = JsonDocument.Parse("""{"unexpected":1}""").RootElement.Clone();
+                    }
+                    else if (request.Params?.Name == "task-alternate-repair-tool")
+                    {
+                        result.Result!.StructuredContent = JsonDocument.Parse("\"expected\"").RootElement.Clone();
+                    }
+                }
+
+                return result;
+            });
+            options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
+            {
+                ResultOrAlternate<CallToolResult> result = await next(request, cancellationToken);
+                if (request.Params?.Name == "task-alternate-repair-tool" && !result.IsAlternate)
+                {
+                    result.Result!.StructuredContent = JsonDocument.Parse("""{"unexpected":1}""").RootElement.Clone();
+                }
+
+                return result;
+            });
 #pragma warning restore MCPEXP002
 
             options.Filters.Request.CallToolFilters.Add(next => async (request, cancellationToken) =>
             {
-                if (request.Params?.Name != "task-filter-tool")
+                if (request.Params?.Name == "task-filter-tool")
                 {
-                    return await next(request, cancellationToken);
+                    Interlocked.Increment(ref _filterInvocationCount);
+                    _matchedPrimitiveId = request.MatchedPrimitive?.Id;
+                    _ordinaryRequestContext = request;
+
+                    try
+                    {
+                        await _continueBackgroundExecution.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
+                        _ = request.Services!.GetRequiredService<ScopedDependency>();
+                        var result = await next(request, cancellationToken);
+                        _executionCompleted.TrySetResult(result);
+                        return result;
+                    }
+                    catch (Exception exception)
+                    {
+                        _executionCompleted.TrySetException(exception);
+                        throw;
+                    }
                 }
 
-                Interlocked.Increment(ref _filterInvocationCount);
-                _matchedPrimitiveId = request.MatchedPrimitive?.Id;
-                _ordinaryRequestContext = request;
+                CallToolResult filteredResult = await next(request, cancellationToken);
+                if (request.Params?.Name == "task-structured-filter-tool")
+                {
+                    filteredResult.StructuredContent = JsonDocument.Parse("""{"unexpected":1}""").RootElement.Clone();
+                }
 
-                try
-                {
-                    await _continueBackgroundExecution.Task.WaitAsync(TestConstants.DefaultTimeout, cancellationToken);
-                    _ = request.Services!.GetRequiredService<ScopedDependency>();
-                    var result = await next(request, cancellationToken);
-                    _executionCompleted.TrySetResult(result);
-                    return result;
-                }
-                catch (Exception exception)
-                {
-                    _executionCompleted.TrySetException(exception);
-                    throw;
-                }
+                return filteredResult;
             });
         });
     }
@@ -180,6 +216,52 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
 
         var task = await client.GetTaskAsync(augmented.TaskCreated!.TaskId, cancellationToken);
         Assert.IsType<CompletedTaskResult>(task);
+    }
+
+    [Fact]
+    public async Task TaskBackedTool_ValidatesStructuredOutputAfterOrdinaryFilters()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        CallToolResult result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "task-structured-filter-tool" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.Equal(
+            "The tool could not produce structured content that conforms to its advertised output schema.",
+            Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task TaskBackedTool_ValidatesStructuredOutputAfterAlternateFilters()
+    {
+        await using var client = await CreateMcpClientForServer();
+
+        CallToolResult result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "task-alternate-structured-filter-tool" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsError);
+        Assert.Equal(
+            "The tool could not produce structured content that conforms to its advertised output schema.",
+            Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+    }
+
+    [Fact]
+    public async Task TaskBackedTool_ValidatesAfterAllAlternateFiltersCanRepairOutput()
+    {
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
+        });
+
+        CallToolResult result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "task-alternate-repair-tool" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(true, result.IsError);
+        Assert.Equal("expected", result.StructuredContent!.Value.GetString());
     }
 
     [Fact]
@@ -328,5 +410,14 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
 
         [McpServerTool(Name = "suppress-flow-task-tool")]
         public static string SuppressFlowTask() => "task succeeded";
+
+        [McpServerTool(Name = "task-structured-filter-tool", UseStructuredContent = true)]
+        public static string StructuredOutput() => "expected";
+
+        [McpServerTool(Name = "task-alternate-structured-filter-tool", UseStructuredContent = true)]
+        public static string AlternateStructuredOutput() => "expected";
+
+        [McpServerTool(Name = "task-alternate-repair-tool", UseStructuredContent = true)]
+        public static string AlternateRepairOutput() => "expected";
     }
 }

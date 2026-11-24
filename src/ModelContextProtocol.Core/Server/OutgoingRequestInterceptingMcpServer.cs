@@ -9,6 +9,12 @@ internal sealed class OutgoingRequestInterceptingMcpServer(
     Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor) : McpServer
 #pragma warning restore MCPEXP002
 {
+    private int _toolOutputValidationDepth;
+
+    internal int EnterToolOutputValidation() => Interlocked.Increment(ref _toolOutputValidationDepth);
+
+    internal void ExitToolOutputValidation() => Interlocked.Decrement(ref _toolOutputValidationDepth);
+
     internal override Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? OutgoingRequestInterceptor => interceptor;
 
     public override string? SessionId => server.SessionId;

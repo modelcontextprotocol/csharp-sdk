@@ -287,15 +287,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// output schema. Callers must gate the call on the negotiated version — this method
     /// is unconditional; the gate lives at the emission site.
     /// </summary>
+    internal Tool BuildLegacyWireProtocolTool(Tool protocolTool, bool hasCustomInvocation) =>
+        BuildLegacyWireProtocolTool(protocolTool, hasCustomInvocation, protocolTool.OutputSchema, ProtocolTool.OutputSchema);
+
     internal Tool BuildLegacyWireProtocolTool(
-        Tool protocolTool, bool hasCustomInvocation, JsonElement? outputSchema = null)
+        Tool protocolTool, bool hasCustomInvocation, JsonElement? outputSchema, JsonElement? underlyingSchema)
     {
-        if ((outputSchema ?? protocolTool.OutputSchema) is not { } natural)
+        if (outputSchema is not { } natural)
         {
             return protocolTool;
         }
 
-        bool wrapValue = ShouldWrapValueForLegacyWire(ProtocolTool.OutputSchema ?? natural);
+        bool wrapValue = ShouldWrapValueForLegacyWire(underlyingSchema ?? natural);
         bool? returnsCallToolResult = hasCustomInvocation ? null : _returnsCallToolResult;
         JsonElement legacyOutputSchema = wrapValue && returnsCallToolResult is not false
             ? TransformOutputSchemaForPossibleToolResult(natural, nullEnvelopeOnly: returnsCallToolResult is true)
@@ -321,6 +324,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         Throw.IfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var recoveryTarget = request.StructuredContentRecoveryTarget;
+        JsonElement? outputSchema = recoveryTarget is { } target && target.TryGetSchema(this, out JsonElement? capturedSchema)
+            ? capturedSchema : ProtocolTool.OutputSchema;
         request.Services = new RequestServiceProvider<CallToolRequestParams>(request);
         AIFunctionArguments arguments = new() { Services = request.Services };
 
@@ -335,27 +341,36 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         object? result;
         result = await AIFunction.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false);
 
+        if (recoveryTarget is { IsActive: false })
+        {
+            recoveryTarget = null;
+            outputSchema = null;
+        }
+
         if (result is CallToolResult callToolResult)
         {
+            recoveryTarget?.MarkExplicitResult();
+
             return callToolResult;
         }
 
         // These results bypass user serialization contracts in CreateStructuredResponse.
         bool isSerializedJson = result is JsonElement or JsonNode;
-        var recoveryTarget = request.StructuredContentRecoveryTarget;
         McpServerTool? matchedTool = recoveryTarget?.Tool ?? request.MatchedPrimitive as McpServerTool;
         JsonElement? matchedSchema = isSerializedJson ? null :
-            recoveryTarget is { } target ? target.Schema : matchedTool?.ProtocolTool.OutputSchema;
-        JsonElement? recoverySchema = isSerializedJson ? null : GetRecoverySchema(matchedTool, matchedSchema);
+            recoveryTarget is { } matchedTarget ? matchedTarget.Schema :
+                ReferenceEquals(matchedTool, this) ? outputSchema : matchedTool?.ProtocolTool.OutputSchema;
+        JsonElement? recoverySchema = isSerializedJson ? null : GetRecoverySchema(matchedTool, matchedSchema, outputSchema, recoveryTarget);
         RepairTraversalBudget? sharedBudget = !isSerializedJson && recoveryTarget is not null ? new() : null;
         string? protocolVersion = request.Server.NegotiatedProtocolVersion;
         JsonElement? structuredContent = CreateStructuredResponse(
-            result, protocolVersion, recoverySchema, out JsonElement? originalContent,
+            result, protocolVersion, outputSchema, recoverySchema, out JsonElement? originalContent,
             out JsonElement? naturalContent, out int originalContentBytes, out bool schemaConforms, sharedBudget);
-        if (!isSerializedJson &&
-            recoveryTarget is { } recoveryState &&
+        if (recoveryTarget is { } recoveryState &&
             recoveryState.Schema is not null &&
-            ProtocolTool.OutputSchema is not null &&
+            outputSchema is not null &&
+            // Avoid resolving remote references for values that already have a JSON representation.
+            (!isSerializedJson || !ContainsExternalSchemaReferences(recoveryState.Schema.Value)) &&
             (!schemaConforms || !ReferenceEquals(recoveryState.Tool, this)))
         {
             recoveryState.RequireSchemaConformance();
@@ -364,7 +379,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         (List<JsonElement> Identities, Action<McpServerTool, CallToolResult> Callback)? recovery =
             sharedBudget is not null && originalContent is not null && structuredContent is not null
                 ? CreateStructuredContentRecovery(
-                    result, originalContent, naturalContent, structuredContent, recoveryTarget!, protocolVersion, sharedBudget)
+                    result, originalContent, naturalContent, structuredContent, recoveryTarget!, outputSchema, protocolVersion, sharedBudget)
                 : null;
         CallToolResult response = result switch
         {
@@ -427,7 +442,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         object? originalResult, JsonElement? originalContent, JsonElement? naturalContent,
         JsonElement? structuredContent,
         RequestContext<CallToolRequestParams>.StructuredContentRecoveryState recoveryTarget,
-        string? protocolVersion, RepairTraversalBudget sharedBudget)
+        JsonElement? outputSchema, string? protocolVersion, RepairTraversalBudget sharedBudget)
     {
         const int maxRecoveryTargets = 128;
         List<(McpServerTool Tool, JsonElement? Schema)> targets = [(recoveryTarget.Tool, recoveryTarget.Schema)];
@@ -447,7 +462,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         targets.RemoveRange(1, targets.Count - 1);
                         break;
                     }
-                    targets.Add((delegating.InnerTool, delegating.InnerTool.ProtocolTool.OutputSchema));
+                    JsonElement? targetSchema = recoveryTarget.TryGetSchema(delegating.InnerTool, out JsonElement? capturedSchema)
+                        ? capturedSchema : delegating.InnerTool.ProtocolTool.OutputSchema;
+                    targets.Add((delegating.InnerTool, targetSchema));
                 }
                 current = delegating.InnerTool;
             }
@@ -472,7 +489,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                         {
                             sharedBudget.SpendCopy(content);
                         }
-                        preferredStructuredContent = ShapeStructuredResponse(recovered, protocolVersion);
+                        preferredStructuredContent = ShapeStructuredResponse(recovered, protocolVersion, outputSchema);
                     }
                     projections.Add((target.Tool, preferredStructuredContent));
                     preferredContent = recovered;
@@ -923,7 +940,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     private JsonElement? CreateStructuredResponse(
-        object? aiFunctionResult, string? negotiatedProtocolVersion, JsonElement? recoverySchema,
+        object? aiFunctionResult, string? negotiatedProtocolVersion, JsonElement? outputSchema, JsonElement? recoverySchema,
         out JsonElement? originalContent, out JsonElement? naturalContent, out int originalContentBytes,
         out bool schemaConforms, RepairTraversalBudget? sharedBudget)
     {
@@ -931,7 +948,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         naturalContent = null;
         originalContentBytes = 0;
         schemaConforms = false;
-        if (ProtocolTool.OutputSchema is null)
+        if (outputSchema is null)
         {
             // Only provide structured responses if the tool has an output schema defined.
             return null;
@@ -967,17 +984,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         originalContent = elementResult;
         naturalContent = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult, recoverySchema, out schemaConforms, sharedBudget);
-        return ShapeStructuredResponse(naturalContent, negotiatedProtocolVersion);
+        return ShapeStructuredResponse(naturalContent, negotiatedProtocolVersion, outputSchema);
     }
 
-    private JsonElement? ShapeStructuredResponse(JsonElement? elementResult, string? negotiatedProtocolVersion)
+    private JsonElement? ShapeStructuredResponse(
+        JsonElement? elementResult, string? negotiatedProtocolVersion, JsonElement? outputSchema)
     {
         // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
         // schemas. SEP-2106 clients see the natural shape. The classification is decided
         // fresh per request from the stored natural schema.
         if (!McpSessionHandler.SupportsNaturalOutputSchemas(negotiatedProtocolVersion) &&
-            ProtocolTool.OutputSchema is { } outputSchema &&
-            ShouldWrapValueForLegacyWire(outputSchema))
+            outputSchema is { } schema &&
+            ShouldWrapValueForLegacyWire(schema))
         {
             JsonNode? resultNode = elementResult is { } v
                 ? JsonSerializer.SerializeToNode(v, McpJsonUtilities.JsonContext.Default.JsonElement)
@@ -1107,7 +1125,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
     }
 
-    private JsonElement? GetRecoverySchema(McpServerTool? matchedTool, JsonElement? matchedSchema)
+    private JsonElement? GetRecoverySchema(
+        McpServerTool? matchedTool, JsonElement? matchedSchema, JsonElement? outputSchema,
+        RequestContext<CallToolRequestParams>.StructuredContentRecoveryState? recoveryTarget)
     {
         McpServerTool schemaTool = matchedTool ?? this;
         McpServerTool current = schemaTool;
@@ -1122,8 +1142,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return ReferenceEquals(current, this)
-            ? ReferenceEquals(schemaTool, matchedTool) ? matchedSchema : schemaTool.ProtocolTool.OutputSchema
-            : ProtocolTool.OutputSchema;
+            ? ReferenceEquals(schemaTool, matchedTool) ? matchedSchema
+                : ReferenceEquals(schemaTool, this) ? outputSchema
+                    : recoveryTarget is not null && recoveryTarget.TryGetSchema(schemaTool, out JsonElement? capturedSchema)
+                        ? capturedSchema : schemaTool.ProtocolTool.OutputSchema
+            : outputSchema;
     }
 
     private Type? GetDeclaredReturnType(object result)
@@ -1821,7 +1844,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         try
         {
             JsonElement schemaElement = JsonSerializer.SerializeToElement(schemaNode, McpJsonUtilities.JsonContext.Default.JsonNode);
-            schema = JsonSchema.Build(schemaElement, new BuildOptions { SchemaRegistry = new SchemaRegistry() });
+            schema = JsonSchema.Build(schemaElement, new BuildOptions
+            {
+                Dialect = Dialect.Draft202012,
+                SchemaRegistry = new SchemaRegistry(),
+            });
             if (!TrySetSchemaRegexTimeouts(schemaNode, schema.Root))
             {
                 schema = null;
@@ -1834,6 +1861,141 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             schema = null;
             return false;
         }
+    }
+
+    internal static bool ContainsExternalSchemaReferences(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        HashSet<Uri> localSchemaResources = [];
+        List<(string Reference, Uri? BaseUri)> references = [];
+        CollectSchemaResourcesAndReferences(schema, null, localSchemaResources, references);
+
+        foreach ((string reference, Uri? baseUri) in references)
+        {
+            if (reference.StartsWith("#", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!Uri.TryCreate(baseUri, reference, out Uri? resolvedReference) ||
+                resolvedReference is null ||
+                !localSchemaResources.Contains(GetSchemaResourceUri(resolvedReference)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void CollectSchemaResourcesAndReferences(
+        JsonElement schema,
+        Uri? baseUri,
+        HashSet<Uri> localSchemaResources,
+        List<(string Reference, Uri? BaseUri)> references)
+    {
+        if (schema.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        Uri? currentBaseUri = baseUri;
+        if (schema.TryGetProperty("$id", out JsonElement idElement) &&
+            idElement.ValueKind == JsonValueKind.String &&
+            Uri.TryCreate(baseUri, idElement.GetString(), out Uri? resolvedId) &&
+            resolvedId is not null)
+        {
+            currentBaseUri = GetSchemaResourceUri(resolvedId);
+            localSchemaResources.Add(currentBaseUri);
+        }
+
+        foreach (JsonProperty property in schema.EnumerateObject())
+        {
+            if (property.Name is "$ref" or "$dynamicRef")
+            {
+                if (property.Value.ValueKind == JsonValueKind.String &&
+                    property.Value.GetString() is { Length: > 0 } reference)
+                {
+                    references.Add((reference, currentBaseUri));
+                }
+
+                continue;
+            }
+
+            switch (property.Name)
+            {
+                case "$defs":
+                case "definitions":
+                case "properties":
+                case "patternProperties":
+                case "dependentSchemas":
+                case "dependencies":
+                    if (property.Value.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (JsonProperty subschema in property.Value.EnumerateObject())
+                        {
+                            CollectSchemaResourcesAndReferences(subschema.Value, currentBaseUri, localSchemaResources, references);
+                        }
+                    }
+                    break;
+
+                case "allOf":
+                case "anyOf":
+                case "oneOf":
+                case "prefixItems":
+                    if (property.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (JsonElement subschema in property.Value.EnumerateArray())
+                        {
+                            CollectSchemaResourcesAndReferences(subschema, currentBaseUri, localSchemaResources, references);
+                        }
+                    }
+                    break;
+
+                case "additionalItems":
+                case "additionalProperties":
+                case "contentSchema":
+                case "contains":
+                case "else":
+                case "if":
+                case "items":
+                case "not":
+                case "propertyNames":
+                case "then":
+                case "unevaluatedItems":
+                case "unevaluatedProperties":
+                    if (property.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (JsonElement subschema in property.Value.EnumerateArray())
+                        {
+                            CollectSchemaResourcesAndReferences(subschema, currentBaseUri, localSchemaResources, references);
+                        }
+                    }
+                    else
+                    {
+                        CollectSchemaResourcesAndReferences(property.Value, currentBaseUri, localSchemaResources, references);
+                    }
+                    break;
+            }
+        }
+    }
+
+    private static Uri GetSchemaResourceUri(Uri uri)
+    {
+        if (uri.IsAbsoluteUri)
+        {
+            return new UriBuilder(uri) { Fragment = string.Empty }.Uri;
+        }
+
+        string relativeUri = uri.OriginalString;
+        int fragmentStart = relativeUri.IndexOf('#');
+        return fragmentStart >= 0
+            ? new Uri(relativeUri[..fragmentStart], UriKind.Relative)
+            : uri;
     }
 
     private OutputSchemaCache GetOutputSchema(JsonElement outputSchema)

@@ -1816,6 +1816,28 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_DirectInvocation_UsesSchemaCapturedBeforeToolInvocation()
+    {
+        McpServerTool? tool = null;
+        tool = McpServerTool.Create(() =>
+        {
+            tool!.ProtocolTool.OutputSchema = null;
+            return new { Note = (string?)null };
+        }, new()
+        {
+            Name = "changed_schema",
+            UseStructuredContent = true,
+            OutputSchema = JsonDocument.Parse("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}""").RootElement,
+            SerializerOptions = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingNull),
+        });
+
+        CallToolResult result = await tool.InvokeAsync(
+            CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent!.Value.GetProperty("note").ValueKind);
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_ExplicitSchema_RefreshesChangedSchema()
     {
         McpServerTool tool = CreateStructuredOutputTestTool(
