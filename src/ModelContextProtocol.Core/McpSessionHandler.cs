@@ -587,12 +587,27 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         // extensions/io.modelcontextprotocol/tasks. Blindly overwriting the node would drop those
         // additions, so merge instead: set the standard capability fields from the session
         // capabilities while preserving any extra keys (extensions) the request envelope already had.
+        // The "extensions" map is merged by extension identifier, so a session that declares its own
+        // extensions does not replace the request's map. Every other capability, and the settings
+        // object of an extension declared on both sides, is taken whole from the session.
         var serializedCapabilities = (JsonObject)JsonSerializer.SerializeToNode(clientCapabilities, McpJsonUtilities.JsonContext.Default.ClientCapabilities)!;
         if (metaObj[MetaKeys.ClientCapabilities] is JsonObject existingCapabilities)
         {
             foreach (var property in serializedCapabilities.ToArray())
             {
-                existingCapabilities[property.Key] = property.Value?.DeepClone();
+                if (property.Key == "extensions" &&
+                    property.Value is JsonObject sessionExtensions &&
+                    existingCapabilities["extensions"] is JsonObject requestExtensions)
+                {
+                    foreach (var extension in sessionExtensions.ToArray())
+                    {
+                        requestExtensions[extension.Key] = extension.Value?.DeepClone();
+                    }
+                }
+                else
+                {
+                    existingCapabilities[property.Key] = property.Value?.DeepClone();
+                }
             }
         }
         else
