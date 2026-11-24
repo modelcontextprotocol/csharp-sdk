@@ -1,6 +1,6 @@
 using ModelContextProtocol.Protocol;
 
-namespace EverythingServer;
+namespace EverythingServer.Core;
 
 static class ResourceGenerator
 {

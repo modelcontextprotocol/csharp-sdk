@@ -1,8 +1,12 @@
 ﻿using System.Collections.Concurrent;
+using Microsoft.Extensions.Hosting;
 using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
-internal class SubscriptionMessageSender(McpServer server, ConcurrentDictionary<string, byte> subscriptions) : BackgroundService
+namespace EverythingServer.Core;
+
+public class SubscriptionMessageSender(McpServer server, ConcurrentDictionary<string, byte> subscriptions) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -10,7 +14,7 @@ internal class SubscriptionMessageSender(McpServer server, ConcurrentDictionary<
         {
             foreach (var uri in subscriptions.Keys)
             {
-                await server.SendNotificationAsync("notifications/resource/updated",
+                await server.SendNotificationAsync(NotificationMethods.ResourceUpdatedNotification,
                     new
                     {
                         Uri = uri,
