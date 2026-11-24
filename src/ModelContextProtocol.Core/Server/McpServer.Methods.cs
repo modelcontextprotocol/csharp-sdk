@@ -267,7 +267,12 @@ public abstract partial class McpServer : McpSession
     [Obsolete(Obsoletions.DeprecatedSampling_Message, DiagnosticId = Obsoletions.Deprecated_DiagnosticId, UrlFormat = Obsoletions.Deprecated_Url)]
     public IChatClient AsSamplingChatClient(JsonSerializerOptions? serializerOptions = null)
     {
-        ThrowIfSamplingUnsupported();
+        // If an outgoing-request interceptor is installed, skip the capability check.
+        // SampleAsync already does this, and SamplingChatClient calls SampleAsync on this server.
+        if (OutgoingRequestInterceptor is null)
+        {
+            ThrowIfSamplingUnsupported();
+        }
 
         return new SamplingChatClient(this, serializerOptions ?? McpJsonUtilities.DefaultOptions);
     }
@@ -413,8 +418,8 @@ public abstract partial class McpServer : McpSession
             Meta = options?.GetMetaForRequest(),
         };
 
-        ThrowIfElicitationUnsupported(request);
-
+        // Capability checks are done by the untyped overload, which skips them when an
+        // outgoing-request interceptor is installed.
         var raw = await ElicitAsync(request, cancellationToken).ConfigureAwait(false);
 
         if (!raw.IsAccepted || raw.Content is null)
