@@ -1600,7 +1600,7 @@ internal sealed partial class McpServerImpl : McpServer
         }
         else
         {
-            callToolHandler ??= (static async (request, _) => throw new McpProtocolException($"Unknown tool: '{request.Params?.Name}'", McpErrorCode.InvalidParams));
+            callToolHandler ??= (static async (request, _) => throw new UnknownToolProtocolException(request.Params?.Name));
 
             // Augment with DI tools.
             if (tools is not null)
@@ -1759,6 +1759,11 @@ internal sealed partial class McpServerImpl : McpServer
         }
     }
 
+    private sealed class UnknownToolProtocolException(string? toolName)
+        : McpProtocolException($"Unknown tool: '{toolName}'", McpErrorCode.InvalidParams)
+    {
+    }
+
     private static CallToolResult CreateToolCallErrorResult(
         RequestContext<CallToolRequestParams> request,
         Exception exception) =>
@@ -1785,7 +1790,8 @@ internal sealed partial class McpServerImpl : McpServer
                 ToolCallCompleted(toolName, result.IsError is true);
             }
             else if (!(lifecycle.Exception is OperationCanceledException && lifecycle.CancellationRequested) &&
-                lifecycle.Exception is not InputRequiredException)
+                lifecycle.Exception is not InputRequiredException &&
+                lifecycle.Exception is not UnknownToolProtocolException)
             {
                 ToolCallError(toolName, lifecycle.Exception!);
             }
