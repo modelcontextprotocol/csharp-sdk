@@ -14,7 +14,7 @@ internal class StreamClientSessionTransport : TransportBase
 
     private readonly TextReader _serverOutput;
     private readonly Stream _serverInputStream;
-    private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private protected readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly CancellationTokenSource _shutdownCts = new();
     private Task? _readTask;
 

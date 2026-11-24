@@ -34,7 +34,9 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
         catch (IOException)
         {
             // We failed to send due to an I/O error. If the server process has exited, which is then very likely the cause
-            // for the I/O error, we should throw an exception for that instead.
+            // for the I/O error, we should throw an exception for that instead. A server that has just exited may not
+            // have been reaped yet, so give it up to ShutdownTimeout to exit before checking.
+            await WaitForProcessExitAsync().ConfigureAwait(false);
             if (await GetUnexpectedExitExceptionAsync().ConfigureAwait(false) is Exception processExitException)
             {
                 throw processExitException;
@@ -63,13 +65,28 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
 
         // Closing the server's stdin is the portable graceful-shutdown signal for stdio transports.
         // Do this before waiting so a well-behaved server can finish its own cleanup and exit.
+        // Close it only once no send is writing to it: on Unix, disposing the pipe while a first write is
+        // still creating its socket hangs that write forever. A send still writing after ShutdownTimeout
+        // leaves the server to the process kill below.
+        bool sendLockTaken = false;
         try
         {
-            _process.StandardInput.Close();
+            sendLockTaken = await _sendLock.WaitAsync(_options.ShutdownTimeout).ConfigureAwait(false);
+            if (sendLockTaken)
+            {
+                _process.StandardInput.Close();
+            }
         }
         catch (Exception ex)
         {
             LogStandardInputCloseFailed(Name, ex);
+        }
+        finally
+        {
+            if (sendLockTaken)
+            {
+                _sendLock.Release();
+            }
         }
 
         // Ensure all pending ErrorDataReceived events are drained before detaching
