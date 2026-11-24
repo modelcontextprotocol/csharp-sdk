@@ -85,20 +85,33 @@ public static partial class McpAppElicitation
     /// app-rendered form elicitation.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// Core form elicitation is satisfied by either an explicit
+    /// <see cref="ElicitationCapability.Form"/> capability or a backwards-compatible
+    /// empty <see cref="ElicitationCapability"/> (neither <see cref="ElicitationCapability.Form"/>
+    /// nor <see cref="ElicitationCapability.Url"/> set). A URL-only elicitation capability
+    /// does not imply form support.
+    /// </para>
+    /// <para>
     /// A server using this one-sided check must also advertise
     /// <c>io.modelcontextprotocol/ui.elicitation</c>, as <see cref="McpAppsBuilderExtensions.WithMcpApps"/>
     /// does.
+    /// </para>
     /// </remarks>
     public static bool IsClientSupported(ClientCapabilities? clientCapabilities)
     {
         var clientUi = McpApps.GetUiCapability(clientCapabilities);
-        return clientCapabilities?.Elicitation?.Form is not null
+        return clientCapabilities?.Elicitation is { } elicitation
+            && (elicitation.Form is not null || elicitation.Url is null)
             && clientUi?.Elicitation is not null
             && clientUi.MimeTypes?.Contains(McpApps.HtmlMimeType, StringComparer.OrdinalIgnoreCase)
                 == true;
     }
 
-    /// <summary>Associates a form elicitation request with an MCP App UI resource.</summary>
+    /// <summary>
+    /// Associates a form elicitation request with an MCP App UI resource identified by a
+    /// canonical absolute lowercase <c>ui://</c> URI.
+    /// </summary>
     public static ElicitRequestParams SetAppUi(ElicitRequestParams request, string resourceUri)
     {
         ValidateArguments(request, resourceUri);
@@ -166,7 +179,11 @@ public static partial class McpAppElicitation
         return SetAppUiIfSupported(request, clientCapabilities, resourceUri);
     }
 
-    /// <summary>Gets the MCP App UI metadata from an elicitation request.</summary>
+    /// <summary>
+    /// Gets the MCP App UI metadata from an elicitation request, or <see langword="null"/>
+    /// when the metadata is absent, malformed, or does not contain a canonical absolute
+    /// lowercase <c>ui://</c> URI.
+    /// </summary>
     public static McpAppElicitationMeta? GetAppUi(ElicitRequestParams request)
     {
 #if NET
@@ -215,14 +232,60 @@ public static partial class McpAppElicitation
         if (!IsAbsoluteUiUri(resourceUri))
         {
             throw new ArgumentException(
-                "MCP App elicitation resources must be absolute ui:// URIs.",
+                "MCP App elicitation resources must be canonical absolute ui:// URIs.",
                 nameof(resourceUri)
             );
         }
     }
 
-    private static bool IsAbsoluteUiUri(string resourceUri) =>
-        Uri.TryCreate(resourceUri, UriKind.Absolute, out var uri)
-        && string.Equals(uri.Scheme, "ui", StringComparison.OrdinalIgnoreCase)
-        && !string.IsNullOrEmpty(uri.Host);
+    private static bool IsAbsoluteUiUri(string? resourceUri)
+    {
+        if (string.IsNullOrEmpty(resourceUri) ||
+            !resourceUri!.StartsWith("ui://", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        foreach (char ch in resourceUri)
+        {
+            if (char.IsWhiteSpace(ch) || char.IsControl(ch))
+            {
+                return false;
+            }
+        }
+
+        if (!Uri.TryCreate(resourceUri, UriKind.Absolute, out var uri) ||
+            !string.Equals(uri.Scheme, "ui", StringComparison.Ordinal) ||
+            string.IsNullOrEmpty(uri.Host))
+        {
+            return false;
+        }
+
+        string canonicalUri = uri.AbsoluteUri;
+        if (string.Equals(canonicalUri, resourceUri, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // System.Uri inserts a root "/" into authority-only custom-scheme URIs
+        // (such as "ui://app" -> "ui://app/" or "ui://app?x=1" -> "ui://app/?x=1").
+        // Allow only that exact empty-path form while rejecting all other rewrites.
+        string authorityPrefix = uri.GetComponents(
+            UriComponents.SchemeAndServer | UriComponents.UserInfo,
+            UriFormat.UriEscaped);
+        return string.Equals(uri.AbsolutePath, "/", StringComparison.Ordinal)
+            && resourceUri.Length >= authorityPrefix.Length
+            && resourceUri.StartsWith(authorityPrefix, StringComparison.Ordinal)
+            && (resourceUri.Length == authorityPrefix.Length
+                || resourceUri[authorityPrefix.Length] is '?' or '#')
+            && canonicalUri.Length == resourceUri.Length + 1
+            && canonicalUri.StartsWith(authorityPrefix, StringComparison.Ordinal)
+            && canonicalUri[authorityPrefix.Length] == '/'
+            && string.CompareOrdinal(
+                canonicalUri,
+                authorityPrefix.Length + 1,
+                resourceUri,
+                authorityPrefix.Length,
+                resourceUri.Length - authorityPrefix.Length) == 0;
+    }
 }

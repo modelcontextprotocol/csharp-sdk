@@ -7,7 +7,7 @@ namespace ModelContextProtocol.Extensions.Apps;
 [Experimental(Experimentals.Apps_DiagnosticId, UrlFormat = Experimentals.Apps_Url)]
 public sealed class McpAppElicitationMeta
 {
-    /// <summary>Gets or sets the absolute <c>ui://</c> resource URI for the elicitation UI.</summary>
+    /// <summary>Gets or sets the canonical absolute <c>ui://</c> resource URI for the elicitation UI.</summary>
     [JsonPropertyName("resourceUri")]
     public required string ResourceUri { get; set; }
 }

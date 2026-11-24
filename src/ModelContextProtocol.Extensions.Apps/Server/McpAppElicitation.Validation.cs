@@ -24,7 +24,8 @@ public static partial class McpAppElicitation
     /// SDK's elicitation default behavior. Submitted values are never coerced.
     /// </para>
     /// <para>
-    /// Declined and cancelled results are valid without content and are returned unchanged.
+    /// Declined and cancelled results are valid without content; <see cref="McpAppElicitationValidationResult.ValidatedResult"/>
+    /// preserves <see cref="ElicitResult.Action"/> and <see cref="Result.Meta"/> and omits <see cref="ElicitResult.Content"/>.
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> or <paramref name="result"/> is <see langword="null"/>.</exception>
@@ -59,7 +60,12 @@ public static partial class McpAppElicitation
 
         if (!result.IsAccepted)
         {
-            return McpAppElicitationValidationResult.Valid(result);
+            return McpAppElicitationValidationResult.Valid(new ElicitResult
+            {
+                Action = result.Action,
+                Content = null,
+                Meta = result.Meta,
+            });
         }
 
         var content = result.Content is not null ?

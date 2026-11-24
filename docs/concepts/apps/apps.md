@@ -184,11 +184,14 @@ var clientCapabilities = new ClientCapabilities();
 McpAppElicitation.AddClientCapabilities(clientCapabilities);
 ```
 
-On the server, associate a form elicitation with an absolute `ui://` resource
-only when the requesting client advertised all three client-side settings. The
-`RequestContext` overload uses the request-scoped capabilities required by
-`2026-07-28` and falls back to initialized session capabilities on older
-protocol revisions:
+On the server, associate a form elicitation with a canonical absolute lowercase
+`ui://` resource URI (with a nonempty authority and no silent URI rewriting)
+only when the requesting client advertised all three client-side settings:
+core form elicitation (`elicitation.form` or the backwards-compatible empty
+`elicitation: {}` capability, not URL-only `elicitation.url`), the MCP Apps HTML
+MIME type, and `io.modelcontextprotocol/ui.elicitation`. The `RequestContext`
+overload uses the request-scoped capabilities required by `2026-07-28` and falls
+back to initialized session capabilities on older protocol revisions:
 
 ```csharp
 var elicitation = new ElicitRequestParams
@@ -257,8 +260,9 @@ var inputResponses = new Dictionary<string, InputResponse>
 ```
 
 Only accepted results are schema-validated. Decline and cancel remain valid
-standard outcomes without content. Missing fields with schema defaults are
-populated in `ValidatedResult`; submitted values are never coerced.
+standard outcomes; `ValidatedResult` preserves `Action` and `Meta` and omits any
+`Content`. Missing fields with schema defaults are populated in
+`ValidatedResult`; submitted values are never coerced.
 
 ## Display modes
 

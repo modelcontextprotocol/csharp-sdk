@@ -48,6 +48,34 @@ public class McpAppElicitationTests
     }
 
     [Fact]
+    public void IsClientSupported_TreatsEmptyCoreElicitationAsFormAndRejectsUrlOnly()
+    {
+        var server = CreateServerCapabilities();
+
+        var emptyCore = CreateClientCapabilities();
+        emptyCore.Elicitation = new ElicitationCapability();
+        Assert.True(McpAppElicitation.IsClientSupported(emptyCore));
+        Assert.True(McpAppElicitation.IsSupported(emptyCore, server));
+
+        var formAndUrl = CreateClientCapabilities();
+        formAndUrl.Elicitation = new ElicitationCapability
+        {
+            Form = new FormElicitationCapability(),
+            Url = new UrlElicitationCapability(),
+        };
+        Assert.True(McpAppElicitation.IsClientSupported(formAndUrl));
+        Assert.True(McpAppElicitation.IsSupported(formAndUrl, server));
+
+        var urlOnly = CreateClientCapabilities();
+        urlOnly.Elicitation = new ElicitationCapability
+        {
+            Url = new UrlElicitationCapability(),
+        };
+        Assert.False(McpAppElicitation.IsClientSupported(urlOnly));
+        Assert.False(McpAppElicitation.IsSupported(urlOnly, server));
+    }
+
+    [Fact]
     public void SetAppUi_RoundTripsMetadataWithoutChangingCoreRequest()
     {
         var request = CreateRequest();
@@ -160,16 +188,66 @@ public class McpAppElicitationTests
     }
 
     [Theory]
+    [InlineData("ui://example")]
+    [InlineData("ui://example/")]
+    [InlineData("ui://example/choose-option.html")]
+    [InlineData("ui://example?tab=1#top")]
+    [InlineData("ui://example:8080/view.html?a=1#frag")]
+    [InlineData("ui://example/path%20with%20space")]
+    public void SetAppUi_AcceptsCanonicalUiResourceUri(string resourceUri)
+    {
+        var request = CreateRequest();
+
+        McpAppElicitation.SetAppUi(request, resourceUri);
+
+        Assert.Equal(resourceUri, McpAppElicitation.GetAppUi(request)?.ResourceUri);
+    }
+
+    [Theory]
     [InlineData("https://example.com/view.html")]
     [InlineData("relative/view.html")]
     [InlineData("ui:example/view.html")]
     [InlineData("ui:///view.html")]
+    [InlineData("ui://")]
+    [InlineData("UI://example/view.html")]
+    [InlineData("Ui://example/view.html")]
+    [InlineData(" ui://example/view.html")]
+    [InlineData("ui://example/view.html ")]
+    [InlineData("ui://example/view.html\n")]
+    [InlineData("ui://exam\tple/view.html")]
+    [InlineData("ui://example/view with space.html")]
+    [InlineData("ui://example/a/../b")]
+    [InlineData("ui://example/./view.html")]
+    [InlineData("ui://Example/view.html")]
+    [InlineData("ui://example:/view.html")]
+    [InlineData("ui://example/a%62c")]
     [InlineData("")]
     public void SetAppUi_RejectsInvalidResourceUri(string resourceUri)
     {
         Assert.ThrowsAny<ArgumentException>(() =>
             McpAppElicitation.SetAppUi(CreateRequest(), resourceUri)
         );
+    }
+
+    [Theory]
+    [InlineData("https://example.com")]
+    [InlineData("ui:example/view.html")]
+    [InlineData("ui:///view.html")]
+    [InlineData("UI://example/view.html")]
+    [InlineData(" ui://example/view.html")]
+    [InlineData("ui://example/view.html\n")]
+    [InlineData("ui://exam\tple/view.html")]
+    [InlineData("ui://example/a/../b")]
+    [InlineData("ui://Example/view.html")]
+    public void GetAppUi_ReturnsNullForInvalidOrNonCanonicalUri(string resourceUri)
+    {
+        var request = CreateRequest();
+        request.Meta = new JsonObject
+        {
+            ["ui"] = new JsonObject { ["resourceUri"] = resourceUri },
+        };
+
+        Assert.Null(McpAppElicitation.GetAppUi(request));
     }
 
     [Fact]
@@ -531,13 +609,46 @@ public class McpAppElicitationTests
     [InlineData("cancel")]
     public void ValidateResult_DeclineAndCancelWithoutContent_AreValid(string action)
     {
-        var result = new ElicitResult { Action = action };
+        var meta = new JsonObject { ["source"] = "app" };
+        var result = new ElicitResult { Action = action, Meta = meta };
 
         var validation = McpAppElicitation.ValidateResult(CreateRequest(), result);
 
         Assert.True(validation.IsValid);
-        Assert.Same(result, validation.ValidatedResult);
+        Assert.NotNull(validation.ValidatedResult);
+        Assert.Equal(action, validation.ValidatedResult.Action);
+        Assert.Null(validation.ValidatedResult.Content);
+        Assert.Same(meta, validation.ValidatedResult.Meta);
         Assert.Empty(validation.Errors);
+    }
+
+    [Theory]
+    [InlineData("decline")]
+    [InlineData("cancel")]
+    public void ValidateResult_DeclineAndCancelWithContent_PreservesActionAndMetaAndOmitsContent(
+        string action
+    )
+    {
+        var meta = new JsonObject { ["source"] = "app" };
+        var result = new ElicitResult
+        {
+            Action = action,
+            Content = new Dictionary<string, JsonElement>
+            {
+                ["choice"] = Json("\"morning\""),
+                ["unused"] = Json("\"must-be-dropped\""),
+            },
+            Meta = meta,
+        };
+
+        var validation = McpAppElicitation.ValidateResult(CreateRequest(), result);
+
+        Assert.True(validation.IsValid);
+        Assert.Empty(validation.Errors);
+        Assert.NotNull(validation.ValidatedResult);
+        Assert.Equal(action, validation.ValidatedResult.Action);
+        Assert.Null(validation.ValidatedResult.Content);
+        Assert.Same(meta, validation.ValidatedResult.Meta);
     }
 
     [Fact]
