@@ -999,11 +999,33 @@ public static partial class McpServerBuilderExtensions
         builder.Services.AddSingleton<ITransport>(sp =>
         {
             var serverOptions = sp.GetRequiredService<IOptions<McpServerOptions>>();
+            var transportOptions = sp.GetService<IOptions<StreamServerTransportOptions>>();
             var loggerFactory = sp.GetService<ILoggerFactory>();
-            return new StdioServerTransport(serverOptions.Value, loggerFactory);
+            return new StdioServerTransport(serverOptions.Value, loggerFactory, transportOptions?.Value);
         });
 
         return builder;
+    }
+
+    /// <summary>
+    /// Adds a server transport that uses standard input (stdin) and standard output (stdout) for communication,
+    /// configured with the specified transport options.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="configureOptions">Configures the transport options, such as <see cref="StreamServerTransportOptions.MaxMessageSize"/>.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="configureOptions"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// This overload behaves like <see cref="WithStdioServerTransport(IMcpServerBuilder)"/> and registers
+    /// <paramref name="configureOptions"/> as a configuration of <see cref="StreamServerTransportOptions"/>.
+    /// </remarks>
+    public static IMcpServerBuilder WithStdioServerTransport(this IMcpServerBuilder builder, Action<StreamServerTransportOptions> configureOptions)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(configureOptions);
+
+        builder.Services.Configure(configureOptions);
+        return builder.WithStdioServerTransport();
     }
 
     /// <summary>
@@ -1025,6 +1047,41 @@ public static partial class McpServerBuilderExtensions
 
         AddSingleSessionServerDependencies(builder.Services);
         builder.Services.AddSingleton<ITransport>(new StreamServerTransport(inputStream, outputStream));
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a server transport that uses the specified input and output streams for communication,
+    /// configured with the specified transport options.
+    /// </summary>
+    /// <param name="builder">The builder instance.</param>
+    /// <param name="inputStream">The input <see cref="Stream"/> to use as standard input.</param>
+    /// <param name="outputStream">The output <see cref="Stream"/> to use as standard output.</param>
+    /// <param name="configureOptions">Configures the transport options, such as <see cref="StreamServerTransportOptions.MaxMessageSize"/>.</param>
+    /// <returns>The builder provided in <paramref name="builder"/>.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="builder"/>, <paramref name="inputStream"/>, <paramref name="outputStream"/>, or <paramref name="configureOptions"/> is <see langword="null"/>.
+    /// </exception>
+    public static IMcpServerBuilder WithStreamServerTransport(
+        this IMcpServerBuilder builder,
+        Stream inputStream,
+        Stream outputStream,
+        Action<StreamServerTransportOptions> configureOptions)
+    {
+        Throw.IfNull(builder);
+        Throw.IfNull(inputStream);
+        Throw.IfNull(outputStream);
+        Throw.IfNull(configureOptions);
+
+        builder.Services.Configure(configureOptions);
+
+        AddSingleSessionServerDependencies(builder.Services);
+        builder.Services.AddSingleton<ITransport>(sp =>
+        {
+            var transportOptions = sp.GetRequiredService<IOptions<StreamServerTransportOptions>>();
+            return new StreamServerTransport(inputStream, outputStream, serverName: null, loggerFactory: null, transportOptions.Value);
+        });
 
         return builder;
     }

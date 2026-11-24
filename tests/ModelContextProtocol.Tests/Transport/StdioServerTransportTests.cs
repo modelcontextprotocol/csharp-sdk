@@ -389,4 +389,106 @@ public class StdioServerTransportTests : LoggedTest
         Assert.NotEmpty(traceLogMessages);
         Assert.Contains(traceLogMessages, x => x.Message.Contains("\"method\":\"test\"") && x.Message.Contains("\"id\":99"));
     }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Read_Message_Split_Across_Writes()
+    {
+        // Every byte arrives in its own write, so multi-byte UTF-8 characters are split across reads.
+        const string Line = """{"jsonrpc":"2.0","id":"zażółć","method":"test","params":{"text":"gęślą jaźń 🎉"}}""" + "\n";
+
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(input, Stream.Null, loggerFactory: LoggerFactory);
+
+        foreach (byte b in Encoding.UTF8.GetBytes(Line))
+        {
+            await pipe.Writer.WriteAsync(new[] { b }, TestContext.Current.CancellationToken);
+        }
+
+        var request = Assert.IsType<JsonRpcRequest>(await transport.MessageReader.ReadAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("zażółć", request.Id.ToString());
+        Assert.Equal("gęślą jaźń 🎉", request.Params?["text"]?.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Read_Several_Messages_From_One_Write_And_Skip_Blank_Lines()
+    {
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(input, Stream.Null, loggerFactory: LoggerFactory);
+
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes(
+            "\n  \t\r\n" +
+            """{"jsonrpc":"2.0","id":1,"method":"first"}""" + "\r\n\n" +
+            """{"jsonrpc":"2.0","method":"notifications/second"}""" + "\n" +
+            """{"jsonrpc":"2.0","id":3,"method":"third"}""" + "\n"),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("first", Assert.IsType<JsonRpcRequest>(await transport.MessageReader.ReadAsync(TestContext.Current.CancellationToken)).Method);
+        Assert.Equal("notifications/second", Assert.IsType<JsonRpcNotification>(await transport.MessageReader.ReadAsync(TestContext.Current.CancellationToken)).Method);
+        Assert.Equal("third", Assert.IsType<JsonRpcRequest>(await transport.MessageReader.ReadAsync(TestContext.Current.CancellationToken)).Method);
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Read_Final_Message_Without_Trailing_Newline()
+    {
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(input, Stream.Null, loggerFactory: LoggerFactory);
+
+        await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","id":5,"method":"last"}"""), TestContext.Current.CancellationToken);
+        pipe.Writer.Complete();
+
+        var request = Assert.IsType<JsonRpcRequest>(await transport.MessageReader.ReadAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("last", request.Method);
+
+        // End of input completes the transport.
+        Assert.False(await transport.MessageReader.WaitToReadAsync(TestContext.Current.CancellationToken));
+        Assert.False(transport.IsConnected);
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Skip_Utf8_Byte_Order_Mark_At_Stream_Start()
+    {
+        Pipe pipe = new();
+        using var input = pipe.Reader.AsStream();
+
+        await using var transport = new StreamServerTransport(input, Stream.Null, loggerFactory: LoggerFactory);
+
+        byte[] message = Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","id":1,"method":"bom"}""" + "\n");
+        await pipe.Writer.WriteAsync(new byte[] { 0xEF, 0xBB, 0xBF }.Concat(message).ToArray(), TestContext.Current.CancellationToken);
+
+        var request = Assert.IsType<JsonRpcRequest>(await transport.MessageReader.ReadAsync(TestContext.Current.CancellationToken));
+        Assert.Equal("bom", request.Method);
+    }
+
+    [Fact]
+    public async Task ReadMessagesAsync_Should_Respond_With_ParseError_For_Trailing_Data()
+    {
+        Pipe inputPipe = new();
+        Pipe outputPipe = new();
+        using var input = inputPipe.Reader.AsStream();
+        using var output = outputPipe.Writer.AsStream();
+
+        await using var transport = new StreamServerTransport(input, output, loggerFactory: LoggerFactory);
+
+        await inputPipe.Writer.WriteAsync(
+            Encoding.UTF8.GetBytes("""{"jsonrpc":"2.0","method":"ping","id":12} {"extra":true}""" + "\n"),
+            TestContext.Current.CancellationToken);
+
+        using var responseReader = new StreamReader(outputPipe.Reader.AsStream(), Encoding.UTF8);
+        var responseLine = await responseReader.ReadLineAsync(
+#if NET
+            TestContext.Current.CancellationToken
+#endif
+        );
+
+        var error = Assert.IsType<JsonRpcError>(JsonSerializer.Deserialize<JsonRpcMessage>(responseLine!, McpJsonUtilities.DefaultOptions));
+        Assert.Equal(new RequestId(12), error.Id);
+        Assert.Equal((int)McpErrorCode.ParseError, error.Error.Code);
+        Assert.True(transport.IsConnected);
+    }
 }

@@ -15,7 +15,19 @@ public sealed class StdioServerTransport : StreamServerTransport
     /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
     /// <exception cref="ArgumentNullException"><paramref name="serverOptions"/> is <see langword="null"/> or contains a null name.</exception>
     public StdioServerTransport(McpServerOptions serverOptions, ILoggerFactory? loggerFactory = null)
-        : this(GetServerName(serverOptions), loggerFactory: loggerFactory)
+        : this(GetServerName(serverOptions), loggerFactory, transportOptions: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StdioServerTransport"/> class with transport options.
+    /// </summary>
+    /// <param name="serverOptions">The server options.</param>
+    /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
+    /// <param name="transportOptions">Optional transport options, such as <see cref="StreamServerTransportOptions.MaxMessageSize"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="serverOptions"/> is <see langword="null"/> or contains a null name.</exception>
+    public StdioServerTransport(McpServerOptions serverOptions, ILoggerFactory? loggerFactory, StreamServerTransportOptions? transportOptions)
+        : this(GetServerName(serverOptions), loggerFactory, transportOptions)
     {
     }
 
@@ -26,10 +38,23 @@ public sealed class StdioServerTransport : StreamServerTransport
     /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
     /// <exception cref="ArgumentNullException"><paramref name="serverName"/> is <see langword="null"/>.</exception>
     public StdioServerTransport(string serverName, ILoggerFactory? loggerFactory = null)
+        : this(serverName, loggerFactory, transportOptions: null)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StdioServerTransport"/> class with transport options.
+    /// </summary>
+    /// <param name="serverName">The name of the server.</param>
+    /// <param name="loggerFactory">Optional logger factory used for logging employed by the transport.</param>
+    /// <param name="transportOptions">Optional transport options, such as <see cref="StreamServerTransportOptions.MaxMessageSize"/>.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="serverName"/> is <see langword="null"/>.</exception>
+    public StdioServerTransport(string serverName, ILoggerFactory? loggerFactory, StreamServerTransportOptions? transportOptions)
         : base(new CancellableStdinStream(Console.OpenStandardInput()),
                new BufferedStream(Console.OpenStandardOutput()),
                serverName ?? throw new ArgumentNullException(nameof(serverName)),
-               loggerFactory)
+               loggerFactory,
+               transportOptions)
     {
     }
 
