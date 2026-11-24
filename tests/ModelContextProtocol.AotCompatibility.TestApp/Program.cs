@@ -58,7 +58,7 @@ McpServerTool structuredTool = McpServerTool.Create(
             {
               "$id":"https://example.test/aot",
               "type":"object",
-              "required":["id","note","value","items","genericItems","dynamicItems","unions","numbers","extension","contract","nullable","delegatingCount"],
+              "required":["id","note","items","genericItems","dynamicItems","unions","numbers","extension","contract","nullable"],
               "anyOf":[{"required":["count"]},{"required":["note"]}],
               "$defs":{"child":{"$id":"child","type":"object","required":["count"],"properties":{"count":{"const":0}}}},
               "properties":{
@@ -79,6 +79,15 @@ McpServerTool structuredTool = McpServerTool.Create(
               }
             }
             """).RootElement,
+    });
+McpServerTool skippedConverterTool = McpServerTool.Create(
+    () => new AotStructuredOutput(),
+    new()
+    {
+        Name = "SkippedConverterRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = structuredOptions,
+        OutputSchema = JsonDocument.Parse("""{"required":["value"]}""").RootElement,
     });
 JsonSerializerOptions preservedOptions = new(structuredOptions) { ReferenceHandler = ReferenceHandler.Preserve };
 McpServerTool preservedTool = McpServerTool.Create(
@@ -195,6 +204,58 @@ McpServerTool callbackRecoveryTool = McpServerTool.Create(
         SerializerOptions = structuredOptions,
         OutputSchema = JsonDocument.Parse("""{"required":["note"]}""").RootElement,
     });
+JsonSerializerOptions defaultRecoveryOptions = new(structuredOptions)
+{
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+    IgnoreReadOnlyProperties = false,
+};
+McpServerTool defaultRecoveryTool = McpServerTool.Create(
+    () => new AotDefaultOutput(),
+    new()
+    {
+        Name = "DefaultRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = defaultRecoveryOptions,
+        OutputSchema = JsonDocument.Parse("""{"required":["count"],"properties":{"count":{"const":0}}}""").RootElement,
+    });
+McpServerTool changedDefaultRecoveryTool = McpServerTool.Create(
+    () => new AotChangedDefaultOutput(),
+    new()
+    {
+        Name = "ChangedDefaultRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = defaultRecoveryOptions,
+        OutputSchema = JsonDocument.Parse("""{"required":["secret"],"properties":{"secret":{"type":"integer"}}}""").RootElement,
+    });
+JsonSerializerOptions enumRecoveryOptions = new(defaultRecoveryOptions);
+enumRecoveryOptions.Converters.Add(new JsonStringEnumConverter<AotSecretEnum>(new AotSecretNamingPolicy()));
+McpServerTool enumRecoveryTool = McpServerTool.Create(
+    () => new AotEnumOutput(),
+    new()
+    {
+        Name = "EnumRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = enumRecoveryOptions,
+        OutputSchema = JsonDocument.Parse("""{"required":["value"],"properties":{"value":{"const":"not-for-output"}}}""").RootElement,
+    });
+McpServerTool equatableDefaultTool = McpServerTool.Create(
+    () => new AotEquatableOutput(),
+    new()
+    {
+        Name = "EquatableDefaultRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = defaultRecoveryOptions,
+        OutputSchema = JsonDocument.Parse("""{"required":["child"]}""").RootElement,
+    });
+McpServerTool equatableSecretTool = McpServerTool.Create(
+    () => new AotEquatableOutput { Child = new("not-for-output") },
+    new()
+    {
+        Name = "EquatableSecretRecovery",
+        UseStructuredContent = true,
+        SerializerOptions = defaultRecoveryOptions,
+        OutputSchema = equatableDefaultTool.ProtocolTool.OutputSchema,
+    });
 List<McpServerTool> readOnlyRecoveryTools = [];
 foreach (bool field in new[] { false, true })
 {
@@ -306,7 +367,7 @@ services.Configure<McpServerOptions>(options =>
 services.AddMcpServer()
     .WithStreamServerTransport(clientToServerPipe.Reader.AsStream(), serverToClientPipe.Writer.AsStream())
     .WithTools<AotTools>()
-    .WithTools([new ForwardingAotTool(structuredTool), preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool, annotationRecoveryTool, regexRecoveryTool, callbackRecoveryTool])
+    .WithTools([new ForwardingAotTool(structuredTool), skippedConverterTool, preservedTool, preservedNongenericTool, ancestorTool, iteratorTool, genericListTool, genericMutableListTool, boundedRecoveryTool, annotationRecoveryTool, regexRecoveryTool, callbackRecoveryTool, defaultRecoveryTool, changedDefaultRecoveryTool, enumRecoveryTool, equatableDefaultTool, equatableSecretTool])
     .WithTools(readOnlyRecoveryTools)
     .WithTools(forwardingRecoveryTools)
     .WithTools(
@@ -380,7 +441,7 @@ var structuredResult = await client.CallToolAsync("RequiredDefaults");
 if (structuredResult.StructuredContent is not { } structured ||
     structured.GetProperty("id").ValueKind != JsonValueKind.Null ||
     structured.GetProperty("note").ValueKind != JsonValueKind.Null ||
-    structured.GetProperty("value").GetString() != "converted" ||
+    structured.TryGetProperty("value", out _) ||
     structured.GetProperty("items").GetProperty("42").GetProperty("count").GetInt32() != 0 ||
     structured.GetProperty("genericItems").GetProperty("42").GetProperty("count").GetInt32() != 0 ||
     structured.GetProperty("dynamicItems").GetProperty("entry").GetProperty("count").GetInt32() != 0 ||
@@ -392,11 +453,28 @@ if (structuredResult.StructuredContent is not { } structured ||
     structured.GetProperty("unevaluated").GetProperty("evaluated\0path").GetProperty("real").ValueKind != JsonValueKind.Null ||
     structured.GetProperty("unevaluated").GetProperty("evaluated\0path").TryGetProperty("note", out _) ||
     structured.GetProperty("unevaluated").GetProperty("other").GetProperty("note").ValueKind != JsonValueKind.Null ||
-    structured.GetProperty("delegatingCount").GetInt32() != 0 ||
+    structured.TryGetProperty("delegatingCount", out _) ||
     structured.TryGetProperty("count", out _))
 {
     throw new Exception($"Unexpected structured output: {structuredResult.StructuredContent}");
 }
+
+var skippedConverterResult = await client.CallToolAsync("SkippedConverterRecovery");
+AssertStructuredOutputFailure(skippedConverterResult, "not-for-output");
+
+var defaultRecoveryResult = await client.CallToolAsync("DefaultRecovery");
+if (defaultRecoveryResult.StructuredContent?.GetProperty("count").GetInt32() != 0)
+{
+    throw new Exception($"Unexpected default recovery output: {defaultRecoveryResult.StructuredContent}");
+}
+var changedDefaultRecoveryResult = await client.CallToolAsync("ChangedDefaultRecovery");
+AssertStructuredOutputFailure(changedDefaultRecoveryResult, "314159");
+var enumRecoveryResult = await client.CallToolAsync("EnumRecovery");
+AssertStructuredOutputFailure(enumRecoveryResult, "not-for-output");
+var equatableDefaultResult = await client.CallToolAsync("EquatableDefaultRecovery");
+AssertStructuredOutputFailure(equatableDefaultResult);
+var equatableSecretResult = await client.CallToolAsync("EquatableSecretRecovery");
+AssertStructuredOutputFailure(equatableSecretResult, "not-for-output");
 
 foreach (JsonElement item in structured.GetProperty("unions").EnumerateArray())
 {
@@ -428,14 +506,7 @@ foreach (string name in new[] { "ForwardingEcho", "OverridingEcho" })
 }
 
 var iteratorResult = await client.CallToolAsync("Iterator");
-if (iteratorResult.StructuredContent is not { } iterator ||
-    iterator.ValueKind != JsonValueKind.Array ||
-    iterator.GetArrayLength() != 1 ||
-    iterator[0].ValueKind != JsonValueKind.Object ||
-    iterator[0].TryGetProperty("count", out _))
-{
-    throw new Exception($"Unexpected iterator output: {iteratorResult.StructuredContent}");
-}
+AssertStructuredOutputFailure(iteratorResult);
 
 foreach (string name in new[] { "GenericList", "GenericMutableList" })
 {
@@ -448,11 +519,7 @@ foreach (string name in new[] { "GenericList", "GenericMutableList" })
 }
 
 var boundedRecoveryResult = await client.CallToolAsync("BoundedRecovery");
-if (boundedRecoveryResult.StructuredContent is not { } boundedRecovery ||
-    boundedRecovery.GetRawText() != "{}")
-{
-    throw new Exception($"Unexpected bounded recovery output: {boundedRecoveryResult.StructuredContent}");
-}
+AssertStructuredOutputFailure(boundedRecoveryResult);
 
 var annotationRecoveryResult = await client.CallToolAsync("AnnotationRecovery");
 if (annotationRecoveryResult.StructuredContent is not { } annotationRecovery ||
@@ -463,12 +530,7 @@ if (annotationRecoveryResult.StructuredContent is not { } annotationRecovery ||
 }
 
 var regexRecoveryResult = await client.CallToolAsync("RegexRecovery");
-if (regexRecoveryResult.StructuredContent is not { } regexRecovery ||
-    regexRecovery.TryGetProperty("note", out _) ||
-    regexRecovery.GetProperty("real").GetString() != new string('a', 26) + "!")
-{
-    throw new Exception($"Unexpected regex recovery output: {regexRecoveryResult.StructuredContent}");
-}
+AssertStructuredOutputFailure(regexRecoveryResult);
 
 foreach (bool field in new[] { false, true })
 {
@@ -483,11 +545,7 @@ foreach (bool field in new[] { false, true })
 }
 
 var callbackRecoveryResult = await client.CallToolAsync("CallbackRecovery");
-if (callbackRecoveryResult.IsError == true ||
-    callbackRecoveryResult.StructuredContent?.GetRawText() != """{"kept":"kept"}""")
-{
-    throw new Exception($"Unexpected callback recovery output: {callbackRecoveryResult.StructuredContent}");
-}
+AssertStructuredOutputFailure(callbackRecoveryResult);
 
 foreach (bool required in new[] { false, true })
 {
@@ -540,16 +598,7 @@ if (dispatchCount != 4 ||
 }
 
 var ancestorResult = await client.CallToolAsync("AncestorCycles");
-JsonElement ancestor = ancestorResult.StructuredContent!.Value;
-foreach (JsonElement node in ancestor.GetProperty("items").EnumerateArray()
-    .Concat(ancestor.GetProperty("entries").EnumerateObject().Select(property => property.Value))
-    .Prepend(ancestor.GetProperty("child")))
-{
-    if (node.GetProperty("missing").GetProperty("owner").ValueKind != JsonValueKind.Null)
-    {
-        throw new Exception($"Unexpected ancestor cycle output: {ancestor}");
-    }
-}
+AssertStructuredOutputFailure(ancestorResult);
 
 // List, get, and verify a skill.
 var skills = await client.ListSkillsAsync();
@@ -605,6 +654,19 @@ if (catalogTracker.Created != 2 || catalogTracker.Disposed != 2)
     throw new Exception("Unexpected request-service lifetimes for registered get and custom fallback.");
 }
 
+static void AssertStructuredOutputFailure(CallToolResult result, string? sensitiveValue = null)
+{
+    const string expectedMessage = "The tool could not produce structured content that conforms to its advertised output schema.";
+    if (result.IsError is not true ||
+        result.StructuredContent is not null ||
+        result.Content is not [TextContentBlock { Text: var message }] ||
+        message != expectedMessage ||
+        (sensitiveValue is not null && message.Contains(sensitiveValue, StringComparison.Ordinal)))
+    {
+        throw new Exception($"Unexpected structured output failure: {result.StructuredContent}");
+    }
+}
+
 Console.WriteLine("Success!");
 
 internal sealed class AotCatalogTracker
@@ -648,7 +710,7 @@ internal sealed class AotStructuredOutput
     public int Count => throw new InvalidOperationException("Excluded getter was invoked.");
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public RequestId Id { get; init; }
+    public string? Id { get; init; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Note { get; init; }
@@ -686,6 +748,47 @@ internal sealed class AotStructuredOutput
         ((IDictionary<string, object?>)items)["entry"] = default(AotStructuredChild);
         return items;
     }
+}
+
+internal sealed class AotDefaultOutput
+{
+    public int Count { get; set; }
+}
+
+internal sealed class AotChangedDefaultOutput : IJsonOnSerializing, IJsonOnSerialized
+{
+    private int _secret;
+    public int Secret => _secret;
+    public void OnSerializing() => _secret = 0;
+    public void OnSerialized() => _secret = 314159;
+}
+
+internal sealed class AotEnumOutput
+{
+    public AotSecretEnum Value { get; set; }
+}
+
+internal enum AotSecretEnum
+{
+    None,
+}
+
+internal sealed class AotSecretNamingPolicy : JsonNamingPolicy
+{
+    public override string ConvertName(string name) => "not-for-output";
+}
+
+internal sealed class AotEquatableOutput
+{
+    public AotEquatableValue Child { get; set; }
+}
+
+internal readonly struct AotEquatableValue(string? secret) : IEquatable<AotEquatableValue>
+{
+    public string? Secret { get; } = secret;
+    public bool Equals(AotEquatableValue other) => true;
+    public override bool Equals(object? obj) => obj is AotEquatableValue;
+    public override int GetHashCode() => 0;
 }
 
 internal sealed class AotGenericList : IReadOnlyList<AotStructuredChild>
@@ -752,10 +855,10 @@ internal sealed class AotUnionOutput
     public string Tag { get; init; } = "0";
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public AotNullableChild Child0 { get; init; }
+    public AotNullableChild? Child0 { get; init; } = new AotNullableChild();
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public AotNullableChild Child1 { get; init; }
+    public AotNullableChild? Child1 { get; init; }
 }
 
 internal struct AotNullableChild
@@ -883,13 +986,26 @@ internal sealed class AotAncestorRoot
 
 internal sealed class AotAncestorOwner
 {
+    private AotAncestorValue _missing;
+    [JsonIgnore]
+    public object? CycleTarget { get; set; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public AotAncestorValue Missing { get; set; }
+    public AotAncestorValue Missing
+    {
+        get
+        {
+            AotAncestorValue.CurrentOwner = CycleTarget;
+            return _missing;
+        }
+        set => _missing = value;
+    }
 }
 
 internal struct AotAncestorValue : IEquatable<AotAncestorValue>
 {
-    public object? Owner { get; set; }
+    internal static object? CurrentOwner;
+    public object? Owner { get => CurrentOwner; set => CurrentOwner = value; }
     public bool Equals(AotAncestorValue other) => true;
     public override bool Equals(object? obj) => obj is AotAncestorValue;
     public override int GetHashCode() => 0;
@@ -907,11 +1023,11 @@ internal sealed class AotAncestorFunction(JsonSerializerOptions options) : AIFun
     private static AotAncestorRoot CreateValue()
     {
         AotAncestorRoot root = new();
-        root.Child.Missing = new() { Owner = root };
-        root.Items[0].Missing = new() { Owner = root };
-        root.Items[1].Missing = new() { Owner = root.Items };
-        root.Entries["root"].Missing = new() { Owner = root };
-        root.Entries["container"].Missing = new() { Owner = root.Entries };
+        root.Child.CycleTarget = root;
+        root.Items[0].CycleTarget = root;
+        root.Items[1].CycleTarget = root.Items;
+        root.Entries["root"].CycleTarget = root;
+        root.Entries["container"].CycleTarget = root.Entries;
         return root;
     }
 }
@@ -953,6 +1069,10 @@ internal sealed class AotCallbackOutput : IJsonOnSerializing, IJsonOnSerialized
 [JsonSerializable(typeof(AotCallbackOutput))]
 [JsonSerializable(typeof(AotMutableNote))]
 [JsonSerializable(typeof(AotMutableCount))]
+[JsonSerializable(typeof(AotDefaultOutput))]
+[JsonSerializable(typeof(AotChangedDefaultOutput))]
+[JsonSerializable(typeof(AotEnumOutput))]
+[JsonSerializable(typeof(AotEquatableOutput))]
 internal partial class AotJsonContext : JsonSerializerContext;
 
 internal class ForwardingAotTool(McpServerTool inner) : DelegatingMcpServerTool(inner);

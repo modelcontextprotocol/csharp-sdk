@@ -86,11 +86,15 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.Equal(0, completionDetails.ExitCode);
     }
 
-    [Fact]
-    public async Task DisposeAsync_DrainsFinalNotificationsBeforeStoppingReadLoop()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task DisposeAsync_DrainsServerOutputUntilProcessExits(bool concurrentDispose, bool exceedMessageLimit)
     {
         string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
         string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
+        string serverArgument = exceedMessageLimit ? "--write-shutdown-overflow-notifications" : "--write-shutdown-notifications";
 
         StdioClientTransport transport = new(new()
         {
@@ -103,29 +107,101 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
             },
             Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
             {
-                (true, _) => [testServerExecutable, "--write-large-notifications-after-stdin-eof"],
-                (_, true) => ["--write-large-notifications-after-stdin-eof"],
-                _ => [testServerDll, "--write-large-notifications-after-stdin-eof"],
+                (true, _) => [testServerExecutable, serverArgument],
+                (_, true) => [serverArgument],
+                _ => [testServerDll, serverArgument],
             },
             ShutdownTimeout = TestConstants.DefaultTimeout,
         }, LoggerFactory);
 
         await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        JsonRpcNotification ready = Assert.IsType<JsonRpcNotification>(
+            await session.MessageReader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(
+                TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        Assert.Equal("test/ready", ready.Method);
 
-        await session.DisposeAsync().AsTask().WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-
-        int notificationCount = 0;
-        while (session.MessageReader.TryRead(out JsonRpcMessage? message))
+        Task dispose = session.DisposeAsync().AsTask();
+        if (concurrentDispose)
         {
-            Assert.IsType<JsonRpcNotification>(message);
-            notificationCount++;
+            await Task.WhenAll(dispose, session.DisposeAsync().AsTask());
+        }
+        else
+        {
+            await dispose;
         }
 
-        Assert.Equal(1024, notificationCount);
+        int shutdownNotificationCount = 0;
+        while (session.MessageReader.TryRead(out JsonRpcMessage? message))
+        {
+            Assert.Equal("test/shutdown", Assert.IsType<JsonRpcNotification>(message).Method);
+            shutdownNotificationCount++;
+        }
+
+        Assert.Equal(exceedMessageLimit ? 4096 : 1024, shutdownNotificationCount);
         var exception = await Assert.ThrowsAsync<ClientTransportClosedException>(
-            async () => await session.MessageReader.Completion.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
-        var completionDetails = Assert.IsType<StdioClientCompletionDetails>(exception.Details);
-        Assert.Equal(0, completionDetails.ExitCode);
+            () => session.MessageReader.Completion.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        Assert.Equal(0, Assert.IsType<StdioClientCompletionDetails>(exception.Details).ExitCode);
+    }
+
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task DisposeAsync_BoundsWaitForBlockedStandardErrorCallback()
+    {
+        string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
+        string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
+        TaskCompletionSource<bool> callbackEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> callbackReturned = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> releaseCallback = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        StdioClientTransport transport = new(new()
+        {
+            Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => "mono",
+                (_, true) => testServerExecutable,
+                _ => "dotnet",
+            },
+            Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => [testServerExecutable, "--echo-cli-arg-and-exit"],
+                (_, true) => ["--echo-cli-arg-and-exit"],
+                _ => [testServerDll, "--echo-cli-arg-and-exit"],
+            },
+            ShutdownTimeout = TimeSpan.FromSeconds(1),
+            StandardErrorLines = line =>
+            {
+                if (line.StartsWith("CLI_ARG:", StringComparison.Ordinal))
+                {
+                    callbackEntered.TrySetResult(true);
+                    releaseCallback.Task.GetAwaiter().GetResult();
+                    callbackReturned.TrySetResult(true);
+                }
+            },
+        }, LoggerFactory);
+
+        ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        Task? dispose = null;
+        try
+        {
+            await callbackEntered.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+            dispose = Task.Run(async () => await session.DisposeAsync(), TestContext.Current.CancellationToken);
+            await dispose.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            releaseCallback.TrySetResult(true);
+            if (callbackEntered.Task.IsCompleted)
+            {
+                await callbackReturned.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+            }
+            if (dispose is not null)
+            {
+                await dispose.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+            }
+            else
+            {
+                await session.DisposeAsync();
+            }
+        }
     }
 
     [Fact]
@@ -529,5 +605,93 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         Assert.NotNull(readMessage);
         Assert.IsType<JsonRpcRequest>(readMessage);
         Assert.Equal("44", ((JsonRpcRequest)readMessage).Id.ToString());
+    }
+
+    [Theory]
+    [InlineData("\r", false)]
+    [InlineData("", true)]
+    public async Task ReadMessagesAsync_AcceptsCarriageReturnAndEndOfStream(string delimiter, bool completeOutput)
+    {
+        Pipe serverInputPipe = new();
+        Pipe serverOutputPipe = new();
+        var transport = new StreamClientTransport(serverInputPipe.Writer.AsStream(), serverOutputPipe.Reader.AsStream(), LoggerFactory);
+        await using var sessionTransport = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+
+        var message = new JsonRpcRequest { Method = "test", Id = new RequestId(44) };
+        string json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions);
+        await serverOutputPipe.Writer.WriteAsync(Encoding.UTF8.GetBytes(json + delimiter), TestContext.Current.CancellationToken);
+        if (completeOutput)
+        {
+            await serverOutputPipe.Writer.CompleteAsync();
+        }
+
+        JsonRpcRequest received = Assert.IsType<JsonRpcRequest>(
+            await sessionTransport.MessageReader.ReadAsync(TestContext.Current.CancellationToken).AsTask()
+                .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        Assert.Equal(message.Id, received.Id);
+    }
+}
+
+[Collection(nameof(DisableParallelization))]
+public class StdioClientDrainTests(ITestOutputHelper testOutputHelper) : LoggedTest(testOutputHelper)
+{
+    public static bool IsStdErrCallbackSupported => !PlatformDetection.IsMonoRuntime;
+
+    [Fact(Skip = "Platform not supported by this test.", SkipUnless = nameof(IsStdErrCallbackSupported))]
+    public async Task DisposeAsync_DrainsUnterminatedOutputWithoutBufferingIt()
+    {
+#if NET
+        const int outputSize = 16 * 1024 * 1024;
+#endif
+        string testServerExecutable = Path.Combine(AppContext.BaseDirectory, "TestServer.exe");
+        string testServerDll = Path.Combine(AppContext.BaseDirectory, "TestServer.dll");
+        var partialOutputStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        StdioClientTransport transport = new(new()
+        {
+            Name = "TestServer",
+            Command = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => "mono",
+                (_, true) => testServerExecutable,
+                _ => "dotnet",
+            },
+            Arguments = (PlatformDetection.IsMonoRuntime, PlatformDetection.IsWindows) switch
+            {
+                (true, _) => [testServerExecutable, "--write-shutdown-unterminated-output"],
+                (_, true) => ["--write-shutdown-unterminated-output"],
+                _ => [testServerDll, "--write-shutdown-unterminated-output"],
+            },
+            ShutdownTimeout = TestConstants.DefaultTimeout,
+            StandardErrorLines = line =>
+            {
+                if (line == "unterminated output started")
+                {
+                    partialOutputStarted.TrySetResult(true);
+                }
+            },
+        }, LoggerFactory);
+
+        await using ITransport session = await transport.ConnectAsync(TestContext.Current.CancellationToken);
+        JsonRpcNotification ready = Assert.IsType<JsonRpcNotification>(
+            await session.MessageReader.ReadAsync(TestContext.Current.CancellationToken).AsTask().WaitAsync(
+                TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        Assert.Equal("test/ready", ready.Method);
+        await partialOutputStarted.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+
+#if NET
+        long allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
+#endif
+        await session.DisposeAsync().AsTask().WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+#if NET
+        long allocated = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
+#endif
+
+        var exception = await Assert.ThrowsAsync<ClientTransportClosedException>(
+            () => session.MessageReader.Completion.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        Assert.Equal(0, Assert.IsType<StdioClientCompletionDetails>(exception.Details).ExitCode);
+#if NET
+        // Other background work can allocate while the drain is measured.
+        Assert.True(allocated < 3L * outputSize, $"Draining {outputSize} bytes allocated {allocated} bytes.");
+#endif
     }
 }

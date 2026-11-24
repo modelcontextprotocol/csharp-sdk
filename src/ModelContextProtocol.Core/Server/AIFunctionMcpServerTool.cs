@@ -27,6 +27,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     private OutputSchemaCache? _alternateOutputSchema;
     private static readonly ConditionalWeakTable<JsonTypeInfo, SourceObjectContract> s_sourceContracts = new();
     private static readonly ConditionalWeakTable<JsonSchema, SchemaEvaluationCost> s_schemaEvaluationCosts = new();
+    private static readonly ConditionalWeakTable<Type, object> s_zeroedValueTypes = new();
+    private static readonly JsonConverter<object> s_defaultValueProbeConverter = new DefaultValueProbeConverter();
+    private static readonly JsonElement s_nullJsonElement = JsonDocument.Parse("null").RootElement.Clone();
+    private static readonly bool s_comparesValueTypeContents =
+        !RuntimeHelpers.Equals(default(DefaultEqualityProbe), new DefaultEqualityProbe(1));
     private static readonly TimeSpan s_recoveryRegexTimeout = TimeSpan.FromMilliseconds(100);
     private static readonly JsonElement s_propertyNameInstance = JsonSerializer.SerializeToElement(string.Empty, McpJsonUtilities.JsonContext.Default.String);
     [ThreadStatic]
@@ -282,9 +287,10 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     /// output schema. Callers must gate the call on the negotiated version — this method
     /// is unconditional; the gate lives at the emission site.
     /// </summary>
-    internal Tool BuildLegacyWireProtocolTool(Tool protocolTool, bool hasCustomInvocation)
+    internal Tool BuildLegacyWireProtocolTool(
+        Tool protocolTool, bool hasCustomInvocation, JsonElement? outputSchema = null)
     {
-        if (protocolTool.OutputSchema is not { } natural)
+        if ((outputSchema ?? protocolTool.OutputSchema) is not { } natural)
         {
             return protocolTool;
         }
@@ -345,7 +351,16 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         string? protocolVersion = request.Server.NegotiatedProtocolVersion;
         JsonElement? structuredContent = CreateStructuredResponse(
             result, protocolVersion, recoverySchema, out JsonElement? originalContent,
-            out JsonElement? naturalContent, sharedBudget);
+            out JsonElement? naturalContent, out int originalContentBytes, out bool schemaConforms, sharedBudget);
+        if (!isSerializedJson &&
+            recoveryTarget is { } recoveryState &&
+            recoveryState.Schema is not null &&
+            ProtocolTool.OutputSchema is not null &&
+            (!schemaConforms || !ReferenceEquals(recoveryState.Tool, this)))
+        {
+            recoveryState.RequireSchemaConformance();
+        }
+
         (List<JsonElement> Identities, Action<McpServerTool, CallToolResult> Callback)? recovery =
             sharedBudget is not null && originalContent is not null && structuredContent is not null
                 ? CreateStructuredContentRecovery(
@@ -395,7 +410,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         if (recovery is { } plan)
         {
-            recoveryTarget!.Register(plan.Identities, plan.Callback);
+            try
+            {
+                recoveryTarget!.Register(plan.Identities, plan.Callback, originalContent, originalContentBytes);
+            }
+            catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
+            {
+                // Recovery bookkeeping must not fail the tool call.
+            }
         }
 
         return response;
@@ -902,10 +924,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     private JsonElement? CreateStructuredResponse(
         object? aiFunctionResult, string? negotiatedProtocolVersion, JsonElement? recoverySchema,
-        out JsonElement? originalContent, out JsonElement? naturalContent, RepairTraversalBudget? sharedBudget)
+        out JsonElement? originalContent, out JsonElement? naturalContent, out int originalContentBytes,
+        out bool schemaConforms, RepairTraversalBudget? sharedBudget)
     {
         originalContent = null;
         naturalContent = null;
+        originalContentBytes = 0;
+        schemaConforms = false;
         if (ProtocolTool.OutputSchema is null)
         {
             // Only provide structured responses if the tool has an output schema defined.
@@ -927,12 +952,21 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             default:
                 JsonSerializerOptions serializerOptions = AIFunction.JsonSerializerOptions;
                 JsonTypeInfo typeInfo = serializerOptions.GetTypeInfo(typeof(object));
-                elementResult = JsonSerializer.SerializeToElement(aiFunctionResult, typeInfo);
+                if (sharedBudget is not null)
+                {
+                    byte[] json = JsonSerializer.SerializeToUtf8Bytes(aiFunctionResult, typeInfo);
+                    originalContentBytes = json.Length;
+                    elementResult = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = serializerOptions.MaxDepth }).RootElement;
+                }
+                else
+                {
+                    elementResult = JsonSerializer.SerializeToElement(aiFunctionResult, typeInfo);
+                }
                 break;
         }
 
         originalContent = elementResult;
-        naturalContent = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult, recoverySchema, out _, sharedBudget);
+        naturalContent = AddMissingRequiredNullableProperties(elementResult, aiFunctionResult, recoverySchema, out schemaConforms, sharedBudget);
         return ShapeStructuredResponse(naturalContent, negotiatedProtocolVersion);
     }
 
@@ -1829,6 +1863,25 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         return cachedSchema;
     }
 
+    internal bool IsStructuredContentValid(JsonElement? structuredContent, JsonElement? outputSchema)
+    {
+        if (outputSchema is not { } schemaElement)
+        {
+            return false;
+        }
+
+        try
+        {
+            OutputSchemaCache schema = GetOutputSchema(schemaElement);
+            return schema.Schema is { } compiledSchema &&
+                IsSchemaValid(compiledSchema, structuredContent ?? s_nullJsonElement, new RepairTraversalBudget());
+        }
+        catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
+        {
+            return false;
+        }
+    }
+
     private sealed record OutputSchemaCache(JsonElement Source, JsonNode? Node, JsonSchema? Schema);
 
     private static bool IsSchemaValid(JsonSchema schema, JsonNode? instance, RepairTraversalBudget budget)
@@ -2092,6 +2145,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         internal bool IsRecoveryStopped { get; set; }
 
         internal const int MaxEvaluationWork = 65_536;
+        internal const int MaxFlagEvaluationWork = 8_000_000;
+        private const int ExpandedSchemaThreshold = 1_024;
+        private const int MaxExpandedFlagEvaluationWork = 200_000;
         // Shared by document attempts and recursive branch repairs, including cached merges.
         // Costs include copied entries, JSON nodes, and 16-character text units.
         private int _remainingWork = 2_000_000;
@@ -2099,6 +2155,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         // Compiled branch schemas retain copies of the complete source document.
         private int _remainingSchemaWork = 65_536;
         private int _remainingEvaluationWork = MaxEvaluationWork;
+        private int _remainingFlagEvaluationWork = MaxFlagEvaluationWork;
         private readonly Dictionary<JsonNode, int> _immutableCosts = new();
         internal Dictionary<(JsonNode Schema, string Scope), JsonSchema?> BranchSchemas { get; } = new();
 
@@ -2119,6 +2176,17 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             SchemaEvaluationCost evaluation = s_schemaEvaluationCosts.GetValue(schema, static compiled => new(compiled.Root));
             if (!detailed && !evaluation.HasUnevaluated)
             {
+                // Shared-reference graphs can amplify even a small result exponentially.
+                int limit = evaluation.ExpandedCost > ExpandedSchemaThreshold
+                    ? Math.Min(MaxExpandedFlagEvaluationWork, _remainingFlagEvaluationWork)
+                    : _remainingFlagEvaluationWork;
+                int flagCost = evaluation.GetFlagCost(instance, limit);
+                if (flagCost > limit)
+                {
+                    throw new RecoveryBudgetExceededException();
+                }
+
+                _remainingFlagEvaluationWork -= flagCost;
                 return;
             }
 
@@ -2257,10 +2325,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     private sealed class SchemaEvaluationCost
     {
         internal bool HasUnevaluated { get; }
+        internal int ExpandedCost => _expandedCost;
         private readonly JsonSchemaNode _root;
         private readonly int _expandedCost;
         private readonly Dictionary<(Uri Resource, string Anchor), JsonSchemaNode> _dynamicTargets = new();
         private bool _needsInstanceCost;
+        private bool _hasUnboundedApplicator;
 
         internal SchemaEvaluationCost(JsonSchemaNode root)
         {
@@ -2274,6 +2344,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 foreach (KeywordData keyword in node.Keywords)
                 {
                     HasUnevaluated |= keyword.Handler.Name is "unevaluatedProperties" or "unevaluatedItems";
+                    _hasUnboundedApplicator |= keyword.Handler.Name is
+                        "patternProperties" or "additionalProperties" or "propertyNames" or
+                        "items" or "contains" or "additionalItems";
                     if (keyword.Handler.Name == "$dynamicAnchor")
                     {
                         _dynamicTargets[(node.BaseUri, keyword.RawValue.GetString()!)] = node;
@@ -2291,6 +2364,18 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             _expandedCost = Measure(root, new(), new(), 0);
         }
 
+        internal int GetFlagCost(JsonElement instance, int limit)
+        {
+            if (!_needsInstanceCost && !_hasUnboundedApplicator)
+            {
+                return _expandedCost;
+            }
+
+            int remaining = limit;
+            int cost = MeasureInstance(_root, instance, string.Empty, false, [], new(), new(), 0, ref remaining);
+            return Math.Max(cost, limit - remaining);
+        }
+
         internal int GetCost(JsonElement instance, int instanceCost, int limit)
         {
             if (!_needsInstanceCost)
@@ -2306,7 +2391,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         private int Measure(
             JsonSchemaNode node, Dictionary<JsonSchemaNode, int> completed, HashSet<JsonSchemaNode> active, int depth)
         {
-            const int limit = RepairTraversalBudget.MaxEvaluationWork + 1;
+            const int limit = RepairTraversalBudget.MaxFlagEvaluationWork + 1;
             if (completed.TryGetValue(node, out int cached))
             {
                 return cached;
@@ -2355,7 +2440,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             Dictionary<(JsonSchemaNode, string, string, bool), int> completed,
             HashSet<(JsonSchemaNode, string, string, bool)> active, int depth, ref int remaining)
         {
-            const int limit = RepairTraversalBudget.MaxEvaluationWork + 1;
+            const int limit = RepairTraversalBudget.MaxFlagEvaluationWork + 1;
             if (--remaining < 0 || depth >= 128)
             {
                 return limit;
@@ -2995,12 +3080,12 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             !TryGetSourceObjectAtPath(sourceRoot, serializedRoot, parentPath, out SourceRecoveryContext? parent) ||
             parent is null ||
             !TryGetNodeAtPath(serializedRoot, parentPath, out JsonNode? serializedParent) ||
-            parent.GetChild(propertyName, serializedParent) is not { Property: { } property, Owner: { } owner } member)
+            parent.GetChild(propertyName, serializedParent) is not { Property: { }, Owner: { } } member)
         {
             return false;
         }
 
-        if (!WasOmittedBySupportedIgnoreCondition(owner, member.Value, property, serializerOptions))
+        if (!WasOmittedBySupportedIgnoreCondition(member, serializerOptions))
         {
             return false;
         }
@@ -3009,14 +3094,20 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     }
 
     private static bool WasOmittedBySupportedIgnoreCondition(
-        object sourceParent,
-        object? value,
-        JsonPropertyInfo? propertyInfo,
-        JsonSerializerOptions serializerOptions)
+        SourceRecoveryContext member, JsonSerializerOptions serializerOptions)
     {
+        object? value = member.Value;
+        JsonPropertyInfo propertyInfo = member.Property!;
         JsonIgnoreAttribute? ignoreAttribute = GetIgnoreAttribute(propertyInfo);
 
-        if (propertyInfo is not null && IsExcludedReadOnlyMember(propertyInfo, serializerOptions))
+        // Re-serializing omitted values through user code or structured contracts can expose unrelated data.
+        if (IsExcludedReadOnlyMember(propertyInfo, serializerOptions) ||
+            propertyInfo.CustomConverter is not null ||
+            (propertyInfo.AttributeProvider is ICustomAttributeProvider attributeProvider &&
+                attributeProvider.IsDefined(typeof(JsonConverterAttribute), inherit: true)) ||
+            member.Contract.Converter.GetType().Assembly != typeof(JsonSerializer).Assembly ||
+            value is Enum ||
+            (value is not null && member.Contract.Kind != JsonTypeInfoKind.None))
         {
             return false;
         }
@@ -3026,25 +3117,99 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             return false;
         }
 
-        if (propertyInfo?.ShouldSerialize is { } shouldSerialize &&
-            (ignoreAttribute is null || !IsJsonIgnoreConditionPredicate(shouldSerialize)) &&
-            !shouldSerialize(sourceParent, value))
+        if (propertyInfo.ShouldSerialize is { } shouldSerialize &&
+            (ignoreAttribute is null || !IsJsonIgnoreConditionPredicate(shouldSerialize)))
         {
+            // Re-evaluating a custom filter cannot prove that it allowed the original value.
             return false;
         }
 
         JsonIgnoreCondition ignoreCondition = ignoreAttribute?.Condition ?? serializerOptions.DefaultIgnoreCondition;
-        // For an absent value-type member, the serializer already compared against default.
-        // Boxed Equals can disagree with the EqualityComparer<T> used by the serializer.
         return ignoreCondition switch
         {
             JsonIgnoreCondition.WhenWritingNull => value is null,
             JsonIgnoreCondition.WhenWritingDefault =>
-                propertyInfo is not null &&
                 (value is null || (propertyInfo.PropertyType.IsValueType &&
-                    Nullable.GetUnderlyingType(propertyInfo.PropertyType) is null)),
+                    Nullable.GetUnderlyingType(propertyInfo.PropertyType) is null &&
+                    IsCurrentValueDefault(member, ignoreAttribute) &&
+                    IsUnambiguousDefault(value))),
             _ => false,
         };
+    }
+
+    private static bool IsUnambiguousDefault(object value)
+    {
+        Type type = value.GetType();
+        if (value is double doubleValue)
+        {
+            return BitConverter.DoubleToInt64Bits(doubleValue) == 0;
+        }
+
+        if (value is float floatValue)
+        {
+            return BitConverter.ToInt32(BitConverter.GetBytes(floatValue), 0) == 0;
+        }
+
+        if (!type.IsPrimitive && !s_comparesValueTypeContents)
+        {
+            // Some runtimes use custom field equality instead of comparing value contents.
+            return false;
+        }
+
+        try
+        {
+            object zeroed = s_zeroedValueTypes.GetValue(type, CreateZeroedValue);
+            // Primitive equality cannot be overridden.
+            return type.IsPrimitive ? value.Equals(zeroed) : RuntimeHelpers.Equals(zeroed, value);
+        }
+        catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
+        {
+            return false;
+        }
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2067",
+        Justification = "The type comes from an already boxed value, so it is constructed even when trimmed.")]
+    private static object CreateZeroedValue(Type type)
+    {
+#if NETSTANDARD2_0
+        return System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
+#else
+        return RuntimeHelpers.GetUninitializedObject(type);
+#endif
+    }
+
+    private readonly struct DefaultEqualityProbe(int value)
+    {
+        public readonly DefaultEqualityProbeValue Value = new(value);
+        public readonly object? Reference = null;
+    }
+
+    private readonly struct DefaultEqualityProbeValue(int value)
+    {
+        public readonly int Value = value;
+        public override bool Equals(object? obj) => obj is DefaultEqualityProbeValue;
+        public override int GetHashCode() => 0;
+    }
+
+    private static bool IsCurrentValueDefault(SourceRecoveryContext member, JsonIgnoreAttribute? ignoreAttribute)
+    {
+        try
+        {
+            JsonPropertyInfo property = member.Property!;
+            if (ignoreAttribute is not null)
+            {
+                return property.ShouldSerialize is { } predicate &&
+                    IsJsonIgnoreConditionPredicate(predicate) && !predicate(member.Owner!, member.Value);
+            }
+
+            return s_sourceContracts.GetValue(member.OwnerContract!, static owner => new(owner))
+                .IsCurrentValueDefault(member);
+        }
+        catch (Exception exception) when (IsNonFatalRecoveryFailure(exception))
+        {
+            return false;
+        }
     }
 
     private static JsonIgnoreAttribute? GetIgnoreAttribute(JsonPropertyInfo? propertyInfo) =>
@@ -3474,6 +3639,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
     {
         private readonly JsonTypeInfo _contract;
         private readonly ConcurrentDictionary<JsonPropertyInfo, Lazy<JsonTypeInfo<object>>> _serializationContracts = new();
+        private readonly ConcurrentDictionary<JsonPropertyInfo, Lazy<JsonTypeInfo<object>>> _defaultProbeContracts = new();
 
         internal Dictionary<string, JsonPropertyInfo> Properties { get; } = new(StringComparer.Ordinal);
         internal JsonPropertyInfo? ExtensionData { get; }
@@ -3497,6 +3663,41 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         internal JsonTypeInfo<object> GetSerializationContract(JsonPropertyInfo property) =>
             _serializationContracts.GetOrAdd(property, member => new(() => CreateSerializationContract(member))).Value;
 
+        internal bool IsCurrentValueDefault(SourceRecoveryContext member)
+        {
+            JsonPropertyInfo property = member.Property!;
+            JsonTypeInfo<object> contract = _defaultProbeContracts.GetOrAdd(property, value => new(() => CreateDefaultProbeContract(value))).Value;
+            SourceMemberSerializationState? previous = t_serializingSourceMember;
+            try
+            {
+                t_serializingSourceMember = new(member.Value, owners: null);
+                JsonElement probe = JsonSerializer.SerializeToElement(member.Parent!.GetSerializationOwner(), contract);
+                return !probe.TryGetProperty(property.Name, out _);
+            }
+            finally
+            {
+                t_serializingSourceMember = previous;
+            }
+        }
+
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+            "Trimming", "IL2026",
+            Justification = "The property type metadata is cached in the original options before CreateJsonPropertyInfo reuses its typed property factory.")]
+        [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
+            "Aot", "IL3050",
+            Justification = "CreateJsonPropertyInfo uses the cached property type metadata, so no new generic types are constructed.")]
+        private JsonTypeInfo<object> CreateDefaultProbeContract(JsonPropertyInfo property)
+        {
+            _ = _contract.Options.GetTypeInfo(property.PropertyType);
+            JsonTypeInfo<object> contract = CreateSerializationObjectContract(_contract);
+            JsonPropertyInfo candidate = contract.CreateJsonPropertyInfo(property.PropertyType, property.Name);
+            candidate.Get = static _ => t_serializingSourceMember!.Value;
+            candidate.CustomConverter = s_defaultValueProbeConverter;
+            contract.Properties.Add(candidate);
+            contract.MakeReadOnly();
+            return contract;
+        }
+
         [System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage(
             "Trimming", "IL2026",
             Justification = "The property type metadata is cached in the original options before CreateJsonPropertyInfo reuses its typed property factory.")]
@@ -3511,13 +3712,23 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             JsonPropertyInfo candidate = contract.CreateJsonPropertyInfo(property.PropertyType, property.Name);
             candidate.Get = static _ => t_serializingSourceMember!.Value;
             candidate.ShouldSerialize = static (_, _) => true;
-            candidate.CustomConverter = GetPropertyConverter(property, property.PropertyType);
             candidate.NumberHandling = property.NumberHandling;
             candidate.IsGetNullable = property.IsGetNullable;
             contract.Properties.Add(candidate);
             contract.MakeReadOnly();
             return contract;
         }
+    }
+
+    private sealed class DefaultValueProbeConverter : JsonConverter<object>
+    {
+        public override bool CanConvert(Type typeToConvert) => true;
+
+        public override object Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, object value, JsonSerializerOptions options) =>
+            writer.WriteBooleanValue(true);
     }
 
     private static JsonTypeInfo<object> CreateSerializationObjectContract(JsonTypeInfo original)
@@ -3730,29 +3941,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
 
         return false;
-    }
-
-    private static JsonConverter? GetPropertyConverter(JsonPropertyInfo? propertyInfo, Type propertyType)
-    {
-        if (propertyInfo is null)
-        {
-            return null;
-        }
-
-        if (propertyInfo.CustomConverter is JsonConverter customConverter)
-        {
-            return customConverter;
-        }
-
-        if (propertyInfo.AttributeProvider is ICustomAttributeProvider attributeProvider &&
-            attributeProvider.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: true)
-                .OfType<JsonConverterAttribute>()
-                .FirstOrDefault() is { } converterAttribute)
-        {
-            return converterAttribute.CreateConverter(propertyType);
-        }
-
-        return null;
     }
 
     private sealed class SchemaReferenceResolver

@@ -15,6 +15,89 @@ namespace ModelContextProtocol.Tests.Server;
 public partial class DelegatingToolOutputSchemaTests
 {
     [Theory]
+    [InlineData("converter")]
+    [InlineData("enum")]
+    [InlineData("struct")]
+    public async Task CallTool_ReturnsErrorWhenSafeRecoveryCannotSatisfyOutputSchema(string valueKind)
+    {
+        JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        object output;
+        JsonElement outputSchema;
+        if (valueKind == "converter")
+        {
+            output = new UnsafeDefaultConverterOutput();
+            outputSchema = ParseJson("""{"type":"object","required":["value"],"properties":{"value":{"const":"not-for-output"}}}""");
+        }
+        else if (valueKind == "enum")
+        {
+            options.Converters.Add(new JsonStringEnumConverter(new DisclosingEnumNamingPolicy()));
+            output = new UnsafeDefaultEnumOutput();
+            outputSchema = ParseJson("""{"type":"object","required":["value"],"properties":{"value":{"const":"not-for-output"}}}""");
+        }
+        else
+        {
+            output = new UnsafeDefaultStructOutput();
+            outputSchema = ParseJson("""{"type":"object","required":["child"],"properties":{"child":{"type":"object","required":["secret"]}}}""");
+        }
+
+        McpServerTool tool = McpServerTool.Create(() => output, new()
+        {
+            Name = "unsafe_default",
+            UseStructuredContent = true,
+            OutputSchema = outputSchema,
+            SerializerOptions = options,
+        });
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Null(result.StructuredContent);
+            string message = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+            Assert.Equal("The tool could not produce structured content that conforms to its advertised output schema.", message);
+            Assert.DoesNotContain("not-for-output", message, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task CallTool_RecoversSafeDefaultScalarAndValidatesFinalOutput()
+    {
+        JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        McpServerTool tool = McpServerTool.Create(() => new SafeDefaultScalarOutput(), new()
+        {
+            Name = "safe_default",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object","required":["count"],"properties":{"count":{"const":0}}}"""),
+            SerializerOptions = options,
+        });
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal(0, result.StructuredContent!.Value.GetProperty("count").GetInt32());
+        });
+    }
+
+    private static void AssertSchemaOutputError(CallToolResult result)
+    {
+        Assert.True(result.IsError);
+        Assert.Null(result.StructuredContent);
+        string message = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+        Assert.Equal("The tool could not produce structured content that conforms to its advertised output schema.", message);
+    }
+
+    [Theory]
     [InlineData("2025-06-18")]
     [InlineData("2025-11-25")]
     [InlineData("2026-07-28")]
@@ -43,39 +126,73 @@ public partial class DelegatingToolOutputSchemaTests
         });
     }
 
-    [Fact]
-    public async Task CallTool_RepeatedLargeInnerInvocations_BoundsRetainedRecoveryPlans()
+    [Theory]
+    [InlineData(1024 * 1024, 16, true)]
+    [InlineData(1024 * 1024, 16, false)]
+    [InlineData(0, 160, true)]
+    [InlineData(0, 160, false)]
+    public async Task CallTool_RepeatedInnerInvocations_BoundRetainedRecoveryPlans(int payloadSize, int invocationCount, bool returnFirst)
     {
-        int sequence = 0;
-        string payload = new('x', 256 * 1024);
-        McpServerTool inner = McpServerTool.Create(
-            () => new LargePayload(Interlocked.Increment(ref sequence), payload, null), new()
+        string payload = new('x', payloadSize);
+        McpServerTool inner = McpServerTool.Create(() => new LargeNote(payload), new()
+        {
+            Name = "large_note",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object"}"""),
+            SerializerOptions = new(JsonSerializerDefaults.Web)
             {
-                Name = "large_payload",
-                UseStructuredContent = true,
-                OutputSchema = ParseJson("""{"type":"object"}"""),
-                SerializerOptions = new(JsonSerializerDefaults.Web)
-                {
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                    TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-                },
-            });
-        var repeated = new BoundedRecoveryTool(inner, invocationCount: 32);
-        McpServerTool tool = new SchemaOverrideTool(repeated,
-            ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}"""));
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        var repeated = new BudgetObservingTool(inner, invocationCount, returnFirst);
+        McpServerTool tool = new SchemaOverrideTool(
+            repeated, ParseJson("""{"type":"object","required":["note"],"properties":{"note":{"type":"null"}}}"""));
 
         await WithClientAsync(tool, "2026-07-28", async client =>
         {
-            CallToolResult result = await client.CallToolAsync(
-                tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
 
-            Assert.NotEqual(true, result.IsError);
-            JsonElement structuredContent = result.StructuredContent ?? throw new InvalidOperationException("Structured content was not returned.");
-            Assert.False(structuredContent.TryGetProperty("note", out _));
-            Assert.True(repeated.RetainedIdentityCount > 0);
-            Assert.True(repeated.RetainedIdentityCount < repeated.InvocationCount * 2);
-            Assert.True(repeated.RetainedBytes > 0);
-            Assert.InRange(repeated.RetainedBytes, 0L, 4L * 1024 * 1024);
+            Assert.True(repeated.PeakPlanCount < invocationCount);
+            Assert.InRange(repeated.PeakRetainedBytes, 0, 4 * 1024 * 1024);
+            if (!returnFirst)
+            {
+                AssertSchemaOutputError(result);
+            }
+            else
+            {
+                Assert.NotEqual(true, result.IsError);
+                Assert.Equal(JsonValueKind.Null, result.StructuredContent!.Value.GetProperty("note").ValueKind);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task CallTool_RepeatedWhitespaceHeavyResults_BoundRetainedRecoveryPlans()
+    {
+        const int invocationCount = 12;
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        options.Converters.Add(new WhitespaceNoteConverter(1024 * 1024));
+        McpServerTool inner = McpServerTool.Create(() => new LargeNote("value"), new()
+        {
+            Name = "whitespace_note",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object"}"""),
+            SerializerOptions = options,
+        });
+        var repeated = new BudgetObservingTool(inner, invocationCount, returnFirst: false);
+        McpServerTool tool = new SchemaOverrideTool(repeated, ParseJson("""{"required":["note"]}"""));
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(repeated.PeakPlanCount < invocationCount);
+            Assert.InRange(repeated.PeakRetainedBytes, 0, 4 * 1024 * 1024);
+            AssertSchemaOutputError(result);
         });
     }
 
@@ -175,8 +292,19 @@ public partial class DelegatingToolOutputSchemaTests
                 {
                     var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
 
-                    Assert.Equal(mode == 0, result.IsError == true);
-                    Assert.Equal(mode == 1 ? """{"count":99}""" : "{}", result.StructuredContent!.Value.GetRawText());
+                    Assert.Equal(mode != 1, result.IsError == true);
+                    if (mode == 1)
+                    {
+                        Assert.Equal("""{"count":99}""", result.StructuredContent!.Value.GetRawText());
+                    }
+                    else if (mode == 2)
+                    {
+                        AssertSchemaOutputError(result);
+                    }
+                    else
+                    {
+                        Assert.Equal("{}", result.StructuredContent!.Value.GetRawText());
+                    }
                 }, alternateHandler);
             }
         }
@@ -214,8 +342,69 @@ public partial class DelegatingToolOutputSchemaTests
 
             Assert.True(source.Expired);
             Assert.True(converter.Expired);
-            Assert.NotEqual(true, result.IsError);
-            Assert.Equal("zero", result.StructuredContent!.Value.GetProperty("count").GetString());
+            Assert.Equal(0, converter.WriteCalls);
+            AssertSchemaOutputError(result);
+        });
+    }
+
+    [Fact]
+    public async Task CallTool_DoesNotExposeEnumConverterNamingPolicyForOmittedDefault()
+    {
+        JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        options.Converters.Add(new JsonStringEnumConverter(new DisclosingEnumNamingPolicy()));
+        var source = new DisclosingEnumOutput();
+        Assert.False(JsonSerializer.SerializeToElement(source, options).TryGetProperty("value", out _));
+        McpServerTool tool = McpServerTool.Create(() => source, new()
+        {
+            Name = "enum_value",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"required":["value"],"properties":{"value":{"const":"not-for-output"}}}"""),
+            SerializerOptions = options,
+        });
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Null(result.StructuredContent);
+            string message = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+            Assert.Equal("The tool could not produce structured content that conforms to its advertised output schema.", message);
+            Assert.DoesNotContain("not-for-output", message, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public async Task CallTool_DoesNotExposeOmittedDefaultStruct()
+    {
+        JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        var source = new DisclosingStructOutput();
+        Assert.False(JsonSerializer.SerializeToElement(source, options).TryGetProperty("child", out _));
+        McpServerTool tool = McpServerTool.Create(() => source, new()
+        {
+            Name = "struct_value",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"required":["child"]}"""),
+            SerializerOptions = options,
+        });
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.True(result.IsError);
+            Assert.Null(result.StructuredContent);
+            string message = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+            Assert.Equal("The tool could not produce structured content that conforms to its advertised output schema.", message);
+            Assert.DoesNotContain("not-for-output", message, StringComparison.Ordinal);
         });
     }
 
@@ -787,8 +976,10 @@ public partial class DelegatingToolOutputSchemaTests
         {
             var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
 
-            Assert.NotEqual(true, result.IsError);
-            Assert.Equal("""{"note":null}""", result.StructuredContent!.Value.GetRawText());
+            Assert.True(result.IsError);
+            Assert.Null(result.StructuredContent);
+            string message = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+            Assert.Equal("The tool could not produce structured content that conforms to its advertised output schema.", message);
         });
     }
 
@@ -813,9 +1004,7 @@ public partial class DelegatingToolOutputSchemaTests
         {
             var result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
 
-            Assert.NotEqual(true, result.IsError);
-            Assert.Equal(real, result.StructuredContent!.Value.GetProperty("real").GetString());
-            Assert.False(result.StructuredContent.Value.TryGetProperty("note", out _));
+            AssertSchemaOutputError(result);
         });
     }
 
@@ -1767,12 +1956,92 @@ public partial class DelegatingToolOutputSchemaTests
         public string? Note { get; set; }
     }
 
+    private sealed class UnsafeDefaultConverterOutput
+    {
+        [JsonConverter(typeof(DisclosingIntConverter))]
+        public int Value { get; set; }
+    }
+
+    private sealed class DisclosingIntConverter : JsonConverter<int>
+    {
+        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options) =>
+            writer.WriteStringValue("not-for-output");
+    }
+
+    private sealed class UnsafeDefaultEnumOutput
+    {
+        public DisclosingEnum Value { get; set; }
+    }
+
+    private enum DisclosingEnum
+    {
+        None,
+    }
+
+    private sealed class DisclosingEnumNamingPolicy : JsonNamingPolicy
+    {
+        public override string ConvertName(string name) => "not-for-output";
+    }
+
+    private sealed class UnsafeDefaultStructOutput
+    {
+        public UnsafeDefaultStruct Child { get; set; }
+    }
+
+    private readonly struct UnsafeDefaultStruct
+    {
+        public string Secret => "not-for-output";
+    }
+
+    private sealed class SafeDefaultScalarOutput
+    {
+        public int Count { get; set; }
+    }
+
+    private sealed class LargeNote(string payload)
+    {
+        public string Payload { get; } = payload;
+        public string? Note { get; set; }
+    }
+
+    private sealed class WhitespaceNoteConverter(int whitespaceLength) : JsonConverter<LargeNote>
+    {
+        private readonly string _json = "{\"payload\":" + new string(' ', whitespaceLength) + "\"value\"}";
+
+        public override LargeNote Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, LargeNote value, JsonSerializerOptions options) =>
+            writer.WriteRawValue(_json, skipInputValidation: true);
+    }
+
     private sealed class MutableCount
     {
         public int Count { get; set; }
     }
 
-    private sealed record LargePayload(int Sequence, string Payload, string? Note);
+    private sealed class DisclosingEnumOutput
+    {
+        public DisclosingEnumValue Value { get; set; }
+    }
+
+    private enum DisclosingEnumValue
+    {
+        None,
+    }
+
+    private sealed class DisclosingStructOutput
+    {
+        public DisclosingStructValue Child { get; set; }
+    }
+
+    private readonly struct DisclosingStructValue
+    {
+        public string Secret => "not-for-output";
+    }
 
     private sealed class ExpiringOutput
     {
@@ -1785,12 +2054,14 @@ public partial class DelegatingToolOutputSchemaTests
     private sealed class ExpiringIntConverter : JsonConverter<int>
     {
         public bool Expired { get; set; }
+        public int WriteCalls { get; private set; }
 
         public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             throw new NotSupportedException();
 
         public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
         {
+            WriteCalls++;
             if (Expired)
             {
                 throw new InvalidOperationException("Converter is no longer owned by the inner invocation.");
@@ -1929,7 +2200,7 @@ public partial class DelegatingToolOutputSchemaTests
                 original(tool, result);
             };
             target.GetType().GetMethod("Register", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(target, [identities, observed]);
+                .Invoke(target, [identities, observed, null, 0]);
             for (int i = 1; i < 32; i++)
             {
                 await base.InvokeAsync(request, cancellationToken);
@@ -1938,32 +2209,34 @@ public partial class DelegatingToolOutputSchemaTests
         }
     }
 
-    private sealed class BoundedRecoveryTool(McpServerTool inner, int invocationCount) : DelegatingMcpServerTool(inner)
+    private sealed class BudgetObservingTool(McpServerTool inner, int invocationCount, bool returnFirst) : DelegatingMcpServerTool(inner)
     {
-        public int InvocationCount { get; } = invocationCount;
-        public int RetainedIdentityCount { get; private set; }
-        public long RetainedBytes { get; private set; }
+        public int PeakPlanCount { get; private set; }
+        public int PeakRetainedBytes { get; private set; }
 
         public override async ValueTask<CallToolResult> InvokeAsync(
             RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default)
         {
-            CallToolResult? result = null;
-            for (int i = 0; i < InvocationCount; i++)
+            CallToolResult? selected = null;
+            for (int i = 0; i < invocationCount; i++)
             {
-                result = await base.InvokeAsync(request, cancellationToken);
+                CallToolResult result = await base.InvokeAsync(request, cancellationToken);
+                if (!returnFirst || selected is null)
+                {
+                    selected = result;
+                }
+
+                object target = typeof(RequestContext<CallToolRequestParams>)
+                    .GetProperty("StructuredContentRecoveryTarget", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(request)!;
+                var plans = (Dictionary<JsonElement, Action<McpServerTool, CallToolResult>>)target.GetType()
+                    .GetField("_plans", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
+                PeakPlanCount = Math.Max(PeakPlanCount, plans.Values.Distinct().Count());
+                int retainedBytes = (int)target.GetType()
+                    .GetField("_retainedBytes", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
+                PeakRetainedBytes = Math.Max(PeakRetainedBytes, retainedBytes);
             }
 
-            object target = typeof(RequestContext<CallToolRequestParams>)
-                .GetProperty("StructuredContentRecoveryTarget", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(request)
-                ?? throw new InvalidOperationException("Structured content recovery state was not available.");
-            var plans = Assert.IsType<Dictionary<JsonElement, Action<McpServerTool, CallToolResult>>>(
-                target.GetType().GetField("_plans", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(target)
-                ?? throw new InvalidOperationException("Structured content recovery plans were not available."));
-            RetainedIdentityCount = plans.Count;
-            RetainedBytes = Assert.IsType<long>(
-                target.GetType().GetField("_retainedBytes", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(target)
-                ?? throw new InvalidOperationException("Structured content recovery byte count was not available."));
-            return result ?? throw new InvalidOperationException("No inner tool invocation completed.");
+            return selected!;
         }
     }
 

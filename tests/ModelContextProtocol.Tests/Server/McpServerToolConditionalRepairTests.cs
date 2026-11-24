@@ -196,7 +196,7 @@ public partial class McpServerToolTests
     public async Task StructuredOutput_ConditionalRepair_PreservesGuardsDuringRecursiveRepair()
     {
         McpServerTool tool = CreateStructuredOutputTestTool(
-            Enumerable.Range(0, 129).Select(_ => new { Child = default(ConditionalRepairChild) }).ToArray(),
+            Enumerable.Range(0, 129).Select(_ => new { Child = (ConditionalRepairChild?)new ConditionalRepairChild() }).ToArray(),
             """
             {
               "items":{

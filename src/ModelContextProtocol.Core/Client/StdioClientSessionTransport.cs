@@ -11,16 +11,19 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     private readonly Process _process;
     private readonly Queue<string> _stderrRollingLog;
     private readonly DataReceivedEventHandler _errorHandler;
+    private readonly Task _stderrCompleted;
+    private readonly TaskCompletionSource<bool> _cleanupCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _cleanedUp = 0;
     private readonly int? _processId;
 
-    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, DataReceivedEventHandler errorHandler, ILoggerFactory? loggerFactory) :
+    public StdioClientSessionTransport(StdioClientTransportOptions options, Process process, string endpointName, Queue<string> stderrRollingLog, DataReceivedEventHandler errorHandler, Task stderrCompleted, ILoggerFactory? loggerFactory) :
         base(process.StandardInput.BaseStream, process.StandardOutput.BaseStream, encoding: null, endpointName, loggerFactory, startReading: false)
     {
         _options = options;
         _process = process;
         _stderrRollingLog = stderrRollingLog;
         _errorHandler = errorHandler;
+        _stderrCompleted = stderrCompleted;
         try { _processId = process.Id; } catch { }
         StartReading();
     }
@@ -46,21 +49,47 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     }
 
     /// <inheritdoc/>
+    public override async ValueTask DisposeAsync()
+    {
+        await CleanupAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
+        await _cleanupCompleted.Task.ConfigureAwait(false);
+        SetDisconnected();
+    }
+
+    /// <inheritdoc/>
     protected override async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)
     {
-        // Only run the full stdio cleanup once (handler detach, process kill, etc.).
-        // If another call is already handling cleanup, cancel the shutdown token
-        // to unblock it (e.g. if it's stuck in WaitForExitAsync) and let it
-        // call SetDisconnected with full StdioClientCompletionDetails.
+        // The read loop can re-enter cleanup while disposal is waiting for process exit.
         if (Interlocked.Exchange(ref _cleanedUp, 1) != 0)
         {
-            CancelShutdown();
             return;
         }
 
+        try
+        {
+            await CleanupCoreAsync(error, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _cleanupCompleted.TrySetResult(true);
+        }
+    }
+
+    private async ValueTask CleanupCoreAsync(Exception? error, CancellationToken cancellationToken)
+    {
+        Stopwatch shutdownStopwatch = Stopwatch.StartNew();
+        Task? readTask = ReadMessagesTask;
+
         // We've not yet forcefully terminated the server. If it's already shut down, something went wrong,
         // so create an exception with details about that.
-        error ??= await GetUnexpectedExitExceptionAsync().ConfigureAwait(false);
+        bool waitedForExit = false;
+        if (error is null)
+        {
+            error = await GetUnexpectedExitExceptionAsync().ConfigureAwait(false);
+            waitedForExit = error is not null;
+        }
+
+        BeginShutdownDrain();
 
         // Closing the server's stdin is the portable graceful-shutdown signal for stdio transports.
         // Do this before waiting so a well-behaved server can finish its own cleanup and exit.
@@ -73,21 +102,30 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
             LogStandardInputCloseFailed(Name, ex);
         }
 
-        // Ensure all pending ErrorDataReceived events are drained before detaching
-        // the handler. GetUnexpectedExitExceptionAsync does this when HasExited is
-        // true, but there is a narrow window on Linux where the process has closed
-        // stdout (causing EOF in ReadMessagesAsync) yet hasn't been fully reaped,
-        // so HasExited returns false and the drain is skipped. An unconditional
-        // wait here covers that gap. When the drain already happened above, the
-        // call returns immediately.
-        await WaitForProcessExitAsync().ConfigureAwait(false);
+        // Wait within the shutdown timeout for pending ErrorDataReceived events.
+        // GetUnexpectedExitExceptionAsync already waited if the process had exited.
+        if (!waitedForExit)
+        {
+            await WaitForProcessExitAsync().ConfigureAwait(false);
+        }
 
-        // Keep draining stdout while the server flushes its final messages after stdin closes.
-        // The process wait is bounded; cancel the read loop afterward so a stuck server can be killed.
+        if (readTask is not null)
+        {
+            TimeSpan remainingShutdownTime = _options.ShutdownTimeout == Timeout.InfiniteTimeSpan ?
+                Timeout.InfiniteTimeSpan : _options.ShutdownTimeout - shutdownStopwatch.Elapsed;
+            if (remainingShutdownTime > TimeSpan.Zero || remainingShutdownTime == Timeout.InfiniteTimeSpan)
+            {
+                Task completed = await Task.WhenAny(readTask, Task.Delay(remainingShutdownTime)).ConfigureAwait(false);
+                if (completed == readTask)
+                {
+                    await readTask.ConfigureAwait(false);
+                }
+            }
+        }
+
         CancelShutdown();
 
-        // Detach the stderr handler so no further ErrorDataReceived events
-        // are dispatched during or after process disposal.
+        // Detach the handler; a callback already in progress may outlive cleanup.
         _process.ErrorDataReceived -= _errorHandler;
 
         // Terminate the server process (or confirm it already exited), then build
@@ -148,16 +186,13 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
     }
 
     /// <summary>
-    /// Waits for the process to exit within <see cref="StdioClientTransportOptions.ShutdownTimeout"/>
-    /// and flushes pending <see cref="Process.ErrorDataReceived"/> events.
+    /// Waits for process exit and pending <see cref="Process.ErrorDataReceived"/> events
+    /// within <see cref="StdioClientTransportOptions.ShutdownTimeout"/>.
     /// </summary>
     /// <remarks>
     /// On .NET, <c>Process.WaitForExitAsync</c> also waits for asynchronous output readers
-    /// to complete, ensuring all events have been dispatched. On .NET Framework,
-    /// <see cref="Process.WaitForExit(int)"/> does not guarantee this; the parameterless
-    /// <see cref="Process.WaitForExit()"/> overload is needed to flush the event queue.
-    /// This method is idempotent—calling it after the process has already been waited on
-    /// returns immediately.
+    /// to complete. On .NET Framework, <see cref="Process.WaitForExit(int)"/> does not
+    /// wait for those events, so the stderr end-of-stream event is awaited separately.
     /// </remarks>
     private async ValueTask WaitForProcessExitAsync()
     {
@@ -167,9 +202,21 @@ internal sealed class StdioClientSessionTransport : StreamClientSessionTransport
             using var timeoutCts = new CancellationTokenSource(_options.ShutdownTimeout);
             await _process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
 #else
+            Stopwatch stopwatch = Stopwatch.StartNew();
             if (_process.WaitForExit((int)_options.ShutdownTimeout.TotalMilliseconds))
             {
-                _process.WaitForExit();
+                if (_options.ShutdownTimeout == Timeout.InfiniteTimeSpan)
+                {
+                    await _stderrCompleted.ConfigureAwait(false);
+                }
+                else
+                {
+                    TimeSpan remaining = _options.ShutdownTimeout - stopwatch.Elapsed;
+                    if (remaining > TimeSpan.Zero)
+                    {
+                        await _stderrCompleted.WaitAsync(remaining).ConfigureAwait(false);
+                    }
+                }
             }
 #endif
         }

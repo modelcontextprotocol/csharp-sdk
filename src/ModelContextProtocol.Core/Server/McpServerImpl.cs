@@ -1638,7 +1638,7 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
-    private static async ValueTask<ResultOrAlternate<CallToolResult>> InvokeToolWithAlternate(
+    private async ValueTask<ResultOrAlternate<CallToolResult>> InvokeToolWithAlternate(
         McpServerTool tool,
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken)
@@ -1646,15 +1646,15 @@ internal sealed partial class McpServerImpl : McpServer
         return await InvokeToolAsync(tool, request, cancellationToken).ConfigureAwait(false);
     }
 
-    private static ValueTask<CallToolResult> InvokeToolAsync(
+    private ValueTask<CallToolResult> InvokeToolAsync(
         McpServerTool tool,
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken) =>
-        tool is DelegatingMcpServerTool || request.StructuredContentRecoveryTarget is not null
+        tool is AIFunctionMcpServerTool or DelegatingMcpServerTool || request.StructuredContentRecoveryTarget is not null
             ? InvokeToolWithRecoveryAsync(tool, request, cancellationToken)
             : tool.InvokeAsync(request, cancellationToken);
 
-    private static async ValueTask<CallToolResult> InvokeToolWithRecoveryAsync(
+    private async ValueTask<CallToolResult> InvokeToolWithRecoveryAsync(
         McpServerTool tool,
         RequestContext<CallToolRequestParams> request,
         CancellationToken cancellationToken)
@@ -1667,6 +1667,26 @@ internal sealed partial class McpServerImpl : McpServer
         {
             CallToolResult result = await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
             request.RecoverStructuredContent(tool, result);
+
+            if (recoveryTarget.RequiresSchemaConformance &&
+                result.IsError is not true &&
+                TryGetAIFunctionTool(tool, out AIFunctionMcpServerTool? aiFunctionTool, out bool hasCustomInvocation) &&
+                tool.ProtocolTool.OutputSchema is not null)
+            {
+                JsonElement? outputSchema = recoveryTarget.Schema;
+                if (!McpSessionHandler.SupportsNaturalOutputSchemas(request.Server.NegotiatedProtocolVersion))
+                {
+                    outputSchema = aiFunctionTool!.BuildLegacyWireProtocolTool(
+                        tool.ProtocolTool, hasCustomInvocation, recoveryTarget.Schema).OutputSchema;
+                }
+
+                if (!aiFunctionTool!.IsStructuredContentValid(result.StructuredContent, outputSchema))
+                {
+                    ToolCallStructuredOutputInvalid(request.Params?.Name ?? string.Empty);
+                    return CreateStructuredOutputErrorResult();
+                }
+            }
+
             return result;
         }
         finally
@@ -1675,6 +1695,30 @@ internal sealed partial class McpServerImpl : McpServer
             request.StructuredContentRecoveryTarget = previousTarget;
         }
     }
+
+    private static bool TryGetAIFunctionTool(
+        McpServerTool tool, out AIFunctionMcpServerTool? aiFunctionTool, out bool hasCustomInvocation)
+    {
+        hasCustomInvocation = false;
+        while (tool is DelegatingMcpServerTool delegating)
+        {
+            hasCustomInvocation |= delegating.HasCustomInvocation;
+            tool = delegating.InnerTool;
+        }
+
+        aiFunctionTool = tool as AIFunctionMcpServerTool;
+        return aiFunctionTool is not null;
+    }
+
+    private static CallToolResult CreateStructuredOutputErrorResult() =>
+        new()
+        {
+            IsError = true,
+            Content = [new TextContentBlock
+            {
+                Text = "The tool could not produce structured content that conforms to its advertised output schema.",
+            }],
+        };
 
     private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildComposedCallToolHandler(
         McpRequestHandler<CallToolRequestParams, CallToolResult> callToolHandler,
@@ -2582,6 +2626,9 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "\"{ToolName}\" completed. IsError = {IsError}.")]
     private partial void ToolCallCompleted(string toolName, bool isError);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "\"{ToolName}\" could not produce structured content matching its output schema.")]
+    private partial void ToolCallStructuredOutputInvalid(string toolName);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "GetPrompt \"{PromptName}\" threw an unhandled exception.")]
     private partial void GetPromptError(string promptName, Exception exception);

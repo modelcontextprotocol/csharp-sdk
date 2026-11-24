@@ -143,18 +143,20 @@ public partial class McpServerToolTests
         JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
         options.ReferenceHandler = nested ? ReferenceHandler.IgnoreCycles : null;
         options.TypeInfoResolver = new RecoveryBoundaryCachingResolver(new DefaultJsonTypeInfoResolver());
-        options.Converters.Add(new RecoveryBoundaryInvocationConverter(barrier, TestContext.Current.CancellationToken));
-        McpServerTool[] tools = [CreateTool(1), CreateTool(2)];
+        McpServerTool[] tools =
+        [
+            CreateTool(new RecoveryBoundaryInvocationOutput<long>(0, barrier, TestContext.Current.CancellationToken)),
+            CreateTool(new RecoveryBoundaryInvocationOutput<bool>(false, barrier, TestContext.Current.CancellationToken)),
+        ];
 
         JsonElement[] results = await Task.WhenAll(tools.Select(tool =>
             Task.Run(() => InvokeStructuredOutputTestTool(tool), TestContext.Current.CancellationToken)));
 
-        Assert.Equal(1, (nested ? results[0].GetProperty("child") : results[0]).GetProperty("value").GetInt32());
-        Assert.Equal(2, (nested ? results[1].GetProperty("child") : results[1]).GetProperty("value").GetInt32());
+        Assert.Equal(0, (nested ? results[0].GetProperty("child") : results[0]).GetProperty("value").GetInt64());
+        Assert.False((nested ? results[1].GetProperty("child") : results[1]).GetProperty("value").GetBoolean());
 
-        McpServerTool CreateTool(int value)
+        McpServerTool CreateTool(object output)
         {
-            RecoveryBoundaryInvocationOutput output = new() { Value = new(value) };
             return nested
                 ? CreateRecoveryBoundaryTool(new RecoveryBoundaryAncestorRoot { Child = output },
                     """{"properties":{"child":{"required":["value"]}}}""", options)
@@ -167,36 +169,17 @@ public partial class McpServerToolTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public async Task StructuredOutput_RecoveryBoundary_PreservesOwnerCycleScope(bool valueTypeOwner, bool sourceGenerated)
+    public async Task StructuredOutput_RecoveryBoundary_DoesNotRecoverDefaultStructWithOwnerCycle(bool valueTypeOwner, bool sourceGenerated)
     {
+        object output = valueTypeOwner ? new RecoveryBoundaryCyclicStructOwner() : new RecoveryBoundaryCyclicOwner();
         JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.Never);
         options.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        options.TypeInfoResolver = new RecoveryBoundaryCachingResolver(
-            sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver());
-        object output = valueTypeOwner ? new RecoveryBoundaryCyclicStructOwner() : new RecoveryBoundaryCyclicOwner();
-        RecoveryBoundaryCyclicValue value = new() { Owner = output };
-        if (output is RecoveryBoundaryCyclicOwner referenceOwner)
-        {
-            referenceOwner.Missing = value;
-        }
-        else
-        {
-            typeof(RecoveryBoundaryCyclicStructOwner).GetProperty(nameof(RecoveryBoundaryCyclicStructOwner.Missing))!.SetValue(output, value);
-        }
+        options.TypeInfoResolver = CreateRecoveryBoundaryCycleResolver(sourceGenerated, () => output);
         McpServerTool tool = CreateRecoveryBoundaryTool(output, """{"required":["missing"]}""", options);
 
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
 
-        JsonElement owner = result.GetProperty("missing").GetProperty("owner");
-        if (valueTypeOwner)
-        {
-            Assert.Equal(JsonValueKind.Object, owner.ValueKind);
-            Assert.Empty(owner.EnumerateObject());
-        }
-        else
-        {
-            Assert.Equal(JsonValueKind.Null, owner.ValueKind);
-        }
+        Assert.False(result.TryGetProperty("missing", out _));
     }
 
     public static IEnumerable<object[]> AncestorCycleCases()
@@ -215,12 +198,12 @@ public partial class McpServerToolTests
 
     [Theory]
     [MemberData(nameof(AncestorCycleCases))]
-    public async Task StructuredOutput_RecoveryBoundary_PreservesAncestorCycleScope(string shape, bool strict, bool sourceGenerated)
+    public async Task StructuredOutput_RecoveryBoundary_DoesNotRecoverDefaultStructAcrossAncestorShapes(string shape, bool strict, bool sourceGenerated)
     {
+        object? cycleTarget = null;
         JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.Never);
         options.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        options.TypeInfoResolver = new RecoveryBoundaryCachingResolver(
-            sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver());
+        options.TypeInfoResolver = CreateRecoveryBoundaryCycleResolver(sourceGenerated, () => cycleTarget);
         RecoveryBoundaryAncestorRoot root = new();
         RecoveryBoundaryCyclicOwner first = new(), second = new();
         RecoveryBoundaryCyclicOwner[] array = [first, second];
@@ -230,7 +213,7 @@ public partial class McpServerToolTests
             ["second"] = second,
         };
         object output = root;
-        object cycleTarget = root;
+        cycleTarget = root;
         root.Child = shape switch
         {
             "nestedObject" => new RecoveryBoundaryAncestorRoot { Child = first },
@@ -248,7 +231,6 @@ public partial class McpServerToolTests
         {
             output = cycleTarget = shape == "rootArray" ? array : dictionary;
         }
-        first.Missing = second.Missing = new() { Owner = cycleTarget };
         string ownerSchema = strict ? """{"type":"null"}""" : "{}";
         string itemSchema = $$$$"""
             {"type":"object","required":["missing"],"properties":{"missing":{
@@ -278,40 +260,36 @@ public partial class McpServerToolTests
         };
         if (shape is "array" or "arrayContainer" or "rootArray")
         {
-            Assert.All(child.EnumerateArray(), AssertNullOwner);
+            Assert.All(child.EnumerateArray(), AssertNoMissing);
         }
         else if (shape is "dictionary" or "dictionaryContainer" or "rootDictionary")
         {
-            Assert.All(child.EnumerateObject(), property => AssertNullOwner(property.Value));
+            Assert.All(child.EnumerateObject(), property => AssertNoMissing(property.Value));
         }
         else
         {
-            AssertNullOwner(child);
+            AssertNoMissing(child);
         }
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
         if (ReferenceEquals(root, output))
         {
             Assert.Equal(2, root.SerializingCalls);
             Assert.Equal(2, root.GetterCalls);
         }
 
-        static void AssertNullOwner(JsonElement item) =>
-            Assert.Equal(JsonValueKind.Null, item.GetProperty("missing").GetProperty("owner").ValueKind);
+        static void AssertNoMissing(JsonElement item) =>
+            Assert.False(item.TryGetProperty("missing", out _));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task StructuredOutput_RecoveryBoundary_DoesNotTreatNonAncestorAsCycle(bool sourceGenerated)
+    public async Task StructuredOutput_RecoveryBoundary_DoesNotExposeNonAncestorThroughDefaultStruct(bool sourceGenerated)
     {
+        RecoveryBoundaryNullableOutput unrelated = new() { Note = "unrelated" };
         JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.Never);
         options.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        options.TypeInfoResolver = new RecoveryBoundaryCachingResolver(
-            sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver());
-        RecoveryBoundaryCyclicOwner child = new()
-        {
-            Missing = new() { Owner = new RecoveryBoundaryNullableOutput { Note = "unrelated" } },
-        };
+        options.TypeInfoResolver = CreateRecoveryBoundaryCycleResolver(sourceGenerated, () => unrelated);
+        RecoveryBoundaryCyclicOwner child = new();
         McpServerTool tool = CreateRecoveryBoundaryTool(new RecoveryBoundaryAncestorRoot { Child = child }, """
             {"properties":{"child":{"required":["missing"],"properties":{"missing":{
               "required":["owner"],"properties":{"owner":{
@@ -322,31 +300,27 @@ public partial class McpServerToolTests
 
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
 
-        Assert.Equal("unrelated", result.GetProperty("child").GetProperty("missing").GetProperty("owner").GetProperty("note").GetString());
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.False(result.GetProperty("child").TryGetProperty("missing", out _));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task StructuredOutput_RecoveryBoundary_DoesNotTrackValueTypeAncestorBoxes(bool sourceGenerated)
+    public async Task StructuredOutput_RecoveryBoundary_DoesNotRecoverDefaultStructUnderValueTypeAncestor(bool sourceGenerated)
     {
+        object? boxedAncestor = null;
         JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.Never);
         options.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-        options.TypeInfoResolver = new RecoveryBoundaryCachingResolver(
-            sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver());
+        options.TypeInfoResolver = CreateRecoveryBoundaryCycleResolver(sourceGenerated, () => boxedAncestor);
         RecoveryBoundaryCyclicOwner child = new();
-        object boxedAncestor = new RecoveryBoundaryStructAncestor { Child = child };
-        child.Missing = new() { Owner = boxedAncestor };
+        boxedAncestor = new RecoveryBoundaryStructAncestor { Child = child };
         McpServerTool tool = CreateRecoveryBoundaryTool(new RecoveryBoundaryAncestorRoot { Child = boxedAncestor }, """
             {"properties":{"child":{"properties":{"child":{"required":["missing"]}}}}}
             """, options);
 
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
 
-        JsonElement owner = result.GetProperty("child").GetProperty("child").GetProperty("missing").GetProperty("owner");
-        Assert.Equal(JsonValueKind.Object, owner.ValueKind);
-        Assert.Equal(JsonValueKind.Null, owner.GetProperty("child").ValueKind);
+        Assert.False(result.GetProperty("child").GetProperty("child").TryGetProperty("missing", out _));
     }
 
     [Theory]
@@ -358,7 +332,7 @@ public partial class McpServerToolTests
     [InlineData(false, true, true)]
     [InlineData(true, false, true)]
     [InlineData(true, true, true)]
-    public async Task StructuredOutput_RecoveryBoundary_PreservesMemberConverterScope(bool factory, bool sourceGenerated, bool globalConverter)
+    public async Task StructuredOutput_RecoveryBoundary_SkipsOmittedMemberConverter(bool factory, bool sourceGenerated, bool globalConverter)
     {
         RecoveryBoundaryDelegatingConverter converter = new();
         JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
@@ -388,17 +362,15 @@ public partial class McpServerToolTests
 
         Assert.False(converter.RecursionDetected);
         Assert.False(converter.OptionsChanged);
+        Assert.False(result.TryGetProperty("count", out _));
         if (globalConverter)
         {
-            Assert.Equal("global-0", result.GetProperty("count").GetString());
             Assert.Equal("global-5", result.GetProperty("existing").GetString());
         }
         else
         {
-            Assert.Equal(0, result.GetProperty("count").GetInt32());
             Assert.Equal(5, result.GetProperty("existing").GetInt32());
         }
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
     }
 
     [Theory]
@@ -753,7 +725,7 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public async Task StructuredOutput_RecoveryBoundary_PreservesCompatibleSourceGeneratedContracts()
+    public async Task StructuredOutput_RecoveryBoundary_SkipsSourceGeneratedMemberConverter()
     {
         McpServerTool tool = CreateStructuredOutputTestTool(
             new RecoveryBoundaryAttributedOutput(),
@@ -762,8 +734,7 @@ public partial class McpServerToolTests
 
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
 
-        Assert.Equal(0, result.GetProperty("count").GetInt32());
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.False(result.TryGetProperty("count", out _));
     }
 
     private sealed class RecoveryBoundaryConvertedOutput
@@ -910,31 +881,20 @@ public partial class McpServerToolTests
 
     private sealed record RecoveryBoundaryNullableRecord(string? Note = null);
 
-    private sealed class RecoveryBoundaryInvocationOutput
+    private sealed class RecoveryBoundaryInvocationOutput<T>(T value, Barrier barrier, CancellationToken cancellationToken)
     {
-        public RecoveryBoundaryInvocationValue Value { get; set; }
-    }
-
-    private readonly struct RecoveryBoundaryInvocationValue(int value) : IEquatable<RecoveryBoundaryInvocationValue>
-    {
-        public int Value { get; } = value;
-        public bool Equals(RecoveryBoundaryInvocationValue other) => true;
-        public override bool Equals(object? obj) => obj is RecoveryBoundaryInvocationValue;
-        public override int GetHashCode() => 0;
-    }
-
-    private sealed class RecoveryBoundaryInvocationConverter(Barrier barrier, CancellationToken cancellationToken) : JsonConverter<RecoveryBoundaryInvocationValue>
-    {
-        public override RecoveryBoundaryInvocationValue Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-            throw new NotSupportedException();
-
-        public override void Write(Utf8JsonWriter writer, RecoveryBoundaryInvocationValue value, JsonSerializerOptions options)
+        private int _reads;
+        public T Value
         {
-            if (!barrier.SignalAndWait(TestConstants.DefaultTimeout, cancellationToken))
+            get
             {
-                throw new TimeoutException("Concurrent recovery did not enter both converters.");
+                if (Interlocked.Increment(ref _reads) == 2 &&
+                    !barrier.SignalAndWait(TestConstants.DefaultTimeout, cancellationToken))
+                {
+                    throw new TimeoutException("Concurrent recovery did not read both values.");
+                }
+                return value;
             }
-            writer.WriteNumberValue(value.Value);
         }
     }
 
@@ -986,6 +946,18 @@ public partial class McpServerToolTests
 
         public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
             _contracts.GetOrAdd((type, options), key => inner.GetTypeInfo(key.Item1, key.Item2)!);
+    }
+
+    private static IJsonTypeInfoResolver CreateRecoveryBoundaryCycleResolver(bool sourceGenerated, Func<object?> getOwner)
+    {
+        IJsonTypeInfoResolver resolver = sourceGenerated ? RecoveryBoundaryJsonContext.Default : new DefaultJsonTypeInfoResolver();
+        return new RecoveryBoundaryCachingResolver(resolver.WithAddedModifier(typeInfo =>
+        {
+            if (typeInfo.Type == typeof(RecoveryBoundaryCyclicValue))
+            {
+                typeInfo.Properties.Single(property => property.Name == "owner").Get = _ => getOwner();
+            }
+        }));
     }
 
     private struct RecoveryBoundaryReferenceValue

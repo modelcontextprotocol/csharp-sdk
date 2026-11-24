@@ -1,4 +1,5 @@
 using ModelContextProtocol.Protocol;
+using System.Buffers;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -61,116 +62,157 @@ public sealed class RequestContext<TParams> : MessageContext
 
     internal sealed class StructuredContentRecoveryState(McpServerTool tool, JsonElement? schema)
     {
-        // Recovery callbacks retain serialized projections until the dispatch completes.
-        private const long MaxRetainedStructuredContentBytes = 4 * 1024 * 1024;
-        private const int MaxRetainedRecoveryIdentities = 4096;
+        private const int MaxRetainedBytes = 4 * 1024 * 1024;
+        private const int MaxRetainedIdentities = 128;
         private readonly object _lock = new();
         private readonly Dictionary<JsonElement, Action<McpServerTool, CallToolResult>> _plans = [];
+        private int _retainedBytes;
         private bool _isActive = true;
-        private bool _retentionBudgetExhausted;
-        private long _retainedBytes;
-        private int _retainedIdentityCount;
+        private int _requiresSchemaConformance;
 
         internal McpServerTool Tool { get; } = tool;
         internal JsonElement? Schema { get; } = schema;
         internal bool IsActive => Volatile.Read(ref _isActive);
+        internal bool RequiresSchemaConformance => Volatile.Read(ref _requiresSchemaConformance) != 0;
 
-        internal void Register(IEnumerable<JsonElement> identities, Action<McpServerTool, CallToolResult> recovery)
+        internal void RequireSchemaConformance() => Volatile.Write(ref _requiresSchemaConformance, 1);
+
+        internal void Register(
+            IReadOnlyList<JsonElement> identities, Action<McpServerTool, CallToolResult> recovery,
+            JsonElement? original, int originalBytes)
         {
             lock (_lock)
             {
-                if (!_isActive || _retentionBudgetExhausted)
-                {
-                    return;
-                }
-            }
-
-            List<JsonElement> retainedIdentities = [];
-            long registrationBytes = 0;
-            foreach (JsonElement identity in identities)
-            {
-                retainedIdentities.Add(identity);
-                if (retainedIdentities.Count > MaxRetainedRecoveryIdentities)
-                {
-                    registrationBytes = MaxRetainedStructuredContentBytes + 1;
-                    break;
-                }
-
-                long remainingBytes = MaxRetainedStructuredContentBytes - registrationBytes;
-                registrationBytes += GetSerializedByteCount(identity, remainingBytes);
-                if (registrationBytes > MaxRetainedStructuredContentBytes)
-                {
-                    break;
-                }
-            }
-
-            lock (_lock)
-            {
-                if (!_isActive || _retentionBudgetExhausted)
+                if (!_isActive)
                 {
                     return;
                 }
 
-                if (registrationBytes > MaxRetainedStructuredContentBytes - _retainedBytes ||
-                    retainedIdentities.Count > MaxRetainedRecoveryIdentities - _retainedIdentityCount)
+                HashSet<JsonElement> newIdentities = [];
+                foreach (JsonElement identity in identities)
                 {
-                    // Keep existing plans usable and leave later results unchanged after the budget is exhausted.
-                    _retentionBudgetExhausted = true;
+                    if (!_plans.ContainsKey(identity))
+                    {
+                        newIdentities.Add(identity);
+                    }
+                }
+
+                if (newIdentities.Count == 0)
+                {
+                    foreach (JsonElement identity in identities)
+                    {
+                        _plans[identity] = recovery;
+                    }
                     return;
                 }
 
-                foreach (JsonElement identity in retainedIdentities)
+                if (newIdentities.Count > MaxRetainedIdentities - _plans.Count ||
+                    _retainedBytes >= MaxRetainedBytes)
                 {
-                    _plans[identity] = recovery;
+                    return;
                 }
 
-                _retainedBytes += registrationBytes;
-                _retainedIdentityCount += retainedIdentities.Count;
+                HashSet<JsonElement> retainedElements = [];
+                foreach (JsonElement identity in identities)
+                {
+                    retainedElements.Add(identity);
+                }
+
+                if (!TryMeasureRetainedBytes(
+                    retainedElements, original, originalBytes, MaxRetainedBytes - _retainedBytes, out int retainedBytes))
+                {
+                    return;
+                }
+
+                foreach (JsonElement identity in newIdentities)
+                {
+                    _plans.Add(identity, recovery);
+                }
+                _retainedBytes += retainedBytes;
             }
         }
 
-        private static long GetSerializedByteCount(JsonElement element, long limit)
+        private static bool TryMeasureRetainedBytes(
+            IEnumerable<JsonElement> elements, JsonElement? original, int originalBytes, int limit, out int retainedBytes)
         {
-            using CountingStream stream = new(limit);
-            using Utf8JsonWriter writer = new(stream);
-            element.WriteTo(writer);
-            writer.Flush();
-            return stream.BytesWritten;
+            var counter = new BoundedCountingBufferWriter(limit);
+            try
+            {
+                foreach (JsonElement element in elements)
+                {
+                    if (original is { } source && element.Equals(source))
+                    {
+                        // WriteTo normalizes whitespace and can undercount the source document.
+                        counter.AddKnownBytes(originalBytes);
+                        continue;
+                    }
+
+                    using Utf8JsonWriter writer = new(counter);
+                    element.WriteTo(writer);
+                    writer.Flush();
+                }
+            }
+            catch (RecoveryPlanLimitExceededException)
+            {
+                retainedBytes = 0;
+                return false;
+            }
+
+            retainedBytes = counter.WrittenCount;
+            return true;
         }
 
-        private sealed class CountingStream(long limit) : Stream
+        private sealed class RecoveryPlanLimitExceededException : Exception;
+
+        private sealed class BoundedCountingBufferWriter(int limit) : IBufferWriter<byte>
         {
-            internal long BytesWritten { get; private set; }
+            private byte[] _buffer = [];
+            internal int WrittenCount { get; private set; }
 
-            public override bool CanRead => false;
-            public override bool CanSeek => false;
-            public override bool CanWrite => true;
-            public override long Length => BytesWritten;
-            public override long Position
+            public void Advance(int count)
             {
-                get => BytesWritten;
-                set => throw new NotSupportedException();
+                if (count < 0 || count > Math.Min(_buffer.Length, limit - WrittenCount))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(count));
+                }
+
+                WrittenCount += count;
             }
 
-            public override void Flush()
+            internal void AddKnownBytes(int count)
             {
+                if (count < 0 || count > limit - WrittenCount)
+                {
+                    throw new RecoveryPlanLimitExceededException();
+                }
+
+                WrittenCount += count;
             }
 
-            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-            public override void SetLength(long value) => throw new NotSupportedException();
+            public Memory<byte> GetMemory(int sizeHint = 0) => GetBuffer(sizeHint);
 
-            public override void Write(byte[] buffer, int offset, int count) => AddBytes(count);
+            public Span<byte> GetSpan(int sizeHint = 0) => GetBuffer(sizeHint).Span;
 
-#if NET
-            public override void Write(ReadOnlySpan<byte> buffer) => AddBytes(buffer.Length);
-#endif
-
-            public override void WriteByte(byte value) => AddBytes(1);
-
-            private void AddBytes(int count)
+            private Memory<byte> GetBuffer(int sizeHint)
             {
-                BytesWritten = BytesWritten > limit - count ? limit + 1 : BytesWritten + count;
+                if (sizeHint < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(sizeHint));
+                }
+
+                int remaining = limit - WrittenCount;
+                int required = Math.Max(sizeHint, 1);
+                if (required > remaining)
+                {
+                    throw new RecoveryPlanLimitExceededException();
+                }
+
+                if (_buffer.Length < required)
+                {
+                    _buffer = new byte[Math.Min(remaining, Math.Max(required, 256))];
+                }
+
+                return _buffer.AsMemory(0, Math.Min(_buffer.Length, remaining));
             }
         }
 
@@ -198,8 +240,6 @@ public sealed class RequestContext<TParams> : MessageContext
             {
                 _isActive = false;
                 _plans.Clear();
-                _retainedBytes = 0;
-                _retainedIdentityCount = 0;
             }
         }
     }

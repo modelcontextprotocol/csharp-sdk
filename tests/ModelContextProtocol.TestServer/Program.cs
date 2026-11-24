@@ -41,9 +41,42 @@ internal static class Program
             return;
         }
 
-        if (args.Contains("--write-large-notifications-after-stdin-eof"))
+        bool writeUnterminatedOutput = args.Contains("--write-shutdown-unterminated-output");
+        bool writeOverflowNotifications = args.Contains("--write-shutdown-overflow-notifications");
+        if (args.Contains("--write-shutdown-notifications") || writeUnterminatedOutput || writeOverflowNotifications)
         {
-            await WriteLargeNotificationsAfterStdinEofAsync();
+            await Console.Out.WriteLineAsync("""{"jsonrpc":"2.0","method":"test/ready"}""");
+            await Console.Out.FlushAsync();
+            string chunk = new('x', writeUnterminatedOutput ? 8192 : writeOverflowNotifications ? 16 : 4096);
+            if (writeUnterminatedOutput)
+            {
+                for (int i = 0; i < 32; i++)
+                {
+                    await Console.Out.WriteAsync(chunk);
+                }
+                await Console.Out.FlushAsync();
+                await Console.Error.WriteLineAsync("unterminated output started");
+                await Console.Error.FlushAsync();
+            }
+            await Console.In.ReadToEndAsync();
+
+            if (writeUnterminatedOutput)
+            {
+                for (int i = 0; i < 2048; i++)
+                {
+                    await Console.Out.WriteAsync(chunk);
+                }
+            }
+            else
+            {
+                string notification = "{\"jsonrpc\":\"2.0\",\"method\":\"test/shutdown\",\"params\":{\"data\":\"" +
+                    chunk + "\"}}";
+                for (int i = 0; i < (writeOverflowNotifications ? 4608 : 1024); i++)
+                {
+                    await Console.Out.WriteLineAsync(notification);
+                }
+            }
+            await Console.Out.FlushAsync();
             return;
         }
 
@@ -72,22 +105,6 @@ internal static class Program
         _ = RunBackgroundLoop(server);
 
         await server.RunAsync();
-    }
-
-    private static async Task WriteLargeNotificationsAfterStdinEofAsync()
-    {
-        while (await Console.In.ReadLineAsync() is not null)
-        {
-        }
-
-        string payload = new('x', 4096);
-        string notification = $"{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/test/shutdown\",\"params\":{{\"payload\":\"{payload}\"}}}}";
-        for (int i = 0; i < 1024; i++)
-        {
-            await Console.Out.WriteLineAsync(notification);
-        }
-
-        await Console.Out.FlushAsync();
     }
 
     private static async Task RunBackgroundLoop(McpServer server, CancellationToken cancellationToken = default)

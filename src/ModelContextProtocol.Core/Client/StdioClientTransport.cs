@@ -141,6 +141,7 @@ public sealed partial class StdioClientTransport : IClientTransport
             // few lines in a rolling log for use in exceptions.
             const int MaxStderrLength = 10; // keep the last 10 lines of stderr
             Queue<string> stderrRollingLog = new(MaxStderrLength);
+            TaskCompletionSource<bool> stderrCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
             errorHandler = (sender, args) =>
             {
                 string? data = args.Data;
@@ -169,6 +170,10 @@ public sealed partial class StdioClientTransport : IClientTransport
                     }
 
                     LogReadStderr(logger, endpointName, data);
+                }
+                else
+                {
+                    stderrCompleted.TrySetResult(true);
                 }
             };
             process.ErrorDataReceived += errorHandler;
@@ -224,7 +229,7 @@ public sealed partial class StdioClientTransport : IClientTransport
 
             process.BeginErrorReadLine();
 
-            return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, errorHandler, _loggerFactory);
+            return new StdioClientSessionTransport(_options, process, endpointName, stderrRollingLog, errorHandler, stderrCompleted.Task, _loggerFactory);
         }
         catch (Exception ex)
         {

@@ -8,6 +8,9 @@ namespace ModelContextProtocol.Client;
 /// <summary>Provides the client side of a stream-based session transport.</summary>
 internal class StreamClientSessionTransport : TransportBase
 {
+    private const int MaxShutdownDrainBytes = 8 * 1024 * 1024;
+    private const int MaxShutdownDrainMessages = 4096;
+    private const int MaxShutdownMessageLength = 1024 * 1024;
     private static readonly byte[] s_newlineBytes = "\n"u8.ToArray();
 
     internal static UTF8Encoding NoBomUtf8Encoding { get; } = new(encoderShouldEmitUTF8Identifier: false);
@@ -17,6 +20,7 @@ internal class StreamClientSessionTransport : TransportBase
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly CancellationTokenSource _shutdownCts = new();
     private Task? _readTask;
+    private volatile bool _drainIncomingMessages;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="StreamClientSessionTransport"/> class.
@@ -61,6 +65,8 @@ internal class StreamClientSessionTransport : TransportBase
             StartReading();
         }
     }
+
+    protected Task? ReadMessagesTask => Volatile.Read(ref _readTask);
 
     /// <summary>Starts reading after state used by overridden cleanup methods has been initialized.</summary>
     protected void StartReading()
@@ -125,23 +131,87 @@ internal class StreamClientSessionTransport : TransportBase
         {
             LogTransportEnteringReadMessagesLoop(Name);
 
-            while (true)
+            int retainedBytes = 0;
+            int retainedMessages = 0;
+            bool retainMessages = true;
+            bool discardLine = false;
+            char[] buffer = new char[4096];
+            StringBuilder line = new();
+
+            async ValueTask ProcessShutdownMessageAsync(string message)
             {
-                if (await _serverOutput.ReadLineAsync(cancellationToken).ConfigureAwait(false) is not string line)
+                if (!retainMessages || message.Length > MaxShutdownMessageLength)
                 {
-                    LogTransportEndOfStream(Name);
-                    break;
+                    retainMessages = false;
+                    return;
                 }
 
-                if (string.IsNullOrWhiteSpace(line))
+                int messageBytes = Encoding.UTF8.GetByteCount(message) + 1;
+                if (messageBytes > MaxShutdownDrainBytes - retainedBytes ||
+                    retainedMessages >= MaxShutdownDrainMessages)
                 {
-                    continue;
+                    retainMessages = false;
+                    return;
                 }
 
-                LogTransportReceivedMessageSensitive(Name, line);
-
-                await ProcessMessageAsync(line, cancellationToken).ConfigureAwait(false);
+                LogTransportReceivedMessageSensitive(Name, message);
+                await ProcessMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                retainedBytes += messageBytes;
+                retainedMessages++;
             }
+
+            async ValueTask ProcessLineAsync()
+            {
+                if (!discardLine && line.Length != 0 && (!_drainIncomingMessages || retainMessages))
+                {
+                    string message = line.ToString();
+                    if (_drainIncomingMessages)
+                    {
+                        await ProcessShutdownMessageAsync(message).ConfigureAwait(false);
+                    }
+                    else if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        LogTransportReceivedMessageSensitive(Name, message);
+                        await ProcessMessageAsync(message, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
+                line.Clear();
+                discardLine = false;
+            }
+
+            int charsRead;
+#if NET
+            while ((charsRead = await _serverOutput.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) != 0)
+#else
+            CancellableStreamReader serverOutput = (CancellableStreamReader)_serverOutput;
+            while ((charsRead = await serverOutput.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) != 0)
+#endif
+            {
+                for (int i = 0; i < charsRead; i++)
+                {
+                    char character = buffer[i];
+                    if (character is '\r' or '\n')
+                    {
+                        await ProcessLineAsync().ConfigureAwait(false);
+                    }
+                    else if (!discardLine && (!_drainIncomingMessages || retainMessages))
+                    {
+                        if (_drainIncomingMessages && line.Length >= MaxShutdownMessageLength)
+                        {
+                            line.Clear();
+                            discardLine = true;
+                            retainMessages = false;
+                        }
+                        else
+                        {
+                            line.Append(character);
+                        }
+                    }
+                }
+            }
+            await ProcessLineAsync().ConfigureAwait(false);
+            LogTransportEndOfStream(Name);
         }
         catch (OperationCanceledException)
         {
@@ -193,6 +263,12 @@ internal class StreamClientSessionTransport : TransportBase
     protected void CancelShutdown()
     {
         _shutdownCts.Cancel();
+    }
+
+    /// <summary>Switches the read loop to bounded shutdown draining.</summary>
+    protected void BeginShutdownDrain()
+    {
+        _drainIncomingMessages = true;
     }
 
     protected virtual async ValueTask CleanupAsync(Exception? error = null, CancellationToken cancellationToken = default)

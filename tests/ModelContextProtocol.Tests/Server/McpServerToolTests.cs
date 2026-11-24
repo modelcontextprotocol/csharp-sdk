@@ -638,7 +638,7 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_PreservesMemberConverterForRequiredDefault()
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverMemberConverterForRequiredDefault()
     {
         JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"id":{"type":"string"},"count":{"type":"string"}},"required":["id","count"]}""").RootElement;
         JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
@@ -653,8 +653,8 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
 
         Assert.NotNull(result.StructuredContent);
-        Assert.Equal("0", result.StructuredContent.Value.GetProperty("count").GetString());
-        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+        Assert.Equal("42", result.StructuredContent.Value.GetProperty("id").GetString());
+        Assert.False(result.StructuredContent.Value.TryGetProperty("count", out _));
     }
 
     [Fact]
@@ -1231,6 +1231,225 @@ public partial class McpServerToolTests
     }
 
     [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRestoreStatefullyFilteredProperty()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"secret":{"type":"integer"}},"required":["secret"]}""").RootElement;
+        DefaultJsonTypeInfoResolver resolver = new();
+        resolver.Modifiers.Add(typeInfo =>
+        {
+            if (typeInfo.Type == typeof(StatefulFilteredOutput))
+            {
+                typeInfo.Properties.Single(property => property.Name == "secret").ShouldSerialize =
+                    static (owner, _) => ((StatefulFilteredOutput)owner).IncludeSecret;
+            }
+        });
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(resolver, new DefaultJsonTypeInfoResolver()),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new StatefulFilteredOutput(),
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        CallToolResult result = await tool.InvokeAsync(
+            CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.False(result.StructuredContent!.Value.TryGetProperty("secret", out _));
+        Assert.DoesNotContain("secret", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRestoreChangedDefaultValue()
+    {
+        JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"secret":{"type":"integer"}},"required":["secret"]}""").RootElement;
+        JsonSerializerOptions options = new(McpJsonUtilities.DefaultOptions)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        McpServerTool tool = McpServerTool.Create(
+            () => new StatefulDefaultOutput(),
+            new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
+
+        CallToolResult result = await tool.InvokeAsync(
+            CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.False(result.StructuredContent!.Value.TryGetProperty("secret", out _));
+        Assert.DoesNotContain("secret", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRestoreNonDefaultEquatableValue(bool globalCondition, bool nested)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(
+            globalCondition ? JsonIgnoreCondition.WhenWritingDefault : JsonIgnoreCondition.WhenWritingNull);
+        object output = (globalCondition, nested) switch
+        {
+            (false, false) => new EquatableSecretOutput(),
+            (false, true) => new NestedEquatableSecretOutput(),
+            (true, false) => new GlobalEquatableSecretOutput(),
+            _ => new GlobalNestedEquatableSecretOutput(),
+        };
+        Assert.False(JsonSerializer.SerializeToElement(output, options).TryGetProperty("child", out _));
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            output, """{"type":"object","required":["child"]}""", options);
+
+        CallToolResult result = await tool.InvokeAsync(
+            CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.False(result.StructuredContent!.Value.TryGetProperty("child", out _));
+        Assert.DoesNotContain("not-for-output", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotExposeComputedDefaultStructProperty(bool nestedConverter)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        object output = nestedConverter ? new NestedConverterSecretOutput() : new ComputedSecretOutput();
+        Assert.False(JsonSerializer.SerializeToElement(output, options).TryGetProperty("child", out _));
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """{"required":["child"]}""", options);
+
+        CallToolResult result = await tool.InvokeAsync(
+            CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.False(result.StructuredContent!.Value.TryGetProperty("child", out _));
+        Assert.DoesNotContain("not-for-output", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotEnumerateOmittedDefaultStruct()
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        var output = new EnumerableSecretOutput();
+        Assert.False(JsonSerializer.SerializeToElement(output, options).TryGetProperty("items", out _));
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """{"required":["items"]}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.False(result.TryGetProperty("items", out _));
+    }
+
+    [Theory]
+    [InlineData("property")]
+    [InlineData("global")]
+    [InlineData("factory")]
+    [InlineData("type")]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotInvokeCustomConverterForOmittedDefault(string location)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        RecoveryDisclosingIntConverter converter = new();
+        object output = location switch
+        {
+            "property" => new DisclosingMemberConverterOutput(),
+            "type" => new DisclosingTypeConverterOutput(),
+            _ => new DisclosingGlobalConverterOutput(),
+        };
+        if (location == "global")
+        {
+            options.Converters.Insert(0, converter);
+        }
+        else if (location == "factory")
+        {
+            options.TypeInfoResolver = new DefaultJsonTypeInfoResolver().WithAddedModifier(typeInfo =>
+            {
+                if (typeInfo.Type == typeof(DisclosingGlobalConverterOutput))
+                {
+                    typeInfo.Properties.Single(property => property.Name == "value").CustomConverter =
+                        new RecoveryDisclosingConverterFactory(converter);
+                }
+            });
+        }
+        Assert.False(JsonSerializer.SerializeToElement(output, options).TryGetProperty("value", out _));
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            output, """{"required":["value"],"properties":{"value":{"const":"not-for-output"}}}""", options);
+
+        CallToolResult result = await tool.InvokeAsync(
+            CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.False(result.StructuredContent!.Value.TryGetProperty("value", out _));
+        Assert.DoesNotContain("not-for-output", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text, StringComparison.Ordinal);
+        Assert.Equal(0, converter.WriteCalls);
+    }
+
+    [Theory]
+    [InlineData(JsonIgnoreCondition.WhenWritingNull)]
+    [InlineData(JsonIgnoreCondition.WhenWritingDefault)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotInvokeCustomConverterForOmittedNull(JsonIgnoreCondition condition)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(condition);
+        RecoveryDisclosingNullConverter converter = new();
+        options.Converters.Insert(0, converter);
+        var output = new { Note = (string?)null };
+        Assert.False(JsonSerializer.SerializeToElement(output, options).TryGetProperty("note", out _));
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            output, """{"required":["note"],"properties":{"note":{"const":"not-for-output"}}}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.False(result.TryGetProperty("note", out _));
+        Assert.Equal(0, converter.WriteCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverDefaultEnum(bool stringConverter)
+    {
+        JsonSerializerOptions options = new(JsonSerializerDefaults.Web)
+        {
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+        };
+        if (stringConverter)
+        {
+            options.Converters.Add(new JsonStringEnumConverter());
+        }
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new { Status = RecoveryDefaultStatus.None },
+            """{"required":["status"]}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.False(result.TryGetProperty("status", out _));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRestoreNegativeZero(bool singlePrecision)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        object output = singlePrecision
+            ? new { Value = BitConverter.ToSingle(BitConverter.GetBytes(int.MinValue), 0) }
+            : new { Value = BitConverter.Int64BitsToDouble(long.MinValue) };
+        Assert.False(JsonSerializer.SerializeToElement(output, options).TryGetProperty("value", out _));
+        McpServerTool tool = CreateStructuredOutputTestTool(output, """{"required":["value"]}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.False(result.TryGetProperty("value", out _));
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverDefaultStructOrCallConstructor()
+    {
+        JsonSerializerOptions options = CreateStructuredOutputTestOptions(JsonIgnoreCondition.WhenWritingDefault);
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new ExplicitConstructorOutput(), """{"required":["child"]}""", options);
+
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+
+        Assert.False(result.TryGetProperty("child", out _));
+    }
+
+    [Fact]
     public async Task StructuredOutput_Enabled_ExplicitSchema_RespectsCallerFilterForMemberDefault()
     {
         JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"count":{"type":"integer"},"nullableCount":{"type":"integer"}},"required":["count","nullableCount"]}""").RootElement;
@@ -1311,7 +1530,7 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_RepairsNestedDefaultValueInPasses()
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverOmittedNestedDefaultStruct()
     {
         JsonElement outputSchema = JsonDocument.Parse("""
             {"type":"object","properties":{"child":{"type":"object","properties":{"note":{"type":["string","null"]}},"required":["note"]}},"required":["child"]}
@@ -1328,8 +1547,7 @@ public partial class McpServerToolTests
         var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
 
         Assert.NotNull(result.StructuredContent);
-        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("child").GetProperty("note").ValueKind);
-        AssertMatchesJsonSchema(outputSchema, result.StructuredContent);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("child", out _));
     }
 
     [Fact]
@@ -1545,7 +1763,7 @@ public partial class McpServerToolTests
             TypeInfoResolver = JsonTypeInfoResolver.Combine(McpJsonUtilities.DefaultOptions.TypeInfoResolver, new DefaultJsonTypeInfoResolver()),
         };
         McpServerTool tool = McpServerTool.Create(
-            () => new BranchSpecificOneOfRecoveryOutput { Tag = "0", Child = default, Other = null },
+            () => new BranchSpecificOneOfRecoveryOutput { Tag = "0", Child = new BranchSpecificOneOfRecoveryChild(), Other = null },
             new() { Name = "tool", UseStructuredContent = true, OutputSchema = outputSchema, SerializerOptions = options });
 
         var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
@@ -1635,14 +1853,13 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_PreservesConverterProducedNull()
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverCustomTypeConverter()
     {
         McpServerTool tool = CreateStructuredOutputTestTool(
             new DefaultRequestIdOutput(),
             """{"type":"object","required":["id"],"properties":{"id":{"type":"null"}}}""");
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
-        Assert.Equal(JsonValueKind.Null, result.GetProperty("id").ValueKind);
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.False(result.TryGetProperty("id", out _));
     }
 
     [Theory]
@@ -1674,14 +1891,13 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_PreservesJsonElementMemberConverter()
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverJsonElementMemberConverter()
     {
         McpServerTool tool = CreateStructuredOutputTestTool(
             new DefaultJsonElementOutput(),
             """{"type":"object","required":["value"],"properties":{"value":{"const":"converted"}}}""");
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
-        Assert.Equal("converted", result.GetProperty("value").GetString());
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.False(result.TryGetProperty("value", out _));
     }
 
     [Fact]
@@ -2235,7 +2451,7 @@ public partial class McpServerToolTests
     public async Task StructuredOutput_Enabled_ExplicitSchema_ResolvesEmbeddedResourceReferences(string reference)
     {
         McpServerTool tool = CreateStructuredOutputTestTool(
-            new DefaultRequestIdOutput(),
+            new NullableIdOutput(),
             $$$"""
             {
               "$id":"https://example.test/root",
@@ -2257,7 +2473,7 @@ public partial class McpServerToolTests
     public async Task StructuredOutput_Enabled_ExplicitSchema_ResolvesResourceInPropertyNames(string reference)
     {
         McpServerTool tool = CreateStructuredOutputTestTool(
-            new DefaultRequestIdOutput(),
+            new NullableIdOutput(),
             $$$"""
             {
               "$id":"https://example.test/root",
@@ -2276,7 +2492,7 @@ public partial class McpServerToolTests
     public async Task StructuredOutput_Enabled_ExplicitSchema_ResolvesReferencesInEmbeddedBaseUri(string reference)
     {
         McpServerTool tool = CreateStructuredOutputTestTool(
-            new DefaultRequestIdOutput(),
+            new NullableIdOutput(),
             $$$"""
             {
               "$id":"https://example.test/base/root",
@@ -2312,8 +2528,8 @@ public partial class McpServerToolTests
     private sealed class NestedIndependentUnionOutput
     {
         public string Tag { get; init; } = "0";
-        public NestedDefaultedStructuredChild Child0 { get; init; }
-        public NestedDefaultedStructuredChild Child1 { get; init; }
+        public NestedDefaultedStructuredChild? Child0 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child1 { get; init; }
     }
 
     private sealed class ExcludedThrowingGetterOutput
@@ -2458,13 +2674,14 @@ public partial class McpServerToolTests
     }
 
     [Fact]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_PreservesConverterCancellation()
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotInvokeCancellingConverterForNull()
     {
         JsonSerializerOptions options = CreateStructuredOutputTestOptions();
         options.Converters.Insert(0, new RecoveryRejectNullConverter { Failure = "cancel" });
         McpServerTool tool = CreateStructuredOutputTestTool(
             new OptionalThrowingConverterOutput(), """{"required":["note"]}""", options);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => InvokeStructuredOutputTestTool(tool));
+        JsonElement result = await InvokeStructuredOutputTestTool(tool);
+        Assert.False(result.TryGetProperty("note", out _));
     }
 
     [Fact]
@@ -2505,7 +2722,7 @@ public partial class McpServerToolTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotOverrideCustomConverterNumberHandling(bool propertyConverter)
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverCustomNumberConverter(bool propertyConverter)
     {
         JsonSerializerOptions options = CreateStructuredOutputTestOptions();
         options.NumberHandling = JsonNumberHandling.Strict;
@@ -2518,7 +2735,7 @@ public partial class McpServerToolTests
         McpServerTool tool = CreateStructuredOutputTestTool(
             output, """{"required":["count"],"properties":{"count":{"const":true}}}""", options);
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.False(result.TryGetProperty("count", out _));
     }
 
     [Fact]
@@ -2710,17 +2927,22 @@ public partial class McpServerToolTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task StructuredOutput_Enabled_ExplicitSchema_UsesSerializerDefaultComparison(bool globalCondition)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_DoesNotRecoverStructsWithCustomEquality(bool globalCondition, bool actualDefault)
     {
         JsonSerializerOptions options = CreateStructuredOutputTestOptions(
             globalCondition ? JsonIgnoreCondition.WhenWritingDefault : JsonIgnoreCondition.WhenWritingNull);
-        object output = globalCondition ? new RecoveryGlobalEquatableOutput() : new RecoveryEquatableOutput();
+        RecoveryEquatableChild child = new(actualDefault ? 0 : 1);
+        object output = globalCondition
+            ? new RecoveryGlobalEquatableOutput { Child = child }
+            : new RecoveryEquatableOutput { Child = child };
         McpServerTool tool = CreateStructuredOutputTestTool(
             output, """{"required":["child"],"properties":{"child":{"required":["note"]}}}""", options);
         JsonElement result = await InvokeStructuredOutputTestTool(tool);
-        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema!.Value, result);
+        Assert.False(result.TryGetProperty("child", out _));
     }
 
     [Theory]
@@ -2846,11 +3068,12 @@ public partial class McpServerToolTests
     private sealed class RecoveryNestedNumberOutput
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-        public RecoveryNumberChild Child { get; init; }
+        public RecoveryNumberChild? Child { get; init; } = new RecoveryNumberChild();
     }
 
     private struct RecoveryNumberChild
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public int Count { get; init; }
     }
 
@@ -3669,6 +3892,11 @@ public partial class McpServerToolTests
         public RequestId Id { get; init; }
     }
 
+    private sealed class NullableIdOutput
+    {
+        public string? Id { get; init; }
+    }
+
     private sealed class DynamicReferenceOutput
     {
         public ExplicitSchemaOutput? Child { get; init; }
@@ -3783,30 +4011,30 @@ public partial class McpServerToolTests
 
     private sealed class ManyNestedDefaultOutputs
     {
-        public NestedDefaultedStructuredChild Child0 { get; init; }
-        public NestedDefaultedStructuredChild Child1 { get; init; }
-        public NestedDefaultedStructuredChild Child2 { get; init; }
-        public NestedDefaultedStructuredChild Child3 { get; init; }
-        public NestedDefaultedStructuredChild Child4 { get; init; }
-        public NestedDefaultedStructuredChild Child5 { get; init; }
-        public NestedDefaultedStructuredChild Child6 { get; init; }
-        public NestedDefaultedStructuredChild Child7 { get; init; }
-        public NestedDefaultedStructuredChild Child8 { get; init; }
-        public NestedDefaultedStructuredChild Child9 { get; init; }
-        public NestedDefaultedStructuredChild Child10 { get; init; }
-        public NestedDefaultedStructuredChild Child11 { get; init; }
-        public NestedDefaultedStructuredChild Child12 { get; init; }
-        public NestedDefaultedStructuredChild Child13 { get; init; }
-        public NestedDefaultedStructuredChild Child14 { get; init; }
-        public NestedDefaultedStructuredChild Child15 { get; init; }
-        public NestedDefaultedStructuredChild Child16 { get; init; }
-        public NestedDefaultedStructuredChild Child17 { get; init; }
-        public NestedDefaultedStructuredChild Child18 { get; init; }
-        public NestedDefaultedStructuredChild Child19 { get; init; }
-        public NestedDefaultedStructuredChild Child20 { get; init; }
-        public NestedDefaultedStructuredChild Child21 { get; init; }
-        public NestedDefaultedStructuredChild Child22 { get; init; }
-        public NestedDefaultedStructuredChild Child23 { get; init; }
+        public NestedDefaultedStructuredChild? Child0 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child1 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child2 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child3 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child4 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child5 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child6 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child7 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child8 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child9 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child10 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child11 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child12 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child13 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child14 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child15 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child16 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child17 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child18 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child19 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child20 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child21 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child22 { get; init; } = new NestedDefaultedStructuredChild();
+        public NestedDefaultedStructuredChild? Child23 { get; init; } = new NestedDefaultedStructuredChild();
     }
 
     private sealed class ManyBranchStructuredOutput
@@ -3862,7 +4090,7 @@ public partial class McpServerToolTests
     private struct StructDictionaryChild
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-        public int Count { get; set; }
+        public long Count { get; set; }
 
         public ExplicitSchemaStatus Status { get; set; }
     }
@@ -3928,6 +4156,178 @@ public partial class McpServerToolTests
         public required string Secret { get; init; }
     }
 
+    private sealed class StatefulFilteredOutput : IJsonOnSerializing, IJsonOnSerialized
+    {
+        [JsonIgnore]
+        public bool IncludeSecret { get; private set; }
+
+        public int Secret => 314159;
+
+        public void OnSerializing() => IncludeSecret = false;
+        public void OnSerialized() => IncludeSecret = true;
+    }
+
+    private sealed class StatefulDefaultOutput : IJsonOnSerializing, IJsonOnSerialized
+    {
+        private int _secret;
+
+        public int Secret => _secret;
+
+        public void OnSerializing() => _secret = 0;
+        public void OnSerialized() => _secret = 314159;
+    }
+
+    private sealed class EquatableSecretOutput
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public EquatableSecretValue Child { get; set; } = new("not-for-output");
+    }
+
+    private sealed class GlobalEquatableSecretOutput
+    {
+        public EquatableSecretValue Child { get; set; } = new("not-for-output");
+    }
+
+    private sealed class NestedEquatableSecretOutput
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public NestedEquatableSecretValue Child { get; set; } = new(new("not-for-output"));
+    }
+
+    private sealed class GlobalNestedEquatableSecretOutput
+    {
+        public NestedEquatableSecretValue Child { get; set; } = new(new("not-for-output"));
+    }
+
+    private readonly struct NestedEquatableSecretValue(EquatableSecretValue value)
+    {
+        public EquatableSecretValue Value { get; } = value;
+    }
+
+    private readonly struct EquatableSecretValue(string secret) : IEquatable<EquatableSecretValue>
+    {
+        public string Secret { get; } = secret;
+        public bool Equals(EquatableSecretValue other) => true;
+        public override bool Equals(object? obj) => obj is EquatableSecretValue other && Equals(other);
+        public override int GetHashCode() => 0;
+    }
+
+    private sealed class ComputedSecretOutput
+    {
+        public ComputedSecretValue Child { get; set; }
+    }
+
+    private readonly struct ComputedSecretValue
+    {
+        public string Secret => "not-for-output";
+    }
+
+    private sealed class NestedConverterSecretOutput
+    {
+        public NestedConverterSecretValue Child { get; set; }
+    }
+
+    private readonly struct NestedConverterSecretValue
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+        [JsonConverter(typeof(RecoveryDisclosingIntConverter))]
+        public int Value => 0;
+    }
+
+    private sealed class EnumerableSecretOutput
+    {
+        public EnumerableSecretValue Items { get; set; }
+    }
+
+    private readonly struct EnumerableSecretValue : IEnumerable<string>
+    {
+        public IEnumerator<string> GetEnumerator()
+        {
+            yield return "not-for-output";
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class DisclosingMemberConverterOutput
+    {
+        [JsonConverter(typeof(RecoveryDisclosingIntConverter))]
+        public int Value { get; set; }
+    }
+
+    private sealed class DisclosingGlobalConverterOutput
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed class DisclosingTypeConverterOutput
+    {
+        public DisclosingConvertedValue Value { get; set; }
+    }
+
+    [JsonConverter(typeof(RecoveryDisclosingValueConverter))]
+    private readonly struct DisclosingConvertedValue;
+
+    private sealed class RecoveryDisclosingIntConverter : JsonConverter<int>
+    {
+        public int WriteCalls { get; private set; }
+
+        public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options)
+        {
+            WriteCalls++;
+            writer.WriteStringValue("not-for-output");
+        }
+    }
+
+    private sealed class RecoveryDisclosingConverterFactory(RecoveryDisclosingIntConverter converter) : JsonConverterFactory
+    {
+        public override bool CanConvert(Type typeToConvert) => typeToConvert == typeof(int);
+        public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) => converter;
+    }
+
+    private sealed class RecoveryDisclosingValueConverter : JsonConverter<DisclosingConvertedValue>
+    {
+        public override DisclosingConvertedValue Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, DisclosingConvertedValue value, JsonSerializerOptions options) =>
+            writer.WriteStringValue("not-for-output");
+    }
+
+    private sealed class RecoveryDisclosingNullConverter : JsonConverter<string>
+    {
+        public int WriteCalls { get; private set; }
+        public override bool HandleNull => true;
+
+        public override string Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, string value, JsonSerializerOptions options)
+        {
+            WriteCalls++;
+            writer.WriteStringValue("not-for-output");
+        }
+    }
+
+    private enum RecoveryDefaultStatus
+    {
+        None,
+    }
+
+    private sealed class ExplicitConstructorOutput
+    {
+        public ExplicitConstructorValue Child { get; set; }
+    }
+
+    private readonly struct ExplicitConstructorValue
+    {
+        public ExplicitConstructorValue() => throw new InvalidOperationException("The default value must not invoke this constructor.");
+        public int Count => 0;
+    }
+
     private sealed class ExplicitSchemaFilteredDefaultOutput
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -3984,16 +4384,16 @@ public partial class McpServerToolTests
 
     private sealed class NestedOneOfRecoveryOutput
     {
-        public NestedOneOfRecoveryChild First { get; init; }
+        public NestedOneOfRecoveryChild? First { get; init; } = new NestedOneOfRecoveryChild();
 
-        public NestedOneOfRecoveryChild Second { get; init; }
+        public NestedOneOfRecoveryChild? Second { get; init; }
     }
 
     private sealed class BranchSpecificOneOfRecoveryOutput
     {
         public required string Tag { get; init; }
 
-        public BranchSpecificOneOfRecoveryChild Child { get; init; }
+        public BranchSpecificOneOfRecoveryChild? Child { get; init; }
 
         public string? Other { get; init; }
     }

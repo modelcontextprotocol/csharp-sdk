@@ -142,6 +142,39 @@ public partial class McpServerToolTests
     }
 
 #if NET
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task StructuredOutput_Search_BoundsFlagEvaluationOfSharedReferenceDag(bool sourceHasValue)
+    {
+        JsonObject definitions = new() { ["s0"] = JsonNode.Parse("""{"required":["note"]}""") };
+        for (int i = 1; i <= 17; i++)
+        {
+            definitions[$"s{i}"] = JsonNode.Parse($$"""{"allOf":[{"$ref":"#/$defs/s{{i - 1}}"},{"$ref":"#/$defs/s{{i - 1}}"}]}""");
+        }
+
+        McpServerTool tool = CreateStructuredOutputTestTool(
+            new { Note = sourceHasValue ? "present" : null },
+            new JsonObject { ["$ref"] = "#/$defs/s17", ["$defs"] = definitions }.ToJsonString());
+
+        await Task.Run(() =>
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            JsonElement result = InvokeStructuredOutputTestTool(tool).GetAwaiter().GetResult();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            if (sourceHasValue)
+            {
+                Assert.Equal("present", result.GetProperty("note").GetString());
+            }
+            else
+            {
+                Assert.False(result.TryGetProperty("note", out _));
+            }
+            Assert.True(allocated < 32 * 1024 * 1024, $"Flag evaluation allocated {allocated:N0} bytes.");
+        }, TestContext.Current.CancellationToken).WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+    }
+
     [Fact]
     public async Task StructuredOutput_Search_BoundsLegacyRecursiveDiagnosticExpansion()
     {
@@ -576,13 +609,22 @@ public partial class McpServerToolTests
 
                         CallToolResult result = await InvokeRegisteredToolAsync(tool, protocolVersion);
 
-                        Assert.NotEqual(true, result.IsError);
+                        bool shouldFailClosed = kind is "clr" or "document";
+                        Assert.Equal(shouldFailClosed, result.IsError is true);
+                        Assert.Equal(kind is "clr" or "document", fetches > 0);
+                        if (shouldFailClosed)
+                        {
+                            Assert.Null(result.StructuredContent);
+                            string message = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+                            Assert.Equal("The tool could not produce structured content that conforms to its advertised output schema.", message);
+                            continue;
+                        }
+
                         JsonElement content = result.StructuredContent!.Value;
                         if (array && protocolVersion != "2026-07-28")
                         {
                             content = content.GetProperty("result");
                         }
-                        Assert.Equal(kind is "clr" or "document", fetches > 0);
                         if (kind == "clr")
                         {
                             Assert.Equal("present", (array ? content[0] : content).GetProperty("note").GetString());
