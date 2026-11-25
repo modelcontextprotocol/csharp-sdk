@@ -628,7 +628,7 @@ public class StdioClientTransportTests(ITestOutputHelper testOutputHelper) : Log
         {
             JsonRpcRequest received = Assert.IsType<JsonRpcRequest>(
                 await sessionTransport.MessageReader.ReadAsync(TestContext.Current.CancellationToken).AsTask()
-                    .WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
+                    .WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
             Assert.Equal(message.Method, received.Method);
         }
         finally

@@ -140,18 +140,15 @@ public sealed class RequestContext<TParams> : MessageContext
         private bool _isActive = true;
         private int _requiresSchemaConformance;
         private int _returnsExplicitResult;
-        private int _skipExternalSchemaValidation = 1;
 
         internal McpServerTool Tool { get; } = tool;
         internal JsonElement? Schema => _schemas[0].Schema;
         internal bool IsActive => Volatile.Read(ref _isActive);
         internal bool RequiresSchemaConformance => Volatile.Read(ref _requiresSchemaConformance) != 0;
         internal bool ReturnsExplicitResult => Volatile.Read(ref _returnsExplicitResult) != 0;
-        internal bool SkipExternalSchemaValidation => Volatile.Read(ref _skipExternalSchemaValidation) != 0;
 
         internal void RequireSchemaConformance() => Volatile.Write(ref _requiresSchemaConformance, 1);
         internal void MarkExplicitResult() => Volatile.Write(ref _returnsExplicitResult, 1);
-        internal void AllowExternalSchemaResolution() => Volatile.Write(ref _skipExternalSchemaValidation, 0);
 
         internal bool TryGetSchema(McpServerTool tool, out JsonElement? schema)
         {
@@ -380,7 +377,10 @@ public sealed class RequestContext<TParams> : MessageContext
                     structuredContent, out structuredContentHash, out structuredContentByteCount);
                 if (structuredContentHash is not null)
                 {
-                    structuredContentIdentity = structuredContent;
+                    // Isolate retained identity from a potentially much larger parent JsonDocument.
+                    JsonElement boundedIdentity = structuredContent.Clone();
+                    result.StructuredContent = boundedIdentity;
+                    structuredContentIdentity = boundedIdentity;
                 }
             }
 

@@ -563,7 +563,7 @@ public partial class McpServerToolTests
         [InlineData("document", true)]
         [InlineData("clr", false)]
         [InlineData("clr", true)]
-        public async Task StructuredOutput_Search_DoesNotLoadSchemasForSerializedJson(string kind, bool forwarding)
+        public async Task StructuredOutput_Search_FailsClosedWithoutFetchingExternalSchemas(string kind, bool forwarding)
         {
             foreach (string protocolVersion in new[] { "2025-06-18", "2025-11-25", "2026-07-28" })
             {
@@ -609,30 +609,11 @@ public partial class McpServerToolTests
 
                         CallToolResult result = await InvokeRegisteredToolAsync(tool, protocolVersion);
 
-                        bool shouldFailClosed = kind is "clr" or "document";
-                        Assert.Equal(shouldFailClosed, result.IsError is true);
-                        Assert.Equal(kind is "clr" or "document", fetches > 0);
-                        if (shouldFailClosed)
-                        {
-                            Assert.Null(result.StructuredContent);
-                            string message = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
-                            Assert.Equal("The tool could not produce structured content that conforms to its advertised output schema.", message);
-                            continue;
-                        }
-
-                        JsonElement content = result.StructuredContent!.Value;
-                        if (array && protocolVersion != "2026-07-28")
-                        {
-                            content = content.GetProperty("result");
-                        }
-                        if (kind == "clr")
-                        {
-                            Assert.Equal("present", (array ? content[0] : content).GetProperty("note").GetString());
-                        }
-                        else
-                        {
-                            Assert.Equal(json, content.GetRawText());
-                        }
+                        Assert.True(result.IsError);
+                        Assert.Equal(0, fetches);
+                        Assert.Null(result.StructuredContent);
+                        string message = Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text;
+                        Assert.Equal("The tool could not produce structured content that conforms to its advertised output schema.", message);
                     }
                     finally
                     {
@@ -643,9 +624,49 @@ public partial class McpServerToolTests
         }
 
         [Theory]
+        [InlineData("$ref")]
+        [InlineData("$dynamicRef")]
+        [InlineData("$recursiveRef")]
+        public async Task StructuredOutput_Search_DoesNotFetchExternalReferenceKeywords(string referenceKeyword)
+        {
+            Uri uri = new($"https://example.test/recovery/{Guid.NewGuid():N}");
+            int fetches = 0;
+            var fetch = SchemaRegistry.Global.Fetch;
+            try
+            {
+                SchemaRegistry.Global.Fetch = (requested, registry) =>
+                {
+                    if (requested == uri)
+                    {
+                        Interlocked.Increment(ref fetches);
+                    }
+
+                    return fetch(requested, registry);
+                };
+                McpServerTool tool = McpServerTool.Create(() => new { Value = 42 }, new()
+                {
+                    Name = "external_reference_keyword",
+                    UseStructuredContent = true,
+                    OutputSchema = JsonDocument.Parse(
+                        $$"""{"{{referenceKeyword}}":"{{uri}}"}""").RootElement,
+                });
+
+                CallToolResult result = await InvokeRegisteredToolAsync(tool, "2026-07-28");
+
+                Assert.True(result.IsError);
+                Assert.Equal(0, fetches);
+                Assert.Null(result.StructuredContent);
+            }
+            finally
+            {
+                SchemaRegistry.Global.Fetch = fetch;
+            }
+        }
+
+        [Theory]
         [InlineData(false)]
         [InlineData(true)]
-        public async Task StructuredOutput_ResponseFilterReplacementStillValidatesExternalSchema(bool replaceContext)
+        public async Task StructuredOutput_ResponseFilterReplacementFailsClosedWithoutFetchingExternalSchema(bool replaceContext)
         {
             Uri uri = new($"https://example.test/recovery/{Guid.NewGuid():N}");
             JsonSchema external = JsonSchema.FromText(
@@ -719,7 +740,8 @@ public partial class McpServerToolTests
                 });
 
                 Assert.True(result.IsError);
-                Assert.True(fetches > 0);
+                Assert.Equal(0, fetches);
+                Assert.Null(result.StructuredContent);
             }
             finally
             {
@@ -773,7 +795,7 @@ public partial class McpServerToolTests
         }
 
         [Fact]
-        public async Task StructuredOutput_Search_DoesNotMutateBorrowedSchemaRegexes()
+        public async Task StructuredOutput_Search_DoesNotFetchOrMutateBorrowedSchemaRegexes()
         {
             Uri uri = new($"https://example.test/recovery/{Guid.NewGuid():N}");
             JsonSchema external = JsonSchema.FromText(
@@ -782,10 +804,20 @@ public partial class McpServerToolTests
             KeywordData pattern = external.Root.Keywords.Single(keyword => keyword.Handler.Name == "properties")
                 .Subschemas.Single().Keywords.Single(keyword => keyword.Handler.Name == "pattern");
             Regex original = Assert.IsType<Regex>(pattern.Value);
+            int fetches = 0;
             var fetch = SchemaRegistry.Global.Fetch;
             try
             {
-                SchemaRegistry.Global.Fetch = (requested, registry) => requested == uri ? external : fetch(requested, registry);
+                SchemaRegistry.Global.Fetch = (requested, registry) =>
+                {
+                    if (requested == uri)
+                    {
+                        Interlocked.Increment(ref fetches);
+                        return external;
+                    }
+
+                    return fetch(requested, registry);
+                };
                 McpServerTool tool = McpServerTool.Create(() => new { Note = (string?)null, Value = "safe" }, new()
                 {
                     Name = "tool",
@@ -807,6 +839,7 @@ public partial class McpServerToolTests
 
                 Assert.NotEqual(true, result.IsError);
                 Assert.Equal("""{"value":"safe"}""", result.StructuredContent!.Value.GetRawText());
+                Assert.Equal(0, fetches);
                 Assert.Same(original, pattern.Value);
             }
             finally

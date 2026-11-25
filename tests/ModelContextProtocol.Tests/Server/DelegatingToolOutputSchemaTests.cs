@@ -237,10 +237,17 @@ public partial class DelegatingToolOutputSchemaTests
     [Fact]
     public async Task CallTool_CopiedResultPrefersOriginalStructuredContentIdentity()
     {
-        McpServerTool first = McpServerTool.Create(() => new CallToolResult
+        string sourceJson = "{\"selected\":{\"a\":1},\"padding\":\"" + new string('x', 1024 * 1024) + "\"}";
+        WeakReference<JsonDocument>? sourceDocument = null;
+        McpServerTool first = McpServerTool.Create(() =>
         {
-            Content = [],
-            StructuredContent = ParseJson("""{"a":1}"""),
+            JsonDocument document = JsonDocument.Parse(sourceJson);
+            sourceDocument = new(document);
+            return new CallToolResult
+            {
+                Content = [],
+                StructuredContent = document.RootElement.GetProperty("selected"),
+            };
         }, new()
         {
             Name = "identity_first_dispatched_tool",
@@ -271,17 +278,25 @@ public partial class DelegatingToolOutputSchemaTests
 #pragma warning disable MCPEXP002 // Dispatch two tools and copy the first result after discarding the second.
             options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
             {
-                CallToolResult firstResult = (await next(request, cancellationToken)).Result!;
-                request.Params.Name = second.ProtocolTool.Name;
-                _ = await next(request, cancellationToken);
-                request.Params.Name = first.ProtocolTool.Name;
-                return new CallToolResult
+                CallToolResult? firstResult = (await next(request, cancellationToken)).Result!;
+                CallToolResult copiedResult = new()
                 {
                     Content = firstResult.Content,
                     StructuredContent = firstResult.StructuredContent,
                     IsError = firstResult.IsError,
                     Meta = firstResult.Meta,
                 };
+                firstResult = null;
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+                Assert.False(sourceDocument!.TryGetTarget(out _));
+
+                request.Params.Name = second.ProtocolTool.Name;
+                _ = await next(request, cancellationToken);
+                request.Params.Name = first.ProtocolTool.Name;
+                return copiedResult;
             });
 #pragma warning restore MCPEXP002
         });
@@ -600,7 +615,7 @@ public partial class DelegatingToolOutputSchemaTests
     }
 
     [Fact]
-    public async Task CallTool_ExternalSchemaReferenceDoesNotFetchRemoteSchema()
+    public async Task CallTool_ExternalSchemaReferenceFailsClosedWithoutFetchingRemoteSchema()
     {
         McpServerTool tool = McpServerTool.Create(() => ParseJson("""{"anything":1}"""), new()
         {
@@ -613,8 +628,7 @@ public partial class DelegatingToolOutputSchemaTests
         {
             CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
 
-            Assert.NotEqual(true, result.IsError);
-            Assert.Equal(1, result.StructuredContent!.Value.GetProperty("anything").GetInt32());
+            AssertSchemaOutputError(result);
         });
     }
 

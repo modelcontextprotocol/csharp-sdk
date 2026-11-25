@@ -28,9 +28,10 @@ public sealed class McpRequestFilters
     /// <para>
     /// If a filter changes the output schema of a registered tool, it is responsible for keeping that schema
     /// consistent with the structured content returned by the corresponding tool call. The server does not track
-    /// per-client schemas produced by this filter. Filtered results for AIFunction-backed tools are validated against
-    /// the registered schema when its references resolve within the document; external references are not fetched for
-    /// this check. Custom tool implementations remain responsible for validating their results.
+    /// per-client schemas produced by this filter. AIFunction-backed results are validated against the registered
+    /// schema without fetching external references; if a reference points outside the schema document and its
+    /// embedded resources, validation fails.
+    /// Custom tool implementations remain responsible for validating their results.
     /// </para>
     /// </remarks>
     public IList<McpRequestFilter<ListToolsRequestParams, ListToolsResult>> ListToolsFilters

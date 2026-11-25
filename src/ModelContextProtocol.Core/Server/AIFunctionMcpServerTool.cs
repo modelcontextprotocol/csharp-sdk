@@ -356,10 +356,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         // These results bypass user serialization contracts in CreateStructuredResponse.
         bool isSerializedJson = result is JsonElement or JsonNode;
-        if (!isSerializedJson)
-        {
-            recoveryTarget?.AllowExternalSchemaResolution();
-        }
 
         McpServerTool? matchedTool = recoveryTarget?.Tool ?? request.MatchedPrimitive as McpServerTool;
         JsonElement? matchedSchema = isSerializedJson ? null :
@@ -374,8 +370,6 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         if (recoveryTarget is { } recoveryState &&
             recoveryState.Schema is not null &&
             outputSchema is not null &&
-            // Avoid resolving remote references for values that already have a JSON representation.
-            (!isSerializedJson || !ContainsExternalSchemaReferences(recoveryState.Schema.Value)) &&
             (!schemaConforms || !ReferenceEquals(recoveryState.Tool, this)))
         {
             recoveryState.RequireSchemaConformance();
@@ -1849,6 +1843,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         try
         {
             JsonElement schemaElement = JsonSerializer.SerializeToElement(schemaNode, McpJsonUtilities.JsonContext.Default.JsonNode);
+            if (ContainsExternalSchemaReferences(schemaElement))
+            {
+                // Keep validation deterministic and independent of network availability.
+                schema = null;
+                return false;
+            }
+
             schema = JsonSchema.Build(schemaElement, new BuildOptions
             {
                 Dialect = Dialect.Draft202012,
@@ -1920,7 +1921,7 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         foreach (JsonProperty property in schema.EnumerateObject())
         {
-            if (property.Name is "$ref" or "$dynamicRef")
+            if (property.Name is "$ref" or "$dynamicRef" or "$recursiveRef")
             {
                 if (property.Value.ValueKind == JsonValueKind.String &&
                     property.Value.GetString() is { Length: > 0 } reference)

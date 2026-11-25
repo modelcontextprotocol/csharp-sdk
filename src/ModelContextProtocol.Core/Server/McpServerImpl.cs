@@ -1693,8 +1693,7 @@ internal sealed partial class McpServerImpl : McpServer
             if (!deferOutputValidation &&
                 result.IsError is not true &&
                 recoveryTarget.ReturnsExplicitResult &&
-                recoveryTarget.Schema is { } explicitSchema &&
-                !AIFunctionMcpServerTool.ContainsExternalSchemaReferences(explicitSchema))
+                recoveryTarget.Schema is not null)
             {
                 recoveryTarget.RequireSchemaConformance();
             }
@@ -1823,8 +1822,7 @@ internal sealed partial class McpServerImpl : McpServer
                             legacySchema, matchedUnderlyingSchema).OutputSchema;
                     }
 
-                    if (matchedSchema is { } schema &&
-                        !AIFunctionMcpServerTool.ContainsExternalSchemaReferences(schema))
+                    if (matchedSchema is not null)
                     {
                         if (!matchedAiFunction!.IsStructuredContentValid(callToolResult.StructuredContent, matchedSchema))
                         {
@@ -1838,9 +1836,7 @@ internal sealed partial class McpServerImpl : McpServer
                     foreach (RequestContext<CallToolRequestParams>.StructuredContentRecoveryState recoveryTarget in recoveryTargets)
                     {
                         if (!TryGetAIFunctionTool(recoveryTarget.Tool, out AIFunctionMcpServerTool? targetAiFunction, out bool targetHasCustomInvocation) ||
-                            recoveryTarget.Schema is not { } schema ||
-                            (AIFunctionMcpServerTool.ContainsExternalSchemaReferences(schema) &&
-                             recoveryTarget.SkipExternalSchemaValidation))
+                            recoveryTarget.Schema is not { } schema)
                         {
                             continue;
                         }
