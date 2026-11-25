@@ -303,7 +303,7 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Fact]
-    public async Task PostMalformedJson_Returns400_InvalidRequest_WithNullId()
+    public async Task PostMalformedJson_Returns400_ParseError_WithNullId()
     {
         await StartAsync();
 
@@ -311,12 +311,12 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         using var response = await HttpClient.PostAsync("", JsonContent(body), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        // The server must emit a conformant JSON-RPC error envelope (not a raw 500). Because the request
-        // id could not be read, the error carries id=null per JSON-RPC 2.0 §5.1 — and crucially it must
-        // serialize as JSON null, not "" (regression guard for the RequestId write path).
+        // The server must emit a conformant JSON-RPC error envelope (not a raw 500). Per JSON-RPC 2.0 §5.1,
+        // invalid JSON returns -32700 (Parse error) with id=null — and crucially it must serialize as JSON null,
+        // not "" (regression guard for the RequestId write path).
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
-        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.Equal((int)McpErrorCode.ParseError, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
 
         // The parse failure itself must be diagnosable from the response alone: the message carries the
         // JsonException message (which already includes the parser's position) instead of an opaque one-liner (#1842).
@@ -326,20 +326,22 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
     }
 
     [Theory]
+    [InlineData("""{"jsonrpc":""")]
     [InlineData("""{"jsonrpc":"2.0","id":1,"method":"tools/list","para""")]
     [InlineData("""{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"a":1""")]
-    public async Task PostTruncatedJson_Returns400_WithParserDetail(string body)
+    public async Task PostTruncatedJson_Returns400_ParseError_WithParserDetail(string body)
     {
         await StartAsync();
 
         // A body cut in half by an intermediary (proxy, gateway, or the transport itself) is the exact
-        // shape reported in #1842. The 400 response must carry the parser's message (including where
-        // parsing stopped) so the truncation is identifiable from the response without server-side logs.
+        // shape reported in #1842. The 400 response must return -32700 (Parse error) and carry the parser's
+        // message (including where parsing stopped) so the truncation is identifiable without server logs.
         using var response = await HttpClient.PostAsync("", JsonContent(body), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
+        Assert.Equal((int)McpErrorCode.ParseError, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
 
         var message = doc.RootElement.GetProperty("error").GetProperty("message").GetString();
         Assert.Contains("did not contain a valid JSON-RPC message", message);
@@ -369,6 +371,25 @@ public class StreamableHttpServerConformanceTests(ITestOutputHelper outputHelper
         // NOT be null") and must NOT be silently treated as a notification. The server rejects it with a
         // conformant 400 InvalidRequest error whose own id is null.
         using var response = await HttpClient.PostAsync("", JsonContent("""{"jsonrpc":"2.0","id":null,"method":"tools/list"}"""), TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("id").ValueKind);
+        Assert.Equal((int)McpErrorCode.InvalidRequest, doc.RootElement.GetProperty("error").GetProperty("code").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    [InlineData("null")]
+    [InlineData("""{"jsonrpc":"1.0","id":1,"method":"ping"}""")]
+    public async Task PostInvalidJsonRpcEnvelope_Returns400_InvalidRequest_WithNullId(string body)
+    {
+        await StartAsync();
+
+        // Valid JSON that is not a valid JSON-RPC 2.0 message must return -32600 (Invalid Request),
+        // distinct from -32700 (Parse error) for invalid JSON syntax.
+        using var response = await HttpClient.PostAsync("", JsonContent(body), TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));

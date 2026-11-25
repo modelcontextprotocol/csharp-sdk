@@ -47,6 +47,7 @@ internal sealed class StreamableHttpHandler(
     /// </summary>
     private static readonly string[] s_sessionSupportingProtocolVersions = McpProtocolVersions.InitializeHandshakeProtocolVersions;
 
+    private static readonly JsonTypeInfo<JsonElement> s_jsonElementTypeInfo = GetRequiredJsonTypeInfo<JsonElement>();
     private static readonly JsonTypeInfo<JsonRpcMessage> s_messageTypeInfo = GetRequiredJsonTypeInfo<JsonRpcMessage>();
     private static readonly JsonTypeInfo<JsonRpcError> s_errorTypeInfo = GetRequiredJsonTypeInfo<JsonRpcError>();
 
@@ -80,16 +81,31 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        JsonRpcMessage? message;
+        JsonElement body;
         try
         {
-            message = await ReadJsonRpcMessageAsync(context);
+            body = await context.Request.ReadFromJsonAsync(s_jsonElementTypeInfo, context.RequestAborted);
         }
         catch (JsonException ex)
         {
-            // The POST body was not a well-formed JSON-RPC message (malformed JSON, or a request whose
-            // id was explicitly null, which MCP forbids). Surface a conformant JSON-RPC error response
-            // with a null id rather than letting the exception bubble up as an opaque 500.
+            // The POST body was not valid JSON (syntax error, truncation, max depth exceeded, etc.).
+            // Per JSON-RPC 2.0 §5.1, invalid JSON maps to -32700 (Parse error) with a null id.
+            await WriteJsonRpcErrorAsync(context,
+                $"Bad Request: The POST body did not contain a valid JSON-RPC message: {ex.Message}",
+                StatusCodes.Status400BadRequest, (int)McpErrorCode.ParseError);
+            return;
+        }
+
+        JsonRpcMessage? message;
+        try
+        {
+            message = body.Deserialize(s_messageTypeInfo);
+        }
+        catch (JsonException ex)
+        {
+            // The POST body was valid JSON, but not a valid JSON-RPC message (for example, missing
+            // the jsonrpc version or a request whose id was explicitly null, which MCP forbids).
+            // Per JSON-RPC 2.0 §5.1, invalid request objects map to -32600 (Invalid Request) with a null id.
             await WriteJsonRpcErrorAsync(context,
                 $"Bad Request: The POST body did not contain a valid JSON-RPC message: {ex.Message}",
                 StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidRequest);
@@ -103,6 +119,8 @@ internal sealed class StreamableHttpHandler(
                 StatusCodes.Status400BadRequest, (int)McpErrorCode.InvalidRequest);
             return;
         }
+
+        PopulateMessageContext(context, message);
 
         // Once the body has been parsed into a request with a readable id, every JSON-RPC error response
         // for this request MUST echo that id (base protocol responses section; SEP-2243 error format).
@@ -712,26 +730,31 @@ internal sealed class StreamableHttpHandler(
 
         if (message is not null)
         {
-            var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
-            var isAuthenticated = context.User.Identities.Any(static identity => identity.IsAuthenticated);
-
-            if (isAuthenticated || !string.IsNullOrEmpty(protocolVersion))
-            {
-                message.Context ??= new();
-
-                if (isAuthenticated)
-                {
-                    message.Context.User = context.User;
-                }
-
-                if (!string.IsNullOrEmpty(protocolVersion))
-                {
-                    message.Context.ProtocolVersion = protocolVersion;
-                }
-            }
+            PopulateMessageContext(context, message);
         }
 
         return message;
+    }
+
+    private static void PopulateMessageContext(HttpContext context, JsonRpcMessage message)
+    {
+        var protocolVersion = context.Request.Headers[McpProtocolVersionHeaderName].ToString();
+        var isAuthenticated = context.User.Identities.Any(static identity => identity.IsAuthenticated);
+
+        if (isAuthenticated || !string.IsNullOrEmpty(protocolVersion))
+        {
+            message.Context ??= new();
+
+            if (isAuthenticated)
+            {
+                message.Context.User = context.User;
+            }
+
+            if (!string.IsNullOrEmpty(protocolVersion))
+            {
+                message.Context.ProtocolVersion = protocolVersion;
+            }
+        }
     }
 
     internal static Task RunSessionAsync(HttpContext httpContext, McpServer session, CancellationToken requestAborted)
