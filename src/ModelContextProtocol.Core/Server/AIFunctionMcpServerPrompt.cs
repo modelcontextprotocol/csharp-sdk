@@ -103,9 +103,42 @@ internal sealed class AIFunctionMcpServerPrompt : McpServerPrompt
                     };
                 }
 
+                // Prompt arguments are strings on the wire, so a client sends a boolean as "true" or "false".
+                // Numbers sent as strings already bind through JsonNumberHandling.AllowReadingFromString,
+                // but System.Text.Json has no equivalent for booleans.
+                if (pi.Name is not null && (pi.ParameterType == typeof(bool) || pi.ParameterType == typeof(bool?)))
+                {
+                    return new()
+                    {
+                        BindParameter = BindBooleanParameter,
+                    };
+                }
+
                 return default;
             },
         };
+
+    private static object? BindBooleanParameter(ParameterInfo pi, AIFunctionArguments args)
+    {
+        if (!args.TryGetValue(pi.Name!, out object? value))
+        {
+            return pi.HasDefaultValue ? pi.DefaultValue :
+                throw new ArgumentException($"Missing a value for the required parameter '{pi.Name}'.", pi.Name);
+        }
+
+        bool isNullable = pi.ParameterType == typeof(bool?);
+        return value switch
+        {
+            bool boolean => boolean,
+            string text when bool.TryParse(text, out bool parsed) => parsed,
+            JsonElement { ValueKind: JsonValueKind.True } => true,
+            JsonElement { ValueKind: JsonValueKind.False } => false,
+            JsonElement { ValueKind: JsonValueKind.String } element when bool.TryParse(element.GetString(), out bool parsed) => parsed,
+            null when isNullable => null,
+            JsonElement { ValueKind: JsonValueKind.Null } when isNullable => null,
+            _ => throw new ArgumentException($"The value for the parameter '{pi.Name}' must be true or false.", pi.Name),
+        };
+    }
 
     /// <summary>Creates an <see cref="McpServerPrompt"/> that wraps the specified <see cref="AIFunction"/>.</summary>
     public static new AIFunctionMcpServerPrompt Create(AIFunction function, McpServerPromptCreateOptions? options)
