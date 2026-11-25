@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using ModelContextProtocol.Protocol;
@@ -79,6 +80,21 @@ public static class McpJsonUtilitiesTests
         Assert.NotNull(result);
         Assert.Empty(result.Content);
         Assert.True(result.IsError);
+    }
+
+    [Fact]
+    public static void DefaultOptions_KeepsNonAsciiUnescaped()
+    {
+        JsonRpcResponse message = new()
+        {
+            Id = new RequestId(1),
+            Result = new JsonObject { ["text"] = "привет 你好" },
+        };
+
+        string json = JsonSerializer.Serialize(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>());
+
+        Assert.Contains("привет 你好", json);
+        Assert.DoesNotContain(((char)92) + "u043f", json);
     }
 
     [Fact]

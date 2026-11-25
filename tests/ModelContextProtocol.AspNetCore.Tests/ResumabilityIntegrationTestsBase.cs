@@ -338,6 +338,135 @@ public abstract class ResumabilityIntegrationTestsBase(ITestOutputHelper testOut
     }
 
     [Fact]
+    public async Task ResumedStreamData_KeepsNonAsciiUnescaped()
+    {
+        // Arrange - a tool that emits two progress notifications before its result. All three
+        // messages are stored on the POST response stream, so resuming from the first event
+        // replays the later ones through SseEventStreamReaderExtensions' Utf8JsonWriter.
+        const string ProgressToolName = "progress_tool";
+        const string FirstMessage = "первое 你好";
+        const string ReplayedMessage = "повтор 你好";
+        var progressTool = McpServerTool.Create(async (RequestContext<CallToolRequestParams> context, IProgress<ProgressNotificationValue> progress) =>
+        {
+            progress.Report(new() { Progress = 0, Message = FirstMessage });
+            progress.Report(new() { Progress = 50, Message = ReplayedMessage });
+            return "Complete";
+        }, options: new() { Name = ProgressToolName });
+
+        await using var app = await CreateServerAsync(configureServer: builder =>
+        {
+            builder.WithTools([progressTool]);
+        });
+
+        // Initialize the session.
+        using var initRequest = new HttpRequestMessage(HttpMethod.Post, "/")
+        {
+            Headers =
+            {
+                Accept = { new("application/json"), new("text/event-stream") }
+            },
+            Content = new StringContent(InitializeRequest, Encoding.UTF8, "application/json"),
+        };
+        using var initResponse = await HttpClient.SendAsync(initRequest, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        initResponse.EnsureSuccessStatusCode();
+
+        var sessionId = initResponse.Headers.GetValues("Mcp-Session-Id").First();
+
+        await using var initStream = await initResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        await foreach (var _ in SseParser.Create(initStream).EnumerateAsync(TestContext.Current.CancellationToken))
+        {
+            // Consume the stream.
+        }
+
+        // Send the initialized notification to complete the handshake.
+        using var initializedRequest = new HttpRequestMessage(HttpMethod.Post, "/")
+        {
+            Headers =
+            {
+                Accept = { new("application/json"), new("text/event-stream") }
+            },
+            Content = new StringContent("""{"jsonrpc":"2.0","method":"notifications/initialized"}""", Encoding.UTF8, "application/json"),
+        };
+        initializedRequest.Headers.Add("Mcp-Session-Id", sessionId);
+
+        using var initializedResponse = await HttpClient.SendAsync(initializedRequest, TestContext.Current.CancellationToken);
+        initializedResponse.EnsureSuccessStatusCode();
+
+        // Act - call the tool over SSE and read the live response stream to completion.
+        // This exercises the Utf8JsonWriter in McpSseEventWriterExtensions.
+        using var callRequest = new HttpRequestMessage(HttpMethod.Post, "/")
+        {
+            Headers =
+            {
+                Accept = { new("application/json"), new("text/event-stream") }
+            },
+            Content = new StringContent(new JsonObject
+            {
+                ["jsonrpc"] = "2.0",
+                ["id"] = 2,
+                ["method"] = "tools/call",
+                ["params"] = new JsonObject
+                {
+                    ["name"] = ProgressToolName,
+                    ["arguments"] = new JsonObject(),
+                    ["_meta"] = new JsonObject
+                    {
+                        // Without a progress token the server injects NullProgress and never sends progress notifications.
+                        ["progressToken"] = "progress-token-1",
+                    },
+                },
+            }.ToJsonString(), Encoding.UTF8, "application/json"),
+        };
+        callRequest.Headers.Add("Mcp-Session-Id", sessionId);
+
+        using var callResponse = await HttpClient.SendAsync(callRequest, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        callResponse.EnsureSuccessStatusCode();
+
+        string? firstStreamEventId = null;
+        var liveData = new List<string>();
+        await using var callStream = await callResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        await foreach (var sseItem in SseParser.Create(callStream).EnumerateAsync(TestContext.Current.CancellationToken))
+        {
+            liveData.Add(sseItem.Data);
+            firstStreamEventId ??= sseItem.EventId;
+        }
+
+        Assert.NotNull(firstStreamEventId);
+        Assert.Contains(liveData, data => data.Contains(FirstMessage, StringComparison.Ordinal));
+        Assert.DoesNotContain(liveData, data => IsNonAsciiEscaped(data));
+
+        // Resume the POST response stream from its first event.
+        // This exercises the Utf8JsonWriter in SseEventStreamReaderExtensions serving the replay.
+        using var resumeRequest = new HttpRequestMessage(HttpMethod.Get, "/")
+        {
+            Headers =
+            {
+                Accept = { new("text/event-stream") }
+            },
+        };
+        resumeRequest.Headers.Add("Mcp-Session-Id", sessionId);
+        resumeRequest.Headers.Add("Last-Event-ID", firstStreamEventId);
+
+        using var resumeResponse = await HttpClient.SendAsync(resumeRequest, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        resumeResponse.EnsureSuccessStatusCode();
+
+        var replayedData = new List<string>();
+        await using var resumeStream = await resumeResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        await foreach (var sseItem in SseParser.Create(resumeStream).EnumerateAsync(TestContext.Current.CancellationToken))
+        {
+            replayedData.Add(sseItem.Data);
+        }
+
+        // Assert - the replayed events include both progress notifications with non-ASCII intact.
+        Assert.Contains(replayedData, data => data.Contains(FirstMessage, StringComparison.Ordinal));
+        Assert.Contains(replayedData, data => data.Contains(ReplayedMessage, StringComparison.Ordinal));
+        Assert.DoesNotContain(replayedData, data => IsNonAsciiEscaped(data));
+    }
+
+    private static bool IsNonAsciiEscaped(string data)
+        => data.Contains("\\u04", StringComparison.Ordinal) || data.Contains("\\u4f", StringComparison.Ordinal);
+
+    [Fact]
     public virtual async Task Server_Returns400_WhenLastEventIdRefersToWrongSession()
     {
         // Arrange - Create server with event store

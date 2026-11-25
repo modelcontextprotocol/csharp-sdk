@@ -1,4 +1,4 @@
-﻿using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Protocol;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 
@@ -32,9 +32,9 @@ internal class McpHttpClient(HttpClient httpClient)
         }
 
 #if NET
-        return JsonContent.Create(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage, s_applicationJsonContentType);
+        return JsonContent.Create(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>(), s_applicationJsonContentType);
 #else
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.JsonContext.Default.JsonRpcMessage);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(message, McpJsonUtilities.DefaultOptions.GetTypeInfo<JsonRpcMessage>());
         var content = new ByteArrayContent(bytes);
         content.Headers.ContentType = s_applicationJsonContentType;
         return content;
