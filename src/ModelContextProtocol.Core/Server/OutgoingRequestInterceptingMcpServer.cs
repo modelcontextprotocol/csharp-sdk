@@ -11,16 +11,26 @@ internal sealed class OutgoingRequestInterceptingMcpServer(
 #pragma warning restore MCPEXP002
 {
     private readonly object _toolOutputValidationScopeKey = isTaskExecution ? new() : server.ToolOutputValidationScopeKey;
-    private int _toolOutputValidationDepth;
+    private readonly ToolOutputValidationScope _toolOutputValidationScope =
+        isTaskExecution
+            ? new()
+            : server is OutgoingRequestInterceptingMcpServer interceptingServer
+                ? interceptingServer._toolOutputValidationScope
+                : new();
 
     internal bool IsTaskExecution { get; } =
         isTaskExecution || server is OutgoingRequestInterceptingMcpServer { IsTaskExecution: true };
 
     internal override object ToolOutputValidationScopeKey => _toolOutputValidationScopeKey;
 
-    internal int EnterToolOutputValidation() => Interlocked.Increment(ref _toolOutputValidationDepth);
+    internal int EnterToolOutputValidation() => Interlocked.Increment(ref _toolOutputValidationScope.Depth);
 
-    internal void ExitToolOutputValidation() => Interlocked.Decrement(ref _toolOutputValidationDepth);
+    internal void ExitToolOutputValidation() => Interlocked.Decrement(ref _toolOutputValidationScope.Depth);
+
+    private sealed class ToolOutputValidationScope
+    {
+        internal int Depth;
+    }
 
     internal override Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>>? OutgoingRequestInterceptor => interceptor;
 

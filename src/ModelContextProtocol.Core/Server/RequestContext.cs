@@ -346,6 +346,7 @@ public sealed class RequestContext<TParams> : MessageContext
 
         internal readonly record struct DeferredOutputValidationEntry(
             WeakReference<CallToolResult> Result,
+            JsonElement? StructuredContentIdentity,
             byte[]? StructuredContentHash,
             int StructuredContentByteCount,
             StructuredContentRecoveryState State);
@@ -372,10 +373,15 @@ public sealed class RequestContext<TParams> : MessageContext
 
             byte[]? structuredContentHash = null;
             int structuredContentByteCount = 0;
+            JsonElement? structuredContentIdentity = null;
             if (result.StructuredContent is { } structuredContent)
             {
                 TryGetStructuredContentFingerprint(
                     structuredContent, out structuredContentHash, out structuredContentByteCount);
+                if (structuredContentHash is not null)
+                {
+                    structuredContentIdentity = structuredContent;
+                }
             }
 
             lock (_lock)
@@ -388,6 +394,7 @@ public sealed class RequestContext<TParams> : MessageContext
 
                 _entries.Add(new(
                     new WeakReference<CallToolResult>(result),
+                    structuredContentIdentity,
                     structuredContentHash,
                     structuredContentByteCount,
                     state));
@@ -414,10 +421,29 @@ public sealed class RequestContext<TParams> : MessageContext
                 return exactMatches;
             }
 
-            if (result.StructuredContent is { } content &&
+            if (result.StructuredContent is { } content)
+            {
+                List<StructuredContentRecoveryState> identityMatches = [];
+                foreach (var entry in entries)
+                {
+                    if (entry.StructuredContentIdentity is { } registeredContent &&
+                        registeredContent.Equals(content) &&
+                        !identityMatches.Contains(entry.State))
+                    {
+                        identityMatches.Add(entry.State);
+                    }
+                }
+
+                if (identityMatches.Count > 0)
+                {
+                    return identityMatches;
+                }
+            }
+
+            if (result.StructuredContent is { } fingerprintContent &&
                 entries.Any(static entry => entry.StructuredContentHash is not null) &&
                 TryGetStructuredContentFingerprint(
-                    content, out byte[]? resultHash, out int resultByteCount))
+                    fingerprintContent, out byte[]? resultHash, out int resultByteCount))
             {
                 List<StructuredContentRecoveryState> contentMatches = [];
                 foreach (var entry in entries)

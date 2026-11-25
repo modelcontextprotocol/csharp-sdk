@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Tasks;
@@ -21,6 +22,7 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
     private string? _throwingAlternateMatchedPrimitiveId;
     private bool? _incompleteResultFilterSawError;
     private string? _incompleteResultFilterSawText;
+    private bool _replaceTaskServerFacade;
     private RequestContext<CallToolRequestParams>? _alternateRequestContext;
     private RequestContext<CallToolRequestParams>? _ordinaryRequestContext;
     private IServiceProvider? _alternateServicesBeforeNext;
@@ -145,6 +147,12 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
                 if (request.Params?.Name == "task-filter-tool")
                 {
                     return await next(request, cancellationToken);
+                }
+
+                if (_replaceTaskServerFacade && request.Params?.Name == "task-alternate-repair-tool")
+                {
+                    request.Server = request.Server.WithOutgoingRequestInterceptor(
+                        (_, _, _) => new ValueTask<JsonNode?>((JsonNode?)null));
                 }
 
                 _alternateMatchedPrimitiveId = request.MatchedPrimitive?.Id;
@@ -297,6 +305,23 @@ public class TaskCallToolFilterCompositionTests(ITestOutputHelper testOutputHelp
     [Fact]
     public async Task TaskBackedTool_ValidatesAfterAllAlternateFiltersCanRepairOutput()
     {
+        await using var client = await CreateMcpClientForServer(new McpClientOptions
+        {
+            ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,
+        });
+
+        CallToolResult result = await client.CallToolWithPollingAsync(
+            new CallToolRequestParams { Name = "task-alternate-repair-tool" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEqual(true, result.IsError);
+        Assert.Equal("expected", result.StructuredContent!.Value.GetString());
+    }
+
+    [Fact]
+    public async Task TaskBackedTool_ReplacementFacadeSharesValidationDepth()
+    {
+        _replaceTaskServerFacade = true;
         await using var client = await CreateMcpClientForServer(new McpClientOptions
         {
             ProtocolVersion = McpProtocolVersions.July2026ProtocolVersion,

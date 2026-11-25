@@ -235,6 +235,59 @@ public partial class DelegatingToolOutputSchemaTests
     }
 
     [Fact]
+    public async Task CallTool_CopiedResultPrefersOriginalStructuredContentIdentity()
+    {
+        McpServerTool first = McpServerTool.Create(() => new CallToolResult
+        {
+            Content = [],
+            StructuredContent = ParseJson("""{"a":1}"""),
+        }, new()
+        {
+            Name = "identity_first_dispatched_tool",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object","required":["a"]}"""),
+        });
+        McpServerTool second = McpServerTool.Create(() => new CallToolResult
+        {
+            Content = [],
+            StructuredContent = ParseJson("""{"a":1}"""),
+        }, new()
+        {
+            Name = "identity_second_dispatched_tool",
+            UseStructuredContent = true,
+            OutputSchema = ParseJson("""{"type":"object","required":["b"]}"""),
+        });
+
+        await WithClientAsync(first, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(
+                first.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal(1, result.StructuredContent!.Value.GetProperty("a").GetInt32());
+        }, configure: options =>
+        {
+            options.ToolCollection!.Add(second);
+#pragma warning disable MCPEXP002 // Dispatch two tools and copy the first result after discarding the second.
+            options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
+            {
+                CallToolResult firstResult = (await next(request, cancellationToken)).Result!;
+                request.Params.Name = second.ProtocolTool.Name;
+                _ = await next(request, cancellationToken);
+                request.Params.Name = first.ProtocolTool.Name;
+                return new CallToolResult
+                {
+                    Content = firstResult.Content,
+                    StructuredContent = firstResult.StructuredContent,
+                    IsError = firstResult.IsError,
+                    Meta = firstResult.Meta,
+                };
+            });
+#pragma warning restore MCPEXP002
+        });
+    }
+
+    [Fact]
     public async Task CallTool_ReplacedRetryResultUsesLatestSchemaSnapshot()
     {
         int calls = 0;
