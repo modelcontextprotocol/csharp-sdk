@@ -359,6 +359,72 @@ public class McpServerPromptTests
         Assert.Equal("hello again", Assert.IsType<TextContentBlock>(actual.Messages[1].Content).Text);
     }
 
+    [Theory]
+    [InlineData("\"true\"", "formal=True")]
+    [InlineData("\"False\"", "formal=False")]
+    [InlineData("true", "formal=True")]
+    [InlineData("false", "formal=False")]
+    public async Task BindsBooleanArguments(string argumentJson, string expected)
+    {
+        // Prompt arguments are strings on the wire, so clients send booleans as "true" or "false".
+        McpServerPrompt prompt = McpServerPrompt.Create((bool formal) => $"formal={formal}");
+
+        var result = await GetPromptAsync(prompt, new() { ["formal"] = JsonDocument.Parse(argumentJson).RootElement });
+
+        Assert.Equal(expected, Assert.IsType<TextContentBlock>(Assert.Single(result.Messages).Content).Text);
+    }
+
+    [Theory]
+    [InlineData(null, "formal=<null>")]
+    [InlineData("null", "formal=<null>")]
+    [InlineData("\"true\"", "formal=True")]
+    public async Task BindsNullableBooleanArguments(string? argumentJson, string expected)
+    {
+        McpServerPrompt prompt = McpServerPrompt.Create((bool? formal = null) => $"formal={formal?.ToString() ?? "<null>"}");
+
+        Dictionary<string, JsonElement> arguments = argumentJson is null ? [] : new() { ["formal"] = JsonDocument.Parse(argumentJson).RootElement };
+        var result = await GetPromptAsync(prompt, arguments);
+
+        Assert.Equal(expected, Assert.IsType<TextContentBlock>(Assert.Single(result.Messages).Content).Text);
+    }
+
+    [Fact]
+    public async Task UsesDefaultValueForMissingBooleanArgument()
+    {
+        McpServerPrompt prompt = McpServerPrompt.Create((bool formal = true) => $"formal={formal}");
+
+        var result = await GetPromptAsync(prompt, []);
+
+        Assert.Equal("formal=True", Assert.IsType<TextContentBlock>(Assert.Single(result.Messages).Content).Text);
+    }
+
+    [Theory]
+    [InlineData("\"yes\"")]
+    [InlineData("1")]
+    [InlineData("null")]
+    public async Task ThrowsForInvalidBooleanArgument(string argumentJson)
+    {
+        McpServerPrompt prompt = McpServerPrompt.Create((bool formal) => $"formal={formal}");
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => GetPromptAsync(prompt, new() { ["formal"] = JsonDocument.Parse(argumentJson).RootElement }));
+        Assert.Contains("formal", exception.Message);
+    }
+
+    [Fact]
+    public async Task ThrowsForMissingRequiredBooleanArgument()
+    {
+        McpServerPrompt prompt = McpServerPrompt.Create((bool formal) => $"formal={formal}");
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => GetPromptAsync(prompt, []));
+        Assert.Contains("formal", exception.Message);
+    }
+
+    private static async Task<GetPromptResult> GetPromptAsync(McpServerPrompt prompt, Dictionary<string, JsonElement> arguments) =>
+        await prompt.GetAsync(
+            new RequestContext<GetPromptRequestParams>(new Mock<McpServer>().Object, CreateTestJsonRpcRequest(), new() { Name = "", Arguments = arguments }),
+            TestContext.Current.CancellationToken);
+
     [Fact]
     public async Task ThrowsForNullReturn()
     {
