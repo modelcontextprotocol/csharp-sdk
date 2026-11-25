@@ -123,4 +123,22 @@ internal static class Experimentals
     /// </summary>
     public const string RunSessionHandler_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
 
+    /// <summary>
+    /// Diagnostic ID for the experimental <c>McpClientTool.WithResultMarshaling</c> API.
+    /// </summary>
+    /// <remarks>
+    /// This uses the same diagnostic ID as <see cref="Extensibility_DiagnosticId"/> because
+    /// both are experimental SDK APIs unrelated to the MCP specification.
+    /// </remarks>
+    public const string ResultMarshaling_DiagnosticId = "MCPEXP002";
+
+    /// <summary>
+    /// Message for the experimental <c>McpClientTool.WithResultMarshaling</c> API.
+    /// </summary>
+    public const string ResultMarshaling_Message = "McpClientTool.WithResultMarshaling is experimental and may be removed or changed in a future release.";
+
+    /// <summary>
+    /// URL for the experimental <c>McpClientTool.WithResultMarshaling</c> API.
+    /// </summary>
+    public const string ResultMarshaling_Url = "https://github.com/modelcontextprotocol/csharp-sdk/blob/main/docs/list-of-diagnostics.md#mcpexp002";
 }

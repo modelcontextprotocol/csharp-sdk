@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Moq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -19,6 +20,26 @@ public class McpClientToolTests : ClientServerTestBase
     protected override void ConfigureServices(ServiceCollection services, IMcpServerBuilder mcpServerBuilder)
     {
         mcpServerBuilder.WithTools<TestTools>();
+
+        // Tool that advertises an output schema and returns matching structured content
+        mcpServerBuilder.WithTools([McpServerTool.Create(
+            () => new CallToolResult
+            {
+                Content = [new TextContentBlock { Text = "Copenhagen: 7 degrees" }],
+                StructuredContent = JsonElement.Parse("""{"city":"Copenhagen","temperatureC":7}"""),
+            },
+            new McpServerToolCreateOptions
+            {
+                Name = "weather_tool",
+                UseStructuredContent = true,
+                OutputSchema = JsonElement.Parse("""
+                    {
+                      "type": "object",
+                      "properties": { "city": { "type": "string" }, "temperatureC": { "type": "integer" } },
+                      "required": ["city", "temperatureC"]
+                    }
+                    """),
+            })]);
     }
 
     private class TestTools
@@ -476,6 +497,7 @@ public class McpClientToolTests : ClientServerTestBase
         Assert.Equal(JsonValueKind.Array, content.ValueKind);
     }
 
+#pragma warning disable MCPEXP002 // McpClientTool.WithResultMarshaling is experimental
     [Fact]
     public async Task WithResultMarshaling_ReceivesRawCallToolResult_AndControlsReturnValue()
     {
@@ -549,6 +571,214 @@ public class McpClientToolTests : ClientServerTestBase
 
         Assert.Equal("marshaled", result);
     }
+
+    [Fact]
+    public async Task WithResultMarshaling_PlainProjection_YieldsNullForResourceLink()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // ToAIContent() has no AIContent equivalent for a resource link, so projecting every block through it
+        // leaves a null entry where the link was. The delegate is not post-processed, so the null is returned as is.
+        var tool = tools.Single(t => t.Name == "mixed_with_non_convertible_tool").WithResultMarshaling((result, cancellationToken) =>
+            new ValueTask<object?>(result.Content.Select(c => c.ToAIContent()).ToArray()));
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<AIContent?[]>(result, exactMatch: false);
+        Assert.Equal(2, aiContents.Length);
+        Assert.IsType<DataContent>(aiContents[0]);
+        Assert.Null(aiContents[1]);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_DelegateCanPreserveResourceLinkExplicitly()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var tool = tools.Single(t => t.Name == "mixed_with_non_convertible_tool").WithResultMarshaling((result, cancellationToken) =>
+        {
+            List<AIContent> contents = [];
+            foreach (ContentBlock block in result.Content)
+            {
+                if (block is ResourceLinkBlock link)
+                {
+                    contents.Add(new TextContent($"Resource link: {link.Uri}"));
+                }
+                else if (block.ToAIContent() is { } content)
+                {
+                    contents.Add(content);
+                }
+            }
+
+            return new ValueTask<object?>(contents);
+        });
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var aiContents = Assert.IsType<List<AIContent>>(result);
+        Assert.Equal(2, aiContents.Count);
+        Assert.Equal("image/png", Assert.IsType<DataContent>(aiContents[0]).MediaType);
+        Assert.Equal("Resource link: file://linked.txt", Assert.IsType<TextContent>(aiContents[1]).Text);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_DelegateThrows_ExceptionPropagatesAfterToolCompleted()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The delegate only runs once the server has produced a result, so by the time it throws
+        // the tool has already executed. The exception is not wrapped or swallowed.
+        CallToolResult? observed = null;
+        var exception = new InvalidOperationException("Marshaling failed");
+        var tool = tools.Single(t => t.Name == "text_only_tool").WithResultMarshaling((result, cancellationToken) =>
+        {
+            observed = result;
+            throw exception;
+        });
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Same(exception, thrown);
+        Assert.NotNull(observed);
+        Assert.Equal("Simple text result", Assert.IsType<TextContentBlock>(observed.Content[0]).Text);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_DelegateThrows_FunctionInvokingChatClientReportsFailedCallOnce()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        int marshalCount = 0;
+        var exception = new InvalidOperationException("Marshaling failed");
+        var tool = tools.Single(t => t.Name == "text_only_tool").WithResultMarshaling((result, cancellationToken) =>
+        {
+            marshalCount++;
+            throw exception;
+        });
+
+        FunctionResultContent functionResult = await InvokeViaFunctionInvokingChatClientAsync(tool, "call-1");
+
+        // The model is told the call failed, under the right call ID, and the tool is not invoked again
+        // by the chat client. Nothing tells the model that the tool itself ran to completion.
+        Assert.Equal("call-1", functionResult.CallId);
+        Assert.Same(exception, functionResult.Exception);
+        Assert.Equal(1, marshalCount);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_DelegateCanReturnFunctionResultContentForCurrentCall()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // The delegate is not passed the call ID, but under FunctionInvokingChatClient it can read it from the
+        // ambient invocation context and shape the FunctionResultContent itself, e.g. to report a marshaling
+        // problem without throwing.
+        FunctionResultContent? produced = null;
+        var tool = tools.Single(t => t.Name == "text_only_tool").WithResultMarshaling((result, cancellationToken) =>
+        {
+            string callId = FunctionInvokingChatClient.CurrentContext!.CallContent.CallId;
+            produced = new FunctionResultContent(callId, "The tool ran, but its result could not be converted.");
+            return new ValueTask<object?>(produced);
+        });
+
+        FunctionResultContent functionResult = await InvokeViaFunctionInvokingChatClientAsync(tool, "call-42");
+
+        Assert.NotNull(produced);
+        Assert.Equal("call-42", produced.CallId);
+        Assert.Same(produced, functionResult);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_DoesNotChangeReturnJsonSchema()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        var tool = tools.Single(t => t.Name == "weather_tool");
+        var marshaled = tool.WithResultMarshaling((result, cancellationToken) => new ValueTask<object?>("marshaled"));
+
+        // The schema keeps describing the server's structured content, whatever the delegate returns.
+        Assert.NotNull(tool.ReturnJsonSchema);
+        Assert.NotNull(marshaled.ReturnJsonSchema);
+        Assert.True(JsonElement.DeepEquals(tool.ReturnJsonSchema.Value, marshaled.ReturnJsonSchema.Value));
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_ReturningCallToolResult_KeepsStructuredContentMatchingSchemaWhenExposedAsServerTool()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // A delegate that hands back the CallToolResult itself lets the tool be re-exposed as a
+        // structured-output server tool with structured content that still conforms to ReturnJsonSchema.
+        var tool = tools.Single(t => t.Name == "weather_tool").WithResultMarshaling((result, cancellationToken) =>
+            new ValueTask<object?>(result));
+
+        McpServerTool serverTool = McpServerTool.Create(tool, new McpServerToolCreateOptions { UseStructuredContent = true });
+        Assert.NotNull(serverTool.ProtocolTool.OutputSchema);
+        Assert.True(JsonElement.DeepEquals(tool.ReturnJsonSchema!.Value, serverTool.ProtocolTool.OutputSchema.Value));
+
+        Mock<McpServer> mockServer = new();
+        CallToolResult result = await serverTool.InvokeAsync(
+            new RequestContext<CallToolRequestParams>(
+                mockServer.Object,
+                new JsonRpcRequest { Id = new RequestId("test-id"), Method = RequestMethods.ToolsCall },
+                new() { Name = tool.Name }),
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal("Copenhagen", result.StructuredContent.Value.GetProperty("city").GetString());
+        Assert.Equal(7, result.StructuredContent.Value.GetProperty("temperatureC").GetInt32());
+    }
+
+    /// <summary>
+    /// Has a <see cref="FunctionInvokingChatClient"/> invoke <paramref name="tool"/> for a single function call
+    /// and returns the <see cref="FunctionResultContent"/> it sends back to the model.
+    /// </summary>
+    private static async Task<FunctionResultContent> InvokeViaFunctionInvokingChatClientAsync(McpClientTool tool, string callId)
+    {
+        List<ChatMessage>? followUpMessages = null;
+        using IChatClient chatClient = new ChatClientBuilder(new CallbackChatClient(messages =>
+        {
+            List<ChatMessage> snapshot = [.. messages];
+            if (!snapshot.Any(m => m.Role == ChatRole.Tool))
+            {
+                return new ChatResponse(new ChatMessage(ChatRole.Assistant, [new FunctionCallContent(callId, tool.Name)]));
+            }
+
+            followUpMessages = snapshot;
+            return new ChatResponse(new ChatMessage(ChatRole.Assistant, "done"));
+        })).UseFunctionInvocation().Build();
+
+        await chatClient.GetResponseAsync("go", new ChatOptions { Tools = [tool] }, TestContext.Current.CancellationToken);
+
+        Assert.NotNull(followUpMessages);
+        return Assert.Single(followUpMessages.SelectMany(m => m.Contents).OfType<FunctionResultContent>());
+    }
+
+    private sealed class CallbackChatClient(Func<IEnumerable<ChatMessage>, ChatResponse> getResponse) : IChatClient
+    {
+        public Task<ChatResponse> GetResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult(getResponse(messages));
+
+        public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
+            IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+
+        public void Dispose()
+        {
+        }
+    }
+#pragma warning restore MCPEXP002
 
     [Fact]
     public async Task BinaryResourceTool_ReturnsSingleDataContent()

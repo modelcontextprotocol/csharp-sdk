@@ -1,5 +1,6 @@
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -385,13 +386,67 @@ public sealed class McpClientTool : AIFunction
     /// replaces any previously specified delegate.
     /// </para>
     /// <para>
+    /// <see cref="AIContentExtensions.ToAIContent(ContentBlock, JsonSerializerOptions?)"/> returns
+    /// <see langword="null"/> for content blocks that have no <see cref="AIContent"/> equivalent, such as
+    /// <see cref="ResourceLinkBlock"/>. A delegate that projects <see cref="CallToolResult.Content"/> through it
+    /// must decide explicitly whether to convert those blocks itself or to leave them out; otherwise the
+    /// projection contains <see langword="null"/> entries and the blocks are silently lost.
+    /// </para>
+    /// <para>
+    /// The delegate runs after the tool call has completed on the server. An exception thrown by the delegate
+    /// propagates unchanged from <see cref="AIFunction.InvokeAsync"/>, and callers such as
+    /// <c>Microsoft.Extensions.AI.FunctionInvokingChatClient</c> report it to the model as a failed function
+    /// call, which the model cannot tell apart from a tool that never ran. The model may then call the tool
+    /// again, repeating any side effects. A delegate that can fail for a tool with side effects should catch
+    /// the failure and return a value that describes it instead. When the tool is invoked by
+    /// <c>FunctionInvokingChatClient</c>, the delegate can read the function call ID from
+    /// <c>FunctionInvokingChatClient.CurrentContext</c> and return a <see cref="FunctionResultContent"/> with
+    /// that call ID, which is then added to the chat history as is.
+    /// </para>
+    /// <para>
+    /// <see cref="ReturnJsonSchema"/> is not affected by the delegate: it continues to expose the server's
+    /// <see cref="Tool.OutputSchema"/>, which describes <see cref="CallToolResult.StructuredContent"/>, and the
+    /// value returned by the delegate is not validated against it. When the returned tool is used where that
+    /// schema is advertised, for example when it is exposed as a structured-output server tool via
+    /// <see cref="Server.McpServerTool.Create(AIFunction, Server.McpServerToolCreateOptions?)"/>, the delegate
+    /// is responsible for returning a value that conforms to it. Returning the <see cref="CallToolResult"/>
+    /// itself preserves the server's structured content unchanged.
+    /// </para>
+    /// <para>
     /// This serves the same role for tool results that
     /// <c>Microsoft.Extensions.AI.AIFunctionFactoryOptions.MarshalResult</c> serves for factory-created
     /// functions.
     /// </para>
+    /// <para>
+    /// This API is experimental and may be removed or change signatures in a future release.
+    /// </para>
     /// </remarks>
+    /// <example>
+    /// <code language="csharp">
+    /// McpClientTool tool = tools.First(t => t.Name == "search").WithResultMarshaling((result, cancellationToken) =>
+    /// {
+    ///     // Surface only the content blocks, so that _meta and the rest of the protocol envelope stay with the host.
+    ///     List&lt;AIContent&gt; contents = [];
+    ///     foreach (ContentBlock block in result.Content)
+    ///     {
+    ///         if (block is ResourceLinkBlock link)
+    ///         {
+    ///             // ToAIContent() returns null for resource links, so decide explicitly how to surface them.
+    ///             contents.Add(new TextContent($"Resource link: {link.Uri}"));
+    ///         }
+    ///         else if (block.ToAIContent() is { } content)
+    ///         {
+    ///             contents.Add(content);
+    ///         }
+    ///     }
+    ///
+    ///     return new ValueTask&lt;object?&gt;(contents);
+    /// });
+    /// </code>
+    /// </example>
     /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided delegate.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="marshalResult"/> is <see langword="null"/>.</exception>
+    [Experimental(Experimentals.ResultMarshaling_DiagnosticId, UrlFormat = Experimentals.ResultMarshaling_Url)]
     public McpClientTool WithResultMarshaling(Func<CallToolResult, CancellationToken, ValueTask<object?>> marshalResult)
     {
         Throw.IfNull(marshalResult);
