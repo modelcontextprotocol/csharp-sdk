@@ -228,7 +228,7 @@ Stateful-only options (`IdleTimeout`, `EventStreamStore`, `SessionMigrationHandl
 | **Local development** | Works, but no way to reset server state from the editor | Editors can reset state by starting a new session without restarting the process |
 | **Concurrent client isolation** | No distinction between clients — all requests are independent | Each client gets its own session with isolated state |
 | **State reset on reconnect** | No concept of reconnection — every request stands alone | Client reconnection starts a new session with a clean slate |
-| **[Tasks](xref:tasks)** | Supported — shared task store, no per-session isolation | Supported — task store scoped per session |
+| **[Tasks](xref:tasks)** | Supported with `WithTasks` — shared task store, no per-session isolation | Not supported — session clients negotiate a protocol version earlier than `2026-07-28` |
 
 > [!NOTE]
 > [Hybrid mode](#hybrid-mode-sessions-for-initialize-clients-only) doesn't add a third column: each request follows the **Stateless** column when the client negotiated `2026-07-28` and the **Stateful** column when the client used the `initialize` handshake.
@@ -683,9 +683,9 @@ In stateless mode, there is no `SessionId`, so the task store does not apply ses
 
 ### Stateful mode
 
-In stateful mode, the `IMcpTaskStore` tracks tasks created for that server instance. The built-in <xref:ModelContextProtocol.Extensions.Tasks.InMemoryMcpTaskStore> keeps tasks in memory; implement a custom store when your scenario requires durable storage or isolation across server instances.
+Tasks require the `2026-07-28` protocol revision or later. Strict `Stateful` mode rejects requests using that revision, while clients using the `initialize` handshake negotiate an earlier revision that cannot create or retrieve Tasks. Configuring `WithTasks` does not make Tasks available to those session clients. Use `Stateless` or `StatefulForInitializeClients` to serve Tasks requests statelessly. In hybrid mode, Tasks remain unavailable to the older clients that use sessions.
 
-Tasks can outlive individual HTTP requests because the tool executes in the background after returning the initial `CreateTaskResult`. Task cleanup is governed by the task's TTL (time-to-live), not by session termination. However, the `InMemoryMcpTaskStore` loses all tasks if the server process restarts. For durable tasks, implement a custom <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> backed by an external store. For guidance, see [Implementing a custom task store](xref:tasks#implementing-a-custom-task-store).
+The shared <xref:ModelContextProtocol.Extensions.Tasks.InMemoryMcpTaskStore> keeps tasks in memory, so they are lost if the server process restarts. For durable tasks, implement a custom <xref:ModelContextProtocol.Extensions.Tasks.IMcpTaskStore> backed by an external store. For guidance, see [Implementing a custom task store](xref:tasks#implementing-a-custom-task-store).
 
 ### Task cancellation vs. request cancellation
 
@@ -758,10 +758,10 @@ Stateless mode provides the same HTTP-level backpressure as default stateful mod
 | Configuration | `POST` held open? | Backpressure mechanism | Concurrent handler limit per connection |
 |---|---|---|---|
 | **Stateless** | Yes (handler = request) | HTTP/2 streams, server timeouts | `MaxStreamsPerConnection` (default: 100) |
-| **Stateful (default)** | Yes (until handler responds) | HTTP/2 streams, server timeouts | `MaxStreamsPerConnection` (default: 100) |
+| **Stateful** | Yes (until handler responds) | HTTP/2 streams, server timeouts | `MaxStreamsPerConnection` (default: 100) |
 | **SSE (legacy — opt-in)** | No (returns 202 Accepted) | None built-in; `GET` stream provides cleanup | Unbounded — apply rate limiting |
 | **Stateful + EventStreamStore** | No (if `EnablePollingAsync()` called) | None built-in | Unbounded — apply rate limiting |
-| **Stateful + Tasks** | No (returns task ID immediately) | None built-in | Unbounded — apply rate limiting |
+| **Stateless + Tasks** | No (returns task ID immediately) | None built-in | Unbounded — apply rate limiting |
 
 ## Observability
 
