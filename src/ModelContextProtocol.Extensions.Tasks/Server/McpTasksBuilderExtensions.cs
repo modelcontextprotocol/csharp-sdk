@@ -166,9 +166,9 @@ public static class McpTasksBuilderExtensions
                 request.JsonRpcRequest,
                 request.Params)
             {
-                MatchedPrimitive = request.MatchedPrimitive,
                 Services = executionScope.ServiceProvider,
             };
+            executionRequest.CopyMatchedToolMatchFrom(request);
 
             McpTaskInfo taskInfo;
             try

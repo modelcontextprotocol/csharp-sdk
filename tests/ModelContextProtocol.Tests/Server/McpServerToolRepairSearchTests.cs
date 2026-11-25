@@ -642,15 +642,105 @@ public partial class McpServerToolTests
             }
         }
 
-        private static async Task<CallToolResult> InvokeRegisteredToolAsync(McpServerTool tool, string protocolVersion)
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task StructuredOutput_ResponseFilterReplacementStillValidatesExternalSchema(bool replaceContext)
+        {
+            Uri uri = new($"https://example.test/recovery/{Guid.NewGuid():N}");
+            JsonSchema external = JsonSchema.FromText(
+                """{"type":"object","required":["expected"]}""",
+                new BuildOptions { SchemaRegistry = new() }, uri);
+            int fetches = 0;
+            var fetch = SchemaRegistry.Global.Fetch;
+            try
+            {
+                SchemaRegistry.Global.Fetch = (requested, registry) =>
+                {
+                    if (requested != uri)
+                    {
+                        return fetch(requested, registry);
+                    }
+
+                    Interlocked.Increment(ref fetches);
+                    return external;
+                };
+                McpServerTool tool = McpServerTool.Create(() => new { Value = 42 }, new()
+                {
+                    Name = "external_schema_no_op_filter",
+                    UseStructuredContent = true,
+                    OutputSchema = JsonDocument.Parse($$"""{"$ref":"{{uri}}"}""").RootElement,
+                    SerializerOptions = CreateStructuredOutputTestOptions(),
+                });
+
+                CallToolResult result = await InvokeRegisteredToolAsync(tool, "2026-07-28", options =>
+                {
+                    if (replaceContext)
+                    {
+#pragma warning disable MCPEXP002 // Exercise alternate filters replacing a request context and response.
+                        options.Filters.Request.CallToolWithAlternateFilters.Add(async (request, next, cancellationToken) =>
+                        {
+                            JsonRpcRequest replacementJsonRpcRequest = new()
+                            {
+                                Id = request.JsonRpcRequest.Id,
+                                Method = request.JsonRpcRequest.Method,
+                            };
+                            var replacement = new RequestContext<CallToolRequestParams>(
+                                request.Server, replacementJsonRpcRequest, request.Params)
+                            {
+                                Services = request.Services,
+                            };
+                            ResultOrAlternate<CallToolResult> response = await next(replacement, cancellationToken);
+                            CallToolResult original = response.Result!;
+                            return new CallToolResult
+                            {
+                                Content = original.Content,
+                                StructuredContent = original.StructuredContent,
+                                IsError = original.IsError,
+                                Meta = original.Meta,
+                            };
+                        });
+#pragma warning restore MCPEXP002
+                    }
+                    else
+                    {
+                        options.Filters.Request.CallToolFilters.Add(next => async (request, cancellationToken) =>
+                        {
+                            CallToolResult original = await next(request, cancellationToken);
+                            return new CallToolResult
+                            {
+                                Content = original.Content,
+                                StructuredContent = original.StructuredContent,
+                                IsError = original.IsError,
+                                Meta = original.Meta,
+                            };
+                        });
+                    }
+                });
+
+                Assert.True(result.IsError);
+                Assert.True(fetches > 0);
+            }
+            finally
+            {
+                SchemaRegistry.Global.Fetch = fetch;
+            }
+        }
+
+        private static async Task<CallToolResult> InvokeRegisteredToolAsync(
+            McpServerTool tool,
+            string protocolVersion,
+            Action<McpServerOptions>? configure = null)
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
             cts.CancelAfter(TestConstants.DefaultTimeout);
             var clientToServer = new Pipe();
             var serverToClient = new Pipe();
+            McpServerOptions serverOptions = new() { ToolCollection = new() { tool } };
+            configure?.Invoke(serverOptions);
             await using var server = McpServer.Create(
                 new StreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream()),
-                new McpServerOptions { ToolCollection = new() { tool } });
+                serverOptions);
             Task serverTask = server.RunAsync(cts.Token);
             try
             {

@@ -356,6 +356,11 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         // These results bypass user serialization contracts in CreateStructuredResponse.
         bool isSerializedJson = result is JsonElement or JsonNode;
+        if (!isSerializedJson)
+        {
+            recoveryTarget?.AllowExternalSchemaResolution();
+        }
+
         McpServerTool? matchedTool = recoveryTarget?.Tool ?? request.MatchedPrimitive as McpServerTool;
         JsonElement? matchedSchema = isSerializedJson ? null :
             recoveryTarget is { } matchedTarget ? matchedTarget.Schema :

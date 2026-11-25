@@ -6,10 +6,17 @@ namespace ModelContextProtocol.Server;
 #pragma warning disable MCPEXP002
 internal sealed class OutgoingRequestInterceptingMcpServer(
     McpServer server,
-    Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor) : McpServer
+    Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor,
+    bool isTaskExecution = false) : McpServer
 #pragma warning restore MCPEXP002
 {
+    private readonly object _toolOutputValidationScopeKey = isTaskExecution ? new() : server.ToolOutputValidationScopeKey;
     private int _toolOutputValidationDepth;
+
+    internal bool IsTaskExecution { get; } =
+        isTaskExecution || server is OutgoingRequestInterceptingMcpServer { IsTaskExecution: true };
+
+    internal override object ToolOutputValidationScopeKey => _toolOutputValidationScopeKey;
 
     internal int EnterToolOutputValidation() => Interlocked.Increment(ref _toolOutputValidationDepth);
 

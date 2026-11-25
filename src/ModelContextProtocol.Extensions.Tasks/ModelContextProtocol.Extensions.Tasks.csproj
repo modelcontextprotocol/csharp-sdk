@@ -8,7 +8,7 @@
     <Description>MCP Tasks extension for the .NET Model Context Protocol (MCP) SDK</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <!-- Suppress the experimental MCP warnings for internal usage -->
-    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002</NoWarn>
+    <NoWarn>$(NoWarn);MCPEXP001;MCPEXP002;CS0436</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' != 'netstandard2.0'">

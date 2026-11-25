@@ -1,5 +1,7 @@
 using ModelContextProtocol.Protocol;
 using System.Buffers;
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace ModelContextProtocol.Server;
@@ -50,11 +52,76 @@ public sealed class RequestContext<TParams> : MessageContext
     public IMcpServerPrimitive? MatchedPrimitive { get; set; }
 
     private readonly AsyncLocal<StructuredContentRecoveryState?> _structuredContentRecoveryTarget = new();
+    private McpServerTool? _matchedToolByName;
+    private string? _matchedToolName;
+    private static readonly ConditionalWeakTable<object, DeferredOutputValidationCollection> s_deferredOutputValidations = new();
 
     internal StructuredContentRecoveryState? StructuredContentRecoveryTarget
     {
         get => _structuredContentRecoveryTarget.Value is { IsActive: true } target ? target : null;
         set => _structuredContentRecoveryTarget.Value = value;
+    }
+
+    internal void MatchToolByName(string? name, McpServerTool? tool)
+    {
+        bool isExplicitOverride = MatchedPrimitive is not null &&
+            !ReferenceEquals(MatchedPrimitive, _matchedToolByName);
+        if (isExplicitOverride)
+        {
+            return;
+        }
+
+        if (_matchedToolByName is not null &&
+            (!ReferenceEquals(tool, _matchedToolByName) || !string.Equals(name, _matchedToolName, StringComparison.Ordinal)))
+        {
+            MatchedPrimitive = null;
+        }
+
+        if (tool is not null)
+        {
+            MatchedPrimitive = tool;
+            _matchedToolByName = tool;
+            _matchedToolName = name;
+        }
+        else
+        {
+            _matchedToolByName = null;
+            _matchedToolName = null;
+        }
+    }
+
+    internal void CopyMatchedToolMatchFrom(RequestContext<CallToolRequestParams> source)
+    {
+        MatchedPrimitive = source.MatchedPrimitive;
+        _matchedToolByName = source._matchedToolByName;
+        _matchedToolName = source._matchedToolName;
+    }
+
+    internal static void RegisterDeferredOutputValidation(
+        McpServer server, CallToolResult result, StructuredContentRecoveryState state)
+    {
+        s_deferredOutputValidations.GetValue(server.ToolOutputValidationScopeKey, static _ => new())
+            .Register(result, state);
+    }
+
+    internal static IReadOnlyList<StructuredContentRecoveryState> GetDeferredOutputValidations(
+        McpServer server,
+        CallToolResult result,
+        out bool overflowed)
+    {
+        if (s_deferredOutputValidations.TryGetValue(server.ToolOutputValidationScopeKey, out DeferredOutputValidationCollection? collection))
+        {
+            var entries = collection.GetEntries(out overflowed);
+            return DeferredOutputValidationCollection.GetCandidates(entries, result);
+        }
+
+        overflowed = false;
+        return [];
+    }
+
+    internal static void ClearDeferredOutputValidations(McpServer server)
+    {
+        s_deferredOutputValidations.Remove(server.ToolOutputValidationScopeKey);
     }
 
     internal void RecoverStructuredContent(McpServerTool tool, CallToolResult result) =>
@@ -73,15 +140,18 @@ public sealed class RequestContext<TParams> : MessageContext
         private bool _isActive = true;
         private int _requiresSchemaConformance;
         private int _returnsExplicitResult;
+        private int _skipExternalSchemaValidation = 1;
 
         internal McpServerTool Tool { get; } = tool;
         internal JsonElement? Schema => _schemas[0].Schema;
         internal bool IsActive => Volatile.Read(ref _isActive);
         internal bool RequiresSchemaConformance => Volatile.Read(ref _requiresSchemaConformance) != 0;
         internal bool ReturnsExplicitResult => Volatile.Read(ref _returnsExplicitResult) != 0;
+        internal bool SkipExternalSchemaValidation => Volatile.Read(ref _skipExternalSchemaValidation) != 0;
 
         internal void RequireSchemaConformance() => Volatile.Write(ref _requiresSchemaConformance, 1);
         internal void MarkExplicitResult() => Volatile.Write(ref _returnsExplicitResult, 1);
+        internal void AllowExternalSchemaResolution() => Volatile.Write(ref _skipExternalSchemaValidation, 0);
 
         internal bool TryGetSchema(McpServerTool tool, out JsonElement? schema)
         {
@@ -261,6 +331,206 @@ public sealed class RequestContext<TParams> : MessageContext
             {
                 _isActive = false;
                 _plans.Clear();
+            }
+        }
+    }
+
+    internal sealed class DeferredOutputValidationCollection
+    {
+        private const int MaxEntries = 128;
+        // Larger values are not fingerprinted; copied results then fall back to all dispatched schemas.
+        private const int MaxStructuredContentFingerprintBytes = 64 * 1024;
+        private readonly object _lock = new();
+        private readonly List<DeferredOutputValidationEntry> _entries = [];
+        private bool _overflowed;
+
+        internal readonly record struct DeferredOutputValidationEntry(
+            WeakReference<CallToolResult> Result,
+            byte[]? StructuredContentHash,
+            int StructuredContentByteCount,
+            StructuredContentRecoveryState State);
+
+        internal IReadOnlyList<DeferredOutputValidationEntry> GetEntries(out bool overflowed)
+        {
+            lock (_lock)
+            {
+                overflowed = _overflowed;
+                return [.. _entries];
+            }
+        }
+
+        internal void Register(CallToolResult result, StructuredContentRecoveryState state)
+        {
+            lock (_lock)
+            {
+                if (_entries.Count >= MaxEntries)
+                {
+                    _overflowed = true;
+                    return;
+                }
+            }
+
+            byte[]? structuredContentHash = null;
+            int structuredContentByteCount = 0;
+            if (result.StructuredContent is { } structuredContent)
+            {
+                TryGetStructuredContentFingerprint(
+                    structuredContent, out structuredContentHash, out structuredContentByteCount);
+            }
+
+            lock (_lock)
+            {
+                if (_entries.Count >= MaxEntries)
+                {
+                    _overflowed = true;
+                    return;
+                }
+
+                _entries.Add(new(
+                    new WeakReference<CallToolResult>(result),
+                    structuredContentHash,
+                    structuredContentByteCount,
+                    state));
+            }
+        }
+
+        internal static IReadOnlyList<StructuredContentRecoveryState> GetCandidates(
+            IReadOnlyList<DeferredOutputValidationEntry> entries,
+            CallToolResult result)
+        {
+            List<StructuredContentRecoveryState> exactMatches = [];
+            foreach (var entry in entries)
+            {
+                if (entry.Result.TryGetTarget(out CallToolResult? registeredResult) &&
+                    ReferenceEquals(result, registeredResult) &&
+                    !exactMatches.Contains(entry.State))
+                {
+                    exactMatches.Add(entry.State);
+                }
+            }
+
+            if (exactMatches.Count > 0)
+            {
+                return exactMatches;
+            }
+
+            if (result.StructuredContent is { } content &&
+                entries.Any(static entry => entry.StructuredContentHash is not null) &&
+                TryGetStructuredContentFingerprint(
+                    content, out byte[]? resultHash, out int resultByteCount))
+            {
+                List<StructuredContentRecoveryState> contentMatches = [];
+                foreach (var entry in entries)
+                {
+                    if (entry.StructuredContentHash is { } registeredHash &&
+                        entry.StructuredContentByteCount == resultByteCount &&
+                        registeredHash.AsSpan().SequenceEqual(resultHash) &&
+                        !contentMatches.Contains(entry.State))
+                    {
+                        contentMatches.Add(entry.State);
+                    }
+                }
+
+                if (contentMatches.Count > 0)
+                {
+                    return contentMatches;
+                }
+            }
+
+            List<StructuredContentRecoveryState> candidates = [];
+            foreach (var entry in entries)
+            {
+                if (!candidates.Contains(entry.State))
+                {
+                    candidates.Add(entry.State);
+                }
+            }
+
+            return candidates;
+        }
+
+        private static bool TryGetStructuredContentFingerprint(
+            JsonElement content, out byte[]? hash, out int byteCount)
+        {
+            using IncrementalHash incrementalHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            using var bufferWriter = new FingerprintBufferWriter(incrementalHash, MaxStructuredContentFingerprintBytes);
+
+            try
+            {
+                using (var writer = new Utf8JsonWriter(bufferWriter))
+                {
+                    content.WriteTo(writer);
+                    writer.Flush();
+                }
+
+                hash = incrementalHash.GetHashAndReset();
+                byteCount = bufferWriter.WrittenCount;
+                return true;
+            }
+            catch (FingerprintLimitExceededException)
+            {
+                hash = null;
+                byteCount = 0;
+                return false;
+            }
+        }
+
+        private sealed class FingerprintLimitExceededException : Exception;
+
+        private sealed class FingerprintBufferWriter(IncrementalHash hash, int maxBytes) : IBufferWriter<byte>, IDisposable
+        {
+            private byte[]? _buffer = ArrayPool<byte>.Shared.Rent(256);
+            internal int WrittenCount { get; private set; }
+
+            public void Advance(int count)
+            {
+                byte[] buffer = _buffer ?? throw new ObjectDisposedException(nameof(FingerprintBufferWriter));
+                int remaining = maxBytes - WrittenCount;
+                if (count < 0 || count > Math.Min(buffer.Length, remaining))
+                {
+                    throw new ArgumentOutOfRangeException(nameof(count));
+                }
+
+                hash.AppendData(buffer, 0, count);
+                WrittenCount += count;
+            }
+
+            public Memory<byte> GetMemory(int sizeHint = 0) => GetBuffer(sizeHint);
+
+            public Span<byte> GetSpan(int sizeHint = 0) => GetBuffer(sizeHint).Span;
+
+            private Memory<byte> GetBuffer(int sizeHint)
+            {
+                byte[] buffer = _buffer ?? throw new ObjectDisposedException(nameof(FingerprintBufferWriter));
+                if (sizeHint < 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(sizeHint));
+                }
+
+                int remaining = maxBytes - WrittenCount;
+                int required = Math.Max(sizeHint, 1);
+                if (required > remaining)
+                {
+                    throw new FingerprintLimitExceededException();
+                }
+
+                if (buffer.Length < required)
+                {
+                    byte[] largerBuffer = ArrayPool<byte>.Shared.Rent(required);
+                    ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+                    _buffer = buffer = largerBuffer;
+                }
+
+                return buffer.AsMemory(0, Math.Min(buffer.Length, remaining));
+            }
+
+            public void Dispose()
+            {
+                if (_buffer is { } buffer)
+                {
+                    _buffer = null;
+                    ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+                }
             }
         }
     }

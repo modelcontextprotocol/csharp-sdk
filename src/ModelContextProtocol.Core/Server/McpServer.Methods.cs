@@ -27,6 +27,15 @@ public abstract partial class McpServer : McpSession
 
     internal virtual bool SupportsServerToClientRequests => true;
 
+    internal virtual object ToolOutputValidationScopeKey => this;
+
+    internal McpServer WithTaskOutgoingRequestInterceptor(
+        Func<string, JsonNode?, CancellationToken, ValueTask<JsonNode?>> interceptor)
+    {
+        Throw.IfNull(interceptor);
+        return new OutgoingRequestInterceptingMcpServer(this, interceptor, isTaskExecution: true);
+    }
+
     /// <summary>
     /// Creates a non-mutating server facade that redirects server-initiated requests through an interceptor.
     /// </summary>
