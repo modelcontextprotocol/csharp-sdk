@@ -145,6 +145,29 @@ var transport = new HttpClientTransport(new HttpClientTransportOptions
 });
 ```
 
+#### OAuth scope selection
+
+When OAuth is configured through <xref:ModelContextProtocol.Client.HttpClientTransportOptions.OAuth>, <xref:ModelContextProtocol.Authentication.ClientOAuthOptions.Scopes> provides fallback scopes only when the server does not provide scope information through the `WWW-Authenticate` header or Protected Resource Metadata.
+
+To filter or customize the scopes selected from server-provided information, use <xref:ModelContextProtocol.Authentication.ClientOAuthOptions.ScopeSelector>. The selector runs after the SDK has resolved the candidate scopes and appended `offline_access` when advertised by the authorization server. The returned scopes are used consistently for the authorization request and Dynamic Client Registration.
+
+```csharp
+using ModelContextProtocol.Authentication;
+
+var transport = new HttpClientTransport(new HttpClientTransportOptions
+{
+    Endpoint = new Uri("https://my-mcp-server.example.com/mcp"),
+    OAuth = new ClientOAuthOptions
+    {
+        RedirectUri = new Uri("http://localhost:1179/callback"),
+        ScopeSelector = scopes =>
+            scopes?.Where(scope => scope is "mcp:tools" or "mcp:resources")
+    }
+});
+```
+
+Return `null` or an empty sequence from `ScopeSelector` to omit the `scope` parameter entirely.
+
 #### OAuth PKCE metadata validation
 
 When using <xref:ModelContextProtocol.Authentication.ClientOAuthOptions> with an HTTP transport, authorization server metadata must advertise `S256` in `code_challenge_methods_supported`. A document that omits that field or advertises only other methods is skipped while the client tries alternative well-known endpoints. If none supplies valid metadata with `S256`, authentication fails before requesting an authorization code or exchanging tokens.
