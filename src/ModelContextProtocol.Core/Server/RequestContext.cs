@@ -111,8 +111,7 @@ public sealed class RequestContext<TParams> : MessageContext
     {
         if (s_deferredOutputValidations.TryGetValue(server.ToolOutputValidationScopeKey, out DeferredOutputValidationCollection? collection))
         {
-            var entries = collection.GetEntries(out overflowed);
-            return DeferredOutputValidationCollection.GetCandidates(entries, result);
+            return collection.GetCandidates(result, out overflowed);
         }
 
         overflowed = false;
@@ -339,6 +338,8 @@ public sealed class RequestContext<TParams> : MessageContext
         private const int MaxStructuredContentFingerprintBytes = 64 * 1024;
         private readonly object _lock = new();
         private readonly List<DeferredOutputValidationEntry> _entries = [];
+        private readonly ConditionalWeakTable<CallToolResult, StructuredContentRecoveryState> _schemaLessResults = new();
+        private StructuredContentRecoveryState? _schemaLessState;
         private bool _overflowed;
 
         internal readonly record struct DeferredOutputValidationEntry(
@@ -348,19 +349,18 @@ public sealed class RequestContext<TParams> : MessageContext
             int StructuredContentByteCount,
             StructuredContentRecoveryState State);
 
-        internal IReadOnlyList<DeferredOutputValidationEntry> GetEntries(out bool overflowed)
-        {
-            lock (_lock)
-            {
-                overflowed = _overflowed;
-                return [.. _entries];
-            }
-        }
-
         internal void Register(CallToolResult result, StructuredContentRecoveryState state)
         {
             lock (_lock)
             {
+                if (state.Schema is null)
+                {
+                    // Track only live results without consuming the bounded schema snapshot budget.
+                    _schemaLessResults.GetValue(result, _ => state);
+                    _schemaLessState = state;
+                    return;
+                }
+
                 if (_entries.Count >= MaxEntries)
                 {
                     _overflowed = true;
@@ -401,10 +401,20 @@ public sealed class RequestContext<TParams> : MessageContext
             }
         }
 
-        internal static IReadOnlyList<StructuredContentRecoveryState> GetCandidates(
-            IReadOnlyList<DeferredOutputValidationEntry> entries,
-            CallToolResult result)
+        internal IReadOnlyList<StructuredContentRecoveryState> GetCandidates(
+            CallToolResult result, out bool overflowed)
         {
+            DeferredOutputValidationEntry[] entries;
+            StructuredContentRecoveryState? schemaLessResult;
+            StructuredContentRecoveryState? schemaLessState;
+            lock (_lock)
+            {
+                overflowed = _overflowed;
+                entries = [.. _entries];
+                _schemaLessResults.TryGetValue(result, out schemaLessResult);
+                schemaLessState = _schemaLessState;
+            }
+
             List<StructuredContentRecoveryState> exactMatches = [];
             foreach (var entry in entries)
             {
@@ -419,6 +429,11 @@ public sealed class RequestContext<TParams> : MessageContext
             if (exactMatches.Count > 0)
             {
                 return exactMatches;
+            }
+
+            if (schemaLessResult is not null)
+            {
+                return [schemaLessResult];
             }
 
             if (result.StructuredContent is { } content)
@@ -470,6 +485,11 @@ public sealed class RequestContext<TParams> : MessageContext
                 {
                     candidates.Add(entry.State);
                 }
+            }
+
+            if (candidates.Count == 0 && schemaLessState is not null)
+            {
+                candidates.Add(schemaLessState);
             }
 
             return candidates;

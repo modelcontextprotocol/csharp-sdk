@@ -649,6 +649,7 @@ public partial class McpServerToolTests
                     UseStructuredContent = true,
                     OutputSchema = JsonDocument.Parse(
                         $$"""{"{{referenceKeyword}}":"{{uri}}"}""").RootElement,
+                    SerializerOptions = CreateStructuredOutputTestOptions(),
                 });
 
                 CallToolResult result = await InvokeRegisteredToolAsync(tool, "2026-07-28");

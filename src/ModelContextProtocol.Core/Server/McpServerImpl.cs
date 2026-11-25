@@ -1692,7 +1692,7 @@ internal sealed partial class McpServerImpl : McpServer
 
             if (!deferOutputValidation &&
                 result.IsError is not true &&
-                recoveryTarget.ReturnsExplicitResult &&
+                (recoveryTarget.ReturnsExplicitResult || tool is DelegatingMcpServerTool) &&
                 recoveryTarget.Schema is not null)
             {
                 recoveryTarget.RequireSchemaConformance();

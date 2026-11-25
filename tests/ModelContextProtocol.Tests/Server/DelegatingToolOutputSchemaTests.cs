@@ -633,6 +633,126 @@ public partial class DelegatingToolOutputSchemaTests
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CallTool_DelegatingToolValidatesOuterSchemaWhenInnerHasNoSchema(bool useFilter)
+    {
+        McpServerTool inner = McpServerTool.Create(() => new { Value = 1 }, new()
+        {
+            Name = "inner_without_schema",
+            UseStructuredContent = false,
+            SerializerOptions = new(JsonSerializerDefaults.Web)
+            {
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            },
+        });
+        McpServerTool tool = new SchemaOverrideTool(inner, ParseJson("""{"type":"object","required":["value"]}"""));
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+            AssertSchemaOutputError(result);
+        }, configure: options =>
+        {
+            if (useFilter)
+            {
+                options.Filters.Request.CallToolFilters.Add(next => (request, cancellationToken) => next(request, cancellationToken));
+            }
+        });
+    }
+
+    [Fact]
+    public async Task CallTool_DelegatingToolValidatesResultWhenInnerIsNotInvoked()
+    {
+        McpServerTool inner = McpServerTool.Create(() => "unused", new()
+        {
+            Name = "skipped_inner",
+            UseStructuredContent = false,
+        });
+        McpServerTool tool = new SchemaOverrideTool(
+            new NonInvokingTool(inner), ParseJson("""{"type":"object","required":["value"]}"""));
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+            AssertSchemaOutputError(result);
+        });
+    }
+
+    [Fact]
+    public async Task CallTool_RepeatedSchemaLessDispatchesDoNotFailValidation()
+    {
+        McpServerTool tool = McpServerTool.Create(() => "ok", new()
+        {
+            Name = "repeated_schema_less",
+            UseStructuredContent = false,
+        });
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+            Assert.NotEqual(true, result.IsError);
+            Assert.Equal("ok", Assert.IsType<TextContentBlock>(Assert.Single(result.Content)).Text);
+        }, configure: options =>
+        {
+            options.Filters.Request.CallToolFilters.Add(next => async (request, cancellationToken) =>
+            {
+                CallToolResult? result = null;
+                for (int i = 0; i < 130; i++)
+                {
+                    result = await next(request, cancellationToken);
+                }
+                return result!;
+            });
+        });
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CallTool_RepeatedSchemaLessDispatchesPreserveLaterSchemaCorrelation(bool returnSchemaLess)
+    {
+        McpServerTool tool = McpServerTool.Create(() => new CallToolResult
+        {
+            Content = [],
+            StructuredContent = ParseJson("""{"value":1}"""),
+        }, new()
+        {
+            Name = "schema_less_then_schema",
+            UseStructuredContent = false,
+        });
+
+        await WithClientAsync(tool, "2026-07-28", async client =>
+        {
+            CallToolResult result = await client.CallToolAsync(tool.ProtocolTool.Name, cancellationToken: TestContext.Current.CancellationToken);
+            if (returnSchemaLess)
+            {
+                Assert.NotEqual(true, result.IsError);
+                Assert.Equal(1, result.StructuredContent!.Value.GetProperty("value").GetInt32());
+            }
+            else
+            {
+                AssertSchemaOutputError(result);
+            }
+        }, configure: options =>
+        {
+            options.Filters.Request.CallToolFilters.Add(next => async (request, cancellationToken) =>
+            {
+                CallToolResult? first = null;
+                for (int i = 0; i < 130; i++)
+                {
+                    CallToolResult result = await next(request, cancellationToken);
+                    first ??= result;
+                }
+
+                tool.ProtocolTool.OutputSchema = ParseJson("""{"type":"object","required":["other"]}""");
+                CallToolResult last = await next(request, cancellationToken);
+                return returnSchemaLess ? first! : last;
+            });
+        });
+    }
+
+    [Theory]
     [InlineData("converter")]
     [InlineData("enum")]
     [InlineData("struct")]
@@ -2963,6 +3083,13 @@ public partial class DelegatingToolOutputSchemaTests
 
     private sealed class DelegatingTool(McpServerTool inner) : DelegatingMcpServerTool(inner);
 
+    private sealed class NonInvokingTool(McpServerTool inner) : DelegatingMcpServerTool(inner)
+    {
+        public override ValueTask<CallToolResult> InvokeAsync(
+            RequestContext<CallToolRequestParams> request, CancellationToken cancellationToken = default) =>
+            new(new CallToolResult { Content = [], StructuredContent = ParseJson("{}") });
+    }
+
     private sealed class MutableNote
     {
         public string? Note { get; set; }
@@ -3169,7 +3296,7 @@ public partial class DelegatingToolOutputSchemaTests
         {
             Pending = base.InvokeAsync(request, cancellationToken).AsTask();
             await entered.Task.WaitAsync(cancellationToken);
-            return new CallToolResult { Content = [] };
+            return new CallToolResult { Content = [], StructuredContent = ParseJson("{}") };
         }
     }
 
