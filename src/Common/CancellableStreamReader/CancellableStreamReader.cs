@@ -802,11 +802,7 @@ internal class CancellableStreamReader : TextReader
     /// that has been read from the current <see cref="Stream"/> but not stored (by the
     /// <see cref="CancellableStreamReader"/>) or returned (to the caller) may be lost.
     /// </remarks>
-#if NET
-    public override ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
-#else
     public virtual ValueTask<string?> ReadLineAsync(CancellationToken cancellationToken)
-#endif
     {
         // If we have been inherited into a subclass, the following implementation could be incorrect
         // since it does not call through to Read() which a subclass might have overridden.
@@ -934,11 +930,7 @@ internal class CancellableStreamReader : TextReader
     /// that has been read from the current <see cref="Stream"/> but not stored (by the
     /// <see cref="CancellableStreamReader"/>) or returned (to the caller) may be lost.
     /// </remarks>
-#if NET
-    public override Task<string> ReadToEndAsync(CancellationToken cancellationToken)
-#else
     public virtual Task<string> ReadToEndAsync(CancellationToken cancellationToken)
-#endif
     {
         // If we have been inherited into a subclass, the following implementation could be incorrect
         // since it does not call through to Read() which a subclass might have overridden.
@@ -1002,11 +994,7 @@ internal class CancellableStreamReader : TextReader
         return task;
     }
 
-#if NET
-    public override ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
-#else
     public virtual ValueTask<int> ReadAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
-#endif
     {
         Debug.Assert(GetType() == typeof(CancellableStreamReader));
 
@@ -1175,8 +1163,7 @@ internal class CancellableStreamReader : TextReader
             // This function shouldn't block for an indefinite amount of time,
             // or reading from a network stream won't work right.  If we got
             // fewer bytes than we requested, then we want to break right here.
-            // ReadAsync may return fewer characters than requested; ReadBlockAsync handles filling the buffer.
-            if (_isBlocked || charsRead > 0)
+            if (_isBlocked)
             {
                 break;
             }
@@ -1214,11 +1201,7 @@ internal class CancellableStreamReader : TextReader
         return task;
     }
 
-#if NET
-    public override ValueTask<int> ReadBlockAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
-#else
     public virtual ValueTask<int> ReadBlockAsync(Memory<char> buffer, CancellationToken cancellationToken = default)
-#endif
     {
         Debug.Assert(GetType() == typeof(CancellableStreamReader));
 

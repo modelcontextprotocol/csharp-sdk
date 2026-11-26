@@ -1517,7 +1517,6 @@ internal sealed partial class McpServerImpl : McpServer
 
         var callToolFilters = options.Filters.Request.CallToolFilters;
         var callToolWithAlternateFilters = options.Filters.Request.CallToolWithAlternateFilters;
-        bool deferOutputValidation = callToolFilters.Count > 0 || callToolWithAlternateFilters.Count > 0;
 
         if (callToolWithAlternateHandler is not null && callToolFilters.Count > 0)
         {
@@ -1587,7 +1586,7 @@ internal sealed partial class McpServerImpl : McpServer
                     MatchTool(request, tools);
                     if (request.MatchedPrimitive is McpServerTool tool)
                     {
-                        return InvokeToolWithAlternate(tool, request, cancellationToken, deferOutputValidation);
+                        return InvokeToolWithAlternate(tool, request, cancellationToken);
                     }
 
                     return originalHandler(request, cancellationToken);
@@ -1597,8 +1596,7 @@ internal sealed partial class McpServerImpl : McpServer
             callToolWithAlternateHandler = BuildInvocationFilterPipeline(
                 callToolWithAlternateHandler,
                 callToolWithAlternateFilters,
-                BuildInitialAlternateToolFilter(tools),
-                next => BuildToolOutputValidationPipeline(next, tools, taskContinuationOnly: true));
+                BuildInitialAlternateToolFilter(tools));
         }
         else
         {
@@ -1610,10 +1608,9 @@ internal sealed partial class McpServerImpl : McpServer
                 var originalHandler = callToolHandler;
                 callToolHandler = (request, cancellationToken) =>
                 {
-                    MatchTool(request, tools);
                     if (request.MatchedPrimitive is McpServerTool tool)
                     {
-                        return InvokeToolAsync(tool, request, cancellationToken, deferOutputValidation);
+                        return tool.InvokeAsync(request, cancellationToken);
                     }
 
                     return originalHandler(request, cancellationToken);
@@ -1627,12 +1624,6 @@ internal sealed partial class McpServerImpl : McpServer
                 callToolWithAlternateFilters,
                 tools);
         }
-
-        if (deferOutputValidation)
-        {
-            callToolWithAlternateHandler = BuildToolOutputValidationPipeline(callToolWithAlternateHandler!, tools);
-        }
-
         ServerCapabilities.Tools.ListChanged = listChanged;
 
         SetHandler(
@@ -1647,242 +1638,13 @@ internal sealed partial class McpServerImpl : McpServer
             McpJsonUtilities.JsonContext.Default.CallToolRequestParams,
             McpJsonUtilities.JsonContext.Default.CallToolResult);
     }
-    private async ValueTask<ResultOrAlternate<CallToolResult>> InvokeToolWithAlternate(
+    private static async ValueTask<ResultOrAlternate<CallToolResult>> InvokeToolWithAlternate(
         McpServerTool tool,
         RequestContext<CallToolRequestParams> request,
-        CancellationToken cancellationToken,
-        bool deferOutputValidation)
+        CancellationToken cancellationToken)
     {
-        return await InvokeToolAsync(tool, request, cancellationToken, deferOutputValidation).ConfigureAwait(false);
+        return await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
     }
-
-    private ValueTask<CallToolResult> InvokeToolAsync(
-        McpServerTool tool,
-        RequestContext<CallToolRequestParams> request,
-        CancellationToken cancellationToken,
-        bool deferOutputValidation) =>
-        tool is AIFunctionMcpServerTool or DelegatingMcpServerTool || request.StructuredContentRecoveryTarget is not null
-            ? InvokeToolWithRecoveryAsync(tool, request, cancellationToken, deferOutputValidation)
-            : tool.InvokeAsync(request, cancellationToken);
-
-    private async ValueTask<CallToolResult> InvokeToolWithRecoveryAsync(
-        McpServerTool tool,
-        RequestContext<CallToolRequestParams> request,
-        CancellationToken cancellationToken,
-        bool deferOutputValidation)
-    {
-        var previousTarget = request.StructuredContentRecoveryTarget;
-        TryGetAIFunctionTool(tool, out AIFunctionMcpServerTool? aiFunctionTool, out bool hasCustomInvocation);
-        Tool protocolTool = tool.ProtocolTool;
-        List<(McpServerTool Tool, JsonElement? Schema)> schemas =
-            [(tool, protocolTool.OutputSchema)];
-        for (McpServerTool current = tool; current is DelegatingMcpServerTool delegating;)
-        {
-            current = delegating.InnerTool;
-            Tool currentProtocolTool = current.ProtocolTool;
-            schemas.Add((current, currentProtocolTool.OutputSchema));
-        }
-        var recoveryTarget = new RequestContext<CallToolRequestParams>.StructuredContentRecoveryState(
-            tool, schemas);
-        request.StructuredContentRecoveryTarget = recoveryTarget;
-        try
-        {
-            CallToolResult result = await tool.InvokeAsync(request, cancellationToken).ConfigureAwait(false);
-            request.RecoverStructuredContent(tool, result);
-
-            if (!deferOutputValidation &&
-                result.IsError is not true &&
-                (recoveryTarget.ReturnsExplicitResult || tool is DelegatingMcpServerTool) &&
-                recoveryTarget.Schema is not null)
-            {
-                recoveryTarget.RequireSchemaConformance();
-            }
-
-            if (!deferOutputValidation &&
-                recoveryTarget.RequiresSchemaConformance &&
-                result.IsError is not true &&
-                aiFunctionTool is not null &&
-                recoveryTarget.Schema is not null)
-            {
-                JsonElement? outputSchema = recoveryTarget.Schema;
-                if (!McpSessionHandler.SupportsNaturalOutputSchemas(request.Server.NegotiatedProtocolVersion))
-                {
-                    recoveryTarget.TryGetSchema(aiFunctionTool, out JsonElement? underlyingSchema);
-                    outputSchema = aiFunctionTool.BuildLegacyWireProtocolTool(
-                        protocolTool, hasCustomInvocation, recoveryTarget.Schema, underlyingSchema).OutputSchema;
-                }
-
-                if (!aiFunctionTool.IsStructuredContentValid(result.StructuredContent, outputSchema))
-                {
-                    ToolCallStructuredOutputInvalid(request.Params?.Name ?? string.Empty);
-                    return CreateStructuredOutputErrorResult();
-                }
-            }
-
-            if (deferOutputValidation)
-            {
-                RequestContext<CallToolRequestParams>.RegisterDeferredOutputValidation(
-                    request.Server, result, recoveryTarget);
-            }
-
-            return result;
-        }
-        finally
-        {
-            recoveryTarget.Clear();
-            request.StructuredContentRecoveryTarget = previousTarget;
-        }
-    }
-
-    private static bool TryGetAIFunctionTool(
-        McpServerTool tool, out AIFunctionMcpServerTool? aiFunctionTool, out bool hasCustomInvocation)
-    {
-        hasCustomInvocation = false;
-        while (tool is DelegatingMcpServerTool delegating)
-        {
-            hasCustomInvocation |= delegating.HasCustomInvocation;
-            tool = delegating.InnerTool;
-        }
-
-        aiFunctionTool = tool as AIFunctionMcpServerTool;
-        return aiFunctionTool is not null;
-    }
-
-    private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildToolOutputValidationPipeline(
-        McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> handler,
-        McpServerPrimitiveCollection<McpServerTool>? tools,
-        bool taskContinuationOnly = false) =>
-        async (request, cancellationToken) =>
-        {
-            MatchTool(request, tools);
-            OutgoingRequestInterceptingMcpServer? taskServer = request.Server as OutgoingRequestInterceptingMcpServer;
-            if (taskContinuationOnly && taskServer is not { IsTaskExecution: true })
-            {
-                return await handler(request, cancellationToken).ConfigureAwait(false);
-            }
-
-            McpServer validationServer = request.Server;
-
-            McpServerTool? initialTool = request.MatchedPrimitive as McpServerTool;
-            AIFunctionMcpServerTool? aiFunctionTool = null;
-            bool initialHasCustomInvocation = false;
-            if (initialTool is not null)
-            {
-                TryGetAIFunctionTool(initialTool, out aiFunctionTool, out initialHasCustomInvocation);
-            }
-            Tool? initialProtocolTool = initialTool?.ProtocolTool;
-            JsonElement? initialOutputSchema = initialProtocolTool?.OutputSchema;
-            JsonElement? initialUnderlyingSchema = aiFunctionTool?.ProtocolTool.OutputSchema;
-            int depth = taskContinuationOnly ? taskServer!.EnterToolOutputValidation() : 0;
-
-            try
-            {
-                ResultOrAlternate<CallToolResult> result = await handler(request, cancellationToken).ConfigureAwait(false);
-                if (taskContinuationOnly && depth > 1)
-                {
-                    return result;
-                }
-
-                if (result.IsAlternate ||
-                    result.Result is not { IsError: not true } callToolResult)
-                {
-                    return result;
-                }
-
-                MatchTool(request, tools);
-                McpServerTool? matchedTool = request.MatchedPrimitive as McpServerTool;
-                IReadOnlyList<RequestContext<CallToolRequestParams>.StructuredContentRecoveryState> recoveryTargets =
-                    RequestContext<CallToolRequestParams>.GetDeferredOutputValidations(
-                        validationServer, callToolResult, out bool validationOverflowed);
-                if (validationOverflowed)
-                {
-                    ToolCallStructuredOutputInvalid(request.Params?.Name ?? string.Empty);
-                    return CreateStructuredOutputErrorResult();
-                }
-
-                if (recoveryTargets.Count == 0 &&
-                    matchedTool is not null &&
-                    TryGetAIFunctionTool(matchedTool, out AIFunctionMcpServerTool? matchedAiFunction, out bool matchedHasCustomInvocation))
-                {
-                    bool sameInitialTool = ReferenceEquals(matchedTool, initialTool);
-                    JsonElement? matchedSchema = sameInitialTool
-                        ? initialOutputSchema
-                        : matchedTool.ProtocolTool.OutputSchema;
-                    Tool matchedProtocolTool = sameInitialTool
-                        ? initialProtocolTool!
-                        : matchedTool.ProtocolTool;
-                    JsonElement? matchedUnderlyingSchema = sameInitialTool
-                        ? initialUnderlyingSchema
-                        : matchedAiFunction!.ProtocolTool.OutputSchema;
-                    if (!McpSessionHandler.SupportsNaturalOutputSchemas(request.Server.NegotiatedProtocolVersion) &&
-                        matchedSchema is { } legacySchema)
-                    {
-                        matchedSchema = matchedAiFunction!.BuildLegacyWireProtocolTool(
-                            matchedProtocolTool, sameInitialTool ? initialHasCustomInvocation : matchedHasCustomInvocation,
-                            legacySchema, matchedUnderlyingSchema).OutputSchema;
-                    }
-
-                    if (matchedSchema is not null)
-                    {
-                        if (!matchedAiFunction!.IsStructuredContentValid(callToolResult.StructuredContent, matchedSchema))
-                        {
-                            ToolCallStructuredOutputInvalid(request.Params?.Name ?? string.Empty);
-                            return CreateStructuredOutputErrorResult();
-                        }
-                    }
-                }
-                else
-                {
-                    foreach (RequestContext<CallToolRequestParams>.StructuredContentRecoveryState recoveryTarget in recoveryTargets)
-                    {
-                        if (!TryGetAIFunctionTool(recoveryTarget.Tool, out AIFunctionMcpServerTool? targetAiFunction, out bool targetHasCustomInvocation) ||
-                            recoveryTarget.Schema is not { } schema)
-                        {
-                            continue;
-                        }
-
-                        JsonElement? validationSchema = schema;
-                        if (!McpSessionHandler.SupportsNaturalOutputSchemas(request.Server.NegotiatedProtocolVersion))
-                        {
-                            recoveryTarget.TryGetSchema(targetAiFunction!, out JsonElement? targetUnderlyingSchema);
-                            validationSchema = targetAiFunction!.BuildLegacyWireProtocolTool(
-                                recoveryTarget.Tool.ProtocolTool, targetHasCustomInvocation, schema, targetUnderlyingSchema).OutputSchema;
-                        }
-
-                        if (!targetAiFunction!.IsStructuredContentValid(callToolResult.StructuredContent, validationSchema))
-                        {
-                            ToolCallStructuredOutputInvalid(request.Params?.Name ?? string.Empty);
-                            return CreateStructuredOutputErrorResult();
-                        }
-                    }
-                }
-
-                return result;
-            }
-            finally
-            {
-                if (taskContinuationOnly)
-                {
-                    taskServer!.ExitToolOutputValidation();
-                }
-
-                if (!taskContinuationOnly || depth == 1)
-                {
-                    RequestContext<CallToolRequestParams>.ClearDeferredOutputValidations(
-                        validationServer);
-                }
-            }
-        };
-
-    private static CallToolResult CreateStructuredOutputErrorResult() =>
-        new()
-        {
-            IsError = true,
-            Content = [new TextContentBlock
-            {
-                Text = "The tool could not produce structured content that conforms to its advertised output schema.",
-            }],
-        };
 
     private McpRequestHandler<CallToolRequestParams, ResultOrAlternate<CallToolResult>> BuildComposedCallToolHandler(
         McpRequestHandler<CallToolRequestParams, CallToolResult> callToolHandler,
@@ -1896,8 +1658,7 @@ internal sealed partial class McpServerImpl : McpServer
             var invocation = new ComposedCallToolInvocationState();
             var composedHandler = BuildInvocationFilterPipeline(
                 InvokeOrdinaryPipelineAsync,
-                callToolWithAlternateFilters,
-                wrapContinuation: next => BuildToolOutputValidationPipeline(next, tools, taskContinuationOnly: true));
+                callToolWithAlternateFilters);
 
             try
             {
@@ -1991,17 +1752,11 @@ internal sealed partial class McpServerImpl : McpServer
         RequestContext<CallToolRequestParams> request,
         McpServerPrimitiveCollection<McpServerTool>? tools)
     {
-        if (tools is null)
+        if (request.Params?.Name is { } toolName && tools is not null &&
+            tools.TryGetPrimitive(toolName, out var tool))
         {
-            return;
+            request.MatchedPrimitive = tool;
         }
-
-        string? toolName = request.Params?.Name;
-        McpServerTool? tool =
-            toolName is not null && tools.TryGetPrimitive(toolName, out McpServerTool? matchedTool)
-                ? matchedTool
-                : null;
-        request.MatchToolByName(toolName, tool);
     }
 
     private static CallToolResult CreateToolCallErrorResult(
@@ -2252,19 +2007,13 @@ internal sealed partial class McpServerImpl : McpServer
     private static McpRequestHandler<TParams, TResult> BuildInvocationFilterPipeline<TParams, TResult>(
         McpRequestHandler<TParams, TResult> baseHandler,
         IList<McpRequestInvocationFilter<TParams, TResult>> filters,
-        McpRequestInvocationFilter<TParams, TResult>? initialHandler = null,
-        Func<McpRequestHandler<TParams, TResult>, McpRequestHandler<TParams, TResult>>? wrapContinuation = null)
+        McpRequestInvocationFilter<TParams, TResult>? initialHandler = null)
     {
         var current = baseHandler;
 
         for (int i = filters.Count - 1; i >= 0; i--)
         {
             var next = current;
-            if (wrapContinuation is not null)
-            {
-                next = wrapContinuation(next);
-            }
-
             var filter = filters[i];
             current = (request, cancellationToken) => filter(request, next, cancellationToken);
         }
@@ -2803,9 +2552,6 @@ internal sealed partial class McpServerImpl : McpServer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "\"{ToolName}\" completed. IsError = {IsError}.")]
     private partial void ToolCallCompleted(string toolName, bool isError);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "\"{ToolName}\" could not produce structured content matching its output schema.")]
-    private partial void ToolCallStructuredOutputInvalid(string toolName);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "GetPrompt \"{PromptName}\" threw an unhandled exception.")]
     private partial void GetPromptError(string promptName, Exception exception);

@@ -52,7 +52,7 @@ public static class McpTasksServerExtensions
         if (store is null) throw new ArgumentNullException(nameof(store));
 #endif
 
-        return server.WithTaskOutgoingRequestInterceptor(async (method, paramsNode, cancellationToken) =>
+        return server.WithOutgoingRequestInterceptor(async (method, paramsNode, cancellationToken) =>
         {
             var requestId = Guid.NewGuid().ToString("N");
 

@@ -124,22 +124,8 @@ public sealed class McpServerToolCreateOptions
     /// The default is <see langword="false"/>.
     /// </value>
     /// <remarks>
-    /// <para>
     /// When enabled, the tool will attempt to populate the <see cref="Tool.OutputSchema"/>
     /// and provide structured content in the <see cref="CallToolResult.StructuredContent"/> property.
-    /// </para>
-    /// <para>
-    /// Recovery of required members omitted by null or default-value serialization policies is best effort.
-    /// Recovery does not re-enumerate non-indexable collections, such as sets, queues, or linked lists.
-    /// Materialize these collections into arrays or lists when their elements need this recovery.
-    /// Values omitted by default-value policies are not recovered when their actual contents may be non-default,
-    /// such as when a value type's equality considers distinct values equal to its default.
-    /// Recovery also skips omitted enum values, members with custom converters, and non-null object or
-    /// collection contracts, which can produce data from outside the omitted value.
-    /// Recovery may read property getters again. If recovery cannot safely produce a result that conforms
-    /// to the advertised schema, server dispatch reports a tool error and omits structured content.
-    /// Recovery for delegated results is bounded per tool dispatch and may be skipped for many or large results.
-    /// </para>
     /// </remarks>
     public bool UseStructuredContent { get; set; }
 

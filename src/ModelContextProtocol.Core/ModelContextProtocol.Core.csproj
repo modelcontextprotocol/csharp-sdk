@@ -8,7 +8,6 @@
     <Description>Core .NET SDK for the Model Context Protocol (MCP)</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <CompatibilitySuppressionFilePath>$(MSBuildThisFileDirectory)CompatibilitySuppressions.xml</CompatibilitySuppressionFilePath>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Suppress the experimental extensions warning -->
     <NoWarn>$(NoWarn);MCPEXP001</NoWarn>
     <!-- Core implements the Roots, Sampling, and Logging features deprecated by SEP-2577 (MCP9005).
@@ -29,10 +28,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="ModelContextProtocol.Extensions.Tasks, PublicKey=00240000048000009400000006020000002400005253413100040000010001004B86C4CB78549B34BAB61A3B1800E23BFEB5B3EC390074041536A7E3CBD97F5F04CF0F857155A8928EAA29EBFD11CFBBAD3BA70EFEA7BDA3226C6A8D370A4CD303F714486B6EBC225985A638471E6EF571CC92A4613C00B8FA65D61CCEE0CBE5F36330C9A01F4183559F1BEF24CC2917C6D913E3A541333A1D05D9BED22B38CB" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Compile Include="..\Common\Throw.cs" Link="Throw.cs" />
     <Compile Include="..\Common\Obsoletions.cs" Link="Obsoletions.cs" />
     <Compile Include="..\Common\Experimentals.cs" Link="Experimentals.cs" />
@@ -41,12 +36,11 @@
     <Compile Include="..\Common\McpProtocolVersions.cs" Link="McpProtocolVersions.cs" />
     <Compile Include="..\Common\HttpResponseMessageExtensions.cs" Link="HttpResponseMessageExtensions.cs" />
     <Compile Include="..\Common\ServerSentEvents\**\*.cs" Link="ServerSentEvents\%(RecursiveDir)%(FileName)%(Extension)" />
-    <Compile Include="..\Common\CancellableStreamReader\*.cs" Exclude="..\Common\CancellableStreamReader\TextReaderExtensions.cs" />
   </ItemGroup>
 
   <!-- Dependencies only needed by netstandard2.0 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-    <Compile Include="..\Common\CancellableStreamReader\TextReaderExtensions.cs" />
+    <Compile Include="..\Common\CancellableStreamReader\**\*.cs" />
     <PackageReference Include="Microsoft.Bcl.Memory" />
     <PackageReference Include="Microsoft.Bcl.TimeProvider" />
     <PackageReference Include="System.Collections.Immutable" />
@@ -69,7 +63,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    <PackageReference Include="JsonSchema.Net" />
   </ItemGroup>
 
   <!-- Reference analyzers -->
