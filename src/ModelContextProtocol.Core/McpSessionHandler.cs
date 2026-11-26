@@ -901,7 +901,8 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             _ => "unknownMethod"
         };
 
-    // Per the MCP semantic conventions, operation duration metrics cover requests and notifications.
+    // Per the MCP semantic conventions, operation duration metrics cover requests and notifications
+    // (https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/mcp.md).
     // Responses and errors complete an operation that is already measured, so they aren't recorded separately.
     private static bool IsOperation(JsonRpcMessage message) =>
         message is JsonRpcRequest or JsonRpcNotification;

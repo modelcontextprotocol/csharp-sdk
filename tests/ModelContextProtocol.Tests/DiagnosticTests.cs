@@ -262,15 +262,22 @@ public class DiagnosticTests
         {
             await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
             await client.CallToolAsync("DoubleValue", new Dictionary<string, object?> { ["amount"] = 42 }, cancellationToken: TestContext.Current.CancellationToken);
+
+            // A request the server rejects, so the server replies with a JSON-RPC error rather than a result.
+            await Assert.ThrowsAsync<McpProtocolException>(async () => await client.SendRequestAsync(
+                new JsonRpcRequest { Method = "test/unknownMethod" }, TestContext.Current.CancellationToken));
+
+            await client.SendNotificationAsync("notifications/test", TestContext.Current.CancellationToken);
         }, []);
 
         // RunConnected returns only after the server has finished handling every in-flight message,
         // so all client and server measurements have been recorded by now.
         Assert.DoesNotContain(measurements, m => m.Method is null or "unknownMethod");
-        Assert.Single(measurements, m => m.Instrument == "mcp.client.operation.duration" && m.Method == "tools/call");
-        Assert.Single(measurements, m => m.Instrument == "mcp.server.operation.duration" && m.Method == "tools/call");
-        Assert.Single(measurements, m => m.Instrument == "mcp.client.operation.duration" && m.Method == "tools/list");
-        Assert.Single(measurements, m => m.Instrument == "mcp.server.operation.duration" && m.Method == "tools/list");
+        foreach (var method in new[] { "tools/list", "tools/call", "test/unknownMethod", "notifications/test" })
+        {
+            Assert.Single(measurements, m => m.Instrument == "mcp.client.operation.duration" && m.Method == method);
+            Assert.Single(measurements, m => m.Instrument == "mcp.server.operation.duration" && m.Method == method);
+        }
     }
 
     private static async Task RunConnected(Func<McpClient, McpServer, Task> action, List<string> clientToServerLog)
