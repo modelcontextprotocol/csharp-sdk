@@ -548,6 +548,86 @@ public class July2026ProtocolFallbackTests(ITestOutputHelper testOutputHelper) :
         Assert.False(sseRequested);
     }
 
+    [Fact]
+    public async Task Client_OnDiscoverWithoutCommonVersion_FallsBackTo_Initialize_WithMatchingProtocolVersionHeader()
+    {
+        // https://github.com/modelcontextprotocol/csharp-sdk/issues/2044: server/discover succeeds but only
+        // lists an initialize-handshake version, so the client falls back to initialize. The fallback
+        // initialize must not carry the 2026-07-28 MCP-Protocol-Version header cached from server/discover.
+        var ct = TestContext.Current.CancellationToken;
+        string? initializeHeader = null;
+        string? initializeBodyVersion = null;
+
+        using var mockHttpHandler = new MockHttpHandler();
+        using var httpClient = new HttpClient(mockHttpHandler);
+        mockHttpHandler.RequestHandler = async request =>
+        {
+            if (request.Method == HttpMethod.Get)
+            {
+                return EmptyResponse(HttpStatusCode.MethodNotAllowed);
+            }
+
+            var body = await request.Content!.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("method", out var methodElement))
+            {
+                return EmptyResponse(HttpStatusCode.Accepted);
+            }
+
+            var header = request.Headers.TryGetValues(McpHttpHeaders.ProtocolVersion, out var values) ? values.Single() : null;
+            switch (methodElement.GetString())
+            {
+                case RequestMethods.ServerDiscover:
+                {
+                    var id = doc.RootElement.GetProperty("id").GetRawText();
+                    var result = "{\"jsonrpc\":\"2.0\",\"id\":" + id
+                        + ",\"result\":{\"supportedVersions\":[\"" + McpProtocolVersions.November2025ProtocolVersion
+                        + "\"],\"capabilities\":{}}}";
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(result, Encoding.UTF8, "application/json"),
+                    };
+                }
+
+                case RequestMethods.Initialize:
+                {
+                    initializeHeader = header;
+                    initializeBodyVersion = doc.RootElement.GetProperty("params").GetProperty("protocolVersion").GetString();
+                    var id = doc.RootElement.GetProperty("id").GetRawText();
+                    if (header is not null && header != initializeBodyVersion)
+                    {
+                        var error = "{\"jsonrpc\":\"2.0\",\"id\":" + id
+                            + ",\"error\":{\"code\":-32600,\"message\":\"Protocol header differs from initialize body\"}}";
+                        return new HttpResponseMessage(HttpStatusCode.BadRequest)
+                        {
+                            Content = new StringContent(error, Encoding.UTF8, "application/json"),
+                        };
+                    }
+
+                    var result = "{\"jsonrpc\":\"2.0\",\"id\":" + id
+                        + ",\"result\":{\"protocolVersion\":\"" + initializeBodyVersion
+                        + "\",\"capabilities\":{},\"serverInfo\":{\"name\":\"test\",\"version\":\"1.0\"}}}";
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(result, Encoding.UTF8, "application/json"),
+                    };
+                }
+
+                default:
+                    return EmptyResponse(HttpStatusCode.Accepted);
+            }
+        };
+
+        await using var transport = CreateTransport(httpClient, HttpTransportMode.StreamableHttp);
+        await using var client = await McpClient.CreateAsync(transport, new McpClientOptions(),
+            loggerFactory: LoggerFactory, cancellationToken: ct);
+
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, initializeBodyVersion);
+        Assert.True(initializeHeader is null || initializeHeader == initializeBodyVersion,
+            $"initialize was sent with MCP-Protocol-Version '{initializeHeader}' but protocolVersion '{initializeBodyVersion}'.");
+        Assert.Equal(McpProtocolVersions.November2025ProtocolVersion, client.NegotiatedProtocolVersion);
+    }
+
     private HttpClientTransport CreateTransport(HttpClient httpClient, HttpTransportMode transportMode)
         => new(new HttpClientTransportOptions
         {
