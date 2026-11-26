@@ -264,11 +264,8 @@ public class DiagnosticTests
             await client.CallToolAsync("DoubleValue", new Dictionary<string, object?> { ["amount"] = 42 }, cancellationToken: TestContext.Current.CancellationToken);
         }, []);
 
-        // The server records its measurement after the response is sent, so wait for it.
-        await WaitForAsync(
-            () => measurements.Any(m => m.Instrument == "mcp.server.operation.duration" && m.Method == "tools/call"),
-            failureMessage: "Timed out waiting for the server tools/call duration measurement.");
-
+        // RunConnected returns only after the server has finished handling every in-flight message,
+        // so all client and server measurements have been recorded by now.
         Assert.DoesNotContain(measurements, m => m.Method is null or "unknownMethod");
         Assert.Single(measurements, m => m.Instrument == "mcp.client.operation.duration" && m.Method == "tools/call");
         Assert.Single(measurements, m => m.Instrument == "mcp.server.operation.duration" && m.Method == "tools/call");
