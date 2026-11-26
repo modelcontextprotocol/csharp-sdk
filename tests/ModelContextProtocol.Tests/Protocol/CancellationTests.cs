@@ -86,6 +86,7 @@ public class CancellationTests : ClientServerTestBase
     private async Task<string> SignalThenReturnOnCancellation(CancellationToken cancellationToken)
     {
         // Like a subscriptions/listen handler: wait until the request is canceled, then return normally.
+        // The OperationCanceledException then comes from the SDK sending the response with the canceled token.
         _toolWaiting.TrySetResult(true);
         try
         {
