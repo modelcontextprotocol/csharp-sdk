@@ -472,6 +472,13 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
                     LogRequestHandlerCompleted(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds);
                     return result;
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // The request was canceled, either by the peer or because the session is shutting down. That's an
+                    // expected way for a request to end (for example, subscriptions/listen only ends this way), not a failure.
+                    LogRequestHandlerCanceled(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds);
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     LogRequestHandlerException(EndpointName, request.Method, GetElapsed(requestStartingTimestamp).TotalMilliseconds, ex);
@@ -1229,6 +1236,9 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} method '{Method}' request handler completed in {ElapsedMilliseconds}ms.")]
     private partial void LogRequestHandlerCompleted(string endpointName, string method, double elapsedMilliseconds);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{EndpointName} method '{Method}' request handler canceled after {ElapsedMilliseconds}ms.")]
+    private partial void LogRequestHandlerCanceled(string endpointName, string method, double elapsedMilliseconds);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{EndpointName} method '{Method}' request handler failed in {ElapsedMilliseconds}ms.")]
     private partial void LogRequestHandlerException(string endpointName, string method, double elapsedMilliseconds, Exception exception);
