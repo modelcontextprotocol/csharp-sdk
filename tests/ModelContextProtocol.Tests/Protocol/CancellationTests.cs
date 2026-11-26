@@ -14,6 +14,7 @@ public class CancellationTests : ClientServerTestBase
 {
     private readonly TaskCompletionSource<bool> _toolWaiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _toolCanceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<bool> _toolCallHandled = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public CancellationTests(ITestOutputHelper testOutputHelper)
         : base(testOutputHelper)
@@ -27,6 +28,23 @@ public class CancellationTests : ClientServerTestBase
         services.AddSingleton(McpServerTool.Create(SignalThenReturnOnCancellation, new() { Name = "signal_then_return_on_cancellation" }));
         services.AddSingleton(McpServerPrompt.Create(ThrowCanceledWithoutCancellation, new() { Name = "throw_canceled_without_cancellation" }));
         services.AddSingleton(McpServerTool.Create(ElicitThenWaitForCancellation, new() { Name = "elicit_then_wait_for_cancellation" }));
+
+        // Incoming message filters wrap request handling, including its outcome logging,
+        // so this signals once the server has finished handling and logging a tools/call request.
+        mcpServerBuilder.WithMessageFilters(filters => filters.AddIncomingFilter(next => async (context, cancellationToken) =>
+        {
+            try
+            {
+                await next(context, cancellationToken);
+            }
+            finally
+            {
+                if (context.JsonRpcMessage is JsonRpcRequest { Method: RequestMethods.ToolsCall })
+                {
+                    _toolCallHandled.TrySetResult(true);
+                }
+            }
+        }));
     }
 
     private static async Task WaitForCancellation(CancellationToken cancellationToken)
@@ -189,15 +207,7 @@ public class CancellationTests : ClientServerTestBase
 
         cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await callTask);
-        await _toolCanceled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
-
-        // The server logs the outcome after the handler finishes, so poll for it.
-        var deadline = DateTime.UtcNow + TestConstants.DefaultTimeout;
-        while (!MockLoggerProvider.LogMessages.Any(m => m.Message.Contains("'tools/call' request handler canceled"))
-            && DateTime.UtcNow < deadline)
-        {
-            await Task.Delay(50, TestContext.Current.CancellationToken);
-        }
+        await _toolCallHandled.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
 
         var canceledLog = Assert.Single(MockLoggerProvider.LogMessages, m => m.Message.Contains("'tools/call' request handler canceled"));
         Assert.Equal(LogLevel.Information, canceledLog.LogLevel);
