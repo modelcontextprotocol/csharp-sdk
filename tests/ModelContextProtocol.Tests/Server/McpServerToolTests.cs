@@ -516,6 +516,97 @@ public partial class McpServerToolTests
         AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
     }
 
+    [Theory]
+    [InlineData(null, Sep2106ProtocolVersion)]
+    [InlineData("note", Sep2106ProtocolVersion)]
+    [InlineData(null, LegacyProtocolVersion)]
+    [InlineData("note", LegacyProtocolVersion)]
+    public async Task StructuredOutput_Enabled_RequiredNullableRecordProperty_MatchesGeneratedSchema(string? note, string protocolVersion)
+    {
+        JsonSerializerOptions options = CreateStructuredOutputSerializerOptions();
+        McpServerTool tool = McpServerTool.Create(
+            () => new RequiredNullableOutput("42", note),
+            new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(protocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(note is null ? JsonValueKind.Null : JsonValueKind.String, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_RequiredNullableNestedProperty_MatchesGeneratedSchema()
+    {
+        JsonSerializerOptions options = CreateStructuredOutputSerializerOptions();
+        McpServerTool tool = McpServerTool.Create(
+            () => new NestedRequiredNullableOutput("42", new RequiredNullableOutput("nested", null)),
+            new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("child").GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_RequiredNullableClassProperty_MatchesGeneratedSchema()
+    {
+        JsonSerializerOptions options = CreateStructuredOutputSerializerOptions();
+        McpServerTool tool = McpServerTool.Create(
+            () => new RequiredNullableClassOutput { Id = "42", Note = null },
+            new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.NotNull(result.StructuredContent);
+        Assert.Equal(JsonValueKind.Null, result.StructuredContent.Value.GetProperty("note").ValueKind);
+        AssertMatchesJsonSchema(tool.ProtocolTool.OutputSchema.Value, result.StructuredContent);
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_OptionalNullableProperty_RemainsOmitted()
+    {
+        JsonSerializerOptions options = CreateStructuredOutputSerializerOptions();
+        McpServerTool tool = McpServerTool.Create(
+            () => new OptionalNullableOutput("42"),
+            new() { Name = "tool", UseStructuredContent = true, SerializerOptions = options });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(tool.ProtocolTool.OutputSchema);
+        Assert.NotNull(result.StructuredContent);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("note", out _));
+        Assert.DoesNotContain(
+            tool.ProtocolTool.OutputSchema.Value.GetProperty("required").EnumerateArray(),
+            property => property.GetString() is "note");
+    }
+
+    [Fact]
+    public async Task StructuredOutput_Enabled_ExplicitSchema_PreservesOptionalNullOmission()
+    {
+        JsonSerializerOptions options = CreateStructuredOutputSerializerOptions();
+        JsonElement outputSchema = JsonDocument.Parse("""{"type":"object","properties":{"id":{"type":"string"},"note":{"type":"string"}},"required":["id"]}""").RootElement;
+        McpServerTool tool = McpServerTool.Create(
+            () => new RequiredNullableOutput("42", null),
+            new()
+            {
+                Name = "tool",
+                UseStructuredContent = true,
+                OutputSchema = outputSchema,
+                SerializerOptions = options,
+            });
+
+        var result = await tool.InvokeAsync(CreateRequestContextWithProtocolVersion(Sep2106ProtocolVersion), TestContext.Current.CancellationToken);
+
+        Assert.NotNull(result.StructuredContent);
+        Assert.False(result.StructuredContent.Value.TryGetProperty("note", out _));
+    }
+
     [Fact]
     public async Task StructuredOutput_Enabled_VoidReturningTools_ReturnsExpectedSchema()
     {
@@ -1125,6 +1216,26 @@ public partial class McpServerToolTests
     }
 
     record Person(string Name, int Age);
+
+    private sealed record RequiredNullableOutput(string Id, string? Note);
+
+    private sealed class RequiredNullableClassOutput
+    {
+        public required string Id { get; init; }
+
+        public required string? Note { get; init; }
+    }
+
+    private sealed record NestedRequiredNullableOutput(string Id, RequiredNullableOutput Child);
+
+    private sealed record OptionalNullableOutput(string Id, string? Note = null);
+
+    private static JsonSerializerOptions CreateStructuredOutputSerializerOptions() => new(McpJsonUtilities.DefaultOptions)
+    {
+        TypeInfoResolver = JsonTypeInfoResolver.Combine(
+            McpJsonUtilities.DefaultOptions.TypeInfoResolver,
+            new DefaultJsonTypeInfoResolver()),
+    };
 
     private static JsonSerializerOptions CreateSerializerOptionsWithPerson()
     {

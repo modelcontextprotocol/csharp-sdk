@@ -6,6 +6,8 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Text.RegularExpressions;
 
 namespace ModelContextProtocol.Server;
@@ -15,6 +17,8 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 {
     private readonly IReadOnlyList<object> _metadata;
     private readonly bool? _returnsCallToolResult;
+    private readonly Type? _returnType;
+    private readonly bool _restoreRequiredNulls;
 
     /// <summary>
     /// Creates an <see cref="McpServerTool"/> instance for a method, specified via a <see cref="Delegate"/> instance.
@@ -174,7 +178,14 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
                 options.Meta;
         }
 
-        return new AIFunctionMcpServerTool(function, tool, options?.Services, options?.Metadata ?? [], returnsCallToolResult);
+        return new AIFunctionMcpServerTool(
+            function,
+            tool,
+            options?.Services,
+            options?.Metadata ?? [],
+            returnsCallToolResult,
+            function.UnderlyingMethod?.ReturnType,
+            options?.UseStructuredContent is true && options.OutputSchema is null && function.ReturnJsonSchema is not null);
     }
 
     private static McpServerToolCreateOptions DeriveOptions(MethodInfo method, McpServerToolCreateOptions? options)
@@ -237,7 +248,13 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
     /// <summary>Initializes a new instance of the <see cref="McpServerTool"/> class.</summary>
     private AIFunctionMcpServerTool(
-        AIFunction function, Tool tool, IServiceProvider? serviceProvider, IReadOnlyList<object> metadata, bool? returnsCallToolResult)
+        AIFunction function,
+        Tool tool,
+        IServiceProvider? serviceProvider,
+        IReadOnlyList<object> metadata,
+        bool? returnsCallToolResult,
+        Type? returnType,
+        bool restoreRequiredNulls)
     {
         ValidateToolName(tool.Name);
 
@@ -246,6 +263,9 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
 
         _metadata = metadata;
         _returnsCallToolResult = returnsCallToolResult;
+        _returnType = GetStructuredReturnType(returnType);
+        _restoreRequiredNulls = restoreRequiredNulls &&
+            function.JsonSerializerOptions.DefaultIgnoreCondition is JsonIgnoreCondition.WhenWritingNull;
     }
 
     /// <inheritdoc />
@@ -762,6 +782,361 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
         }
     }
 
+    private static Type? GetStructuredReturnType(Type? returnType)
+    {
+        if (returnType is null)
+        {
+            return null;
+        }
+
+        if (returnType.IsGenericType &&
+            (returnType.GetGenericTypeDefinition() == typeof(Task<>) ||
+             returnType.GetGenericTypeDefinition() == typeof(ValueTask<>)))
+        {
+            returnType = returnType.GetGenericArguments()[0];
+        }
+
+        return returnType;
+    }
+
+    private static JsonElement RestoreRequiredNullableProperties(
+        JsonElement serializedResult,
+        object originalResult,
+        Type returnType,
+        JsonElement outputSchema,
+        JsonSerializerOptions serializerOptions)
+    {
+        List<(List<string> ParentPath, string Name)> missingProperties = [];
+        HashSet<string> seenPaths = new(StringComparer.Ordinal);
+        CollectMissingRequiredNulls(
+            serializedResult,
+            originalResult,
+            returnType,
+            outputSchema,
+            outputSchema,
+            serializerOptions,
+            [],
+            string.Empty,
+            missingProperties,
+            seenPaths,
+            0);
+
+        if (missingProperties.Count is 0 || JsonNode.Parse(serializedResult.GetRawText()) is not JsonObject resultNode)
+        {
+            return serializedResult;
+        }
+
+        foreach ((List<string> parentPath, string name) in missingProperties)
+        {
+            JsonObject? parent = resultNode;
+            foreach (string segment in parentPath)
+            {
+                if (parent is null || !parent.TryGetPropertyValue(segment, out JsonNode? child) || child is not JsonObject childObject)
+                {
+                    parent = null;
+                    break;
+                }
+
+                parent = childObject;
+            }
+
+            if (parent is not null && !parent.ContainsKey(name))
+            {
+                parent[name] = null;
+            }
+        }
+
+        return JsonSerializer.SerializeToElement(resultNode, McpJsonUtilities.JsonContext.Default.JsonNode);
+    }
+
+    private static void CollectMissingRequiredNulls(
+        JsonElement serializedObject,
+        object sourceObject,
+        Type sourceType,
+        JsonElement schema,
+        JsonElement schemaRoot,
+        JsonSerializerOptions serializerOptions,
+        List<string> instancePath,
+        string instancePointer,
+        List<(List<string> ParentPath, string Name)> missingProperties,
+        HashSet<string> seenPaths,
+        int depth)
+    {
+        if (depth >= 64 || serializedObject.ValueKind is not JsonValueKind.Object)
+        {
+            return;
+        }
+
+        JsonTypeInfo typeInfo;
+        try
+        {
+            typeInfo = serializerOptions.GetTypeInfo(sourceType);
+        }
+        catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException)
+        {
+            return;
+        }
+
+        if (typeInfo.Kind is not JsonTypeInfoKind.Object)
+        {
+            return;
+        }
+
+        OutputSchemaObjectShape shape = new();
+        CollectObjectSchemaShape(schema, schemaRoot, shape, new(StringComparer.Ordinal), 0);
+        if (shape.Properties.Count is 0)
+        {
+            return;
+        }
+
+        Dictionary<string, JsonPropertyInfo> properties = new(StringComparer.Ordinal);
+        foreach (JsonPropertyInfo property in typeInfo.Properties)
+        {
+            if (!properties.ContainsKey(property.Name))
+            {
+                properties.Add(property.Name, property);
+            }
+        }
+
+        foreach (string requiredName in shape.Required)
+        {
+            if (serializedObject.TryGetProperty(requiredName, out _) ||
+                !properties.TryGetValue(requiredName, out JsonPropertyInfo? property) ||
+                property.Get is null ||
+                property.IsExtensionData ||
+                property.CustomConverter is not null ||
+                property.ShouldSerialize is not null ||
+                IsExplicitlyIgnored(property) ||
+                !shape.Properties.TryGetValue(requiredName, out List<JsonElement>? propertySchemas) ||
+                propertySchemas.Count is 0 ||
+                propertySchemas.Any(propertySchema => !SchemaAllowsNull(propertySchema, schemaRoot, new(StringComparer.Ordinal), 0)))
+            {
+                continue;
+            }
+
+            if (!TryGetPropertyValue(property, sourceObject, out object? value) || value is not null)
+            {
+                continue;
+            }
+
+            string propertyPointer = AppendJsonPointer(instancePointer, requiredName);
+            if (seenPaths.Add(propertyPointer))
+            {
+                missingProperties.Add((new List<string>(instancePath), requiredName));
+            }
+        }
+
+        foreach (KeyValuePair<string, List<JsonElement>> propertySchema in shape.Properties)
+        {
+            if (!serializedObject.TryGetProperty(propertySchema.Key, out JsonElement serializedValue) ||
+                serializedValue.ValueKind is not JsonValueKind.Object ||
+                !properties.TryGetValue(propertySchema.Key, out JsonPropertyInfo? property) ||
+                property.Get is null ||
+                property.IsExtensionData ||
+                property.CustomConverter is not null ||
+                property.ShouldSerialize is not null ||
+                IsExplicitlyIgnored(property) ||
+                !TryGetPropertyValue(property, sourceObject, out object? value) ||
+                value is null)
+            {
+                continue;
+            }
+
+            instancePath.Add(propertySchema.Key);
+            string childPointer = AppendJsonPointer(instancePointer, propertySchema.Key);
+            foreach (JsonElement childSchema in propertySchema.Value)
+            {
+                CollectMissingRequiredNulls(
+                    serializedValue,
+                    value,
+                    property.PropertyType,
+                    childSchema,
+                    schemaRoot,
+                    serializerOptions,
+                    instancePath,
+                    childPointer,
+                    missingProperties,
+                    seenPaths,
+                    depth + 1);
+            }
+
+            instancePath.RemoveAt(instancePath.Count - 1);
+        }
+    }
+
+    private static bool TryGetPropertyValue(JsonPropertyInfo property, object source, out object? value)
+    {
+        try
+        {
+            value = property.Get!(source);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException and not StackOverflowException and not AccessViolationException)
+        {
+            value = null;
+            return false;
+        }
+    }
+
+    private static bool IsExplicitlyIgnored(JsonPropertyInfo property) =>
+        property.AttributeProvider?.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true)
+            .OfType<JsonIgnoreAttribute>()
+            .Any(attribute => attribute.Condition is not JsonIgnoreCondition.Never) is true;
+
+    private static string AppendJsonPointer(string parent, string name) =>
+        string.Concat(parent, "/", name.Replace("~", "~0").Replace("/", "~1"));
+
+    private static void CollectObjectSchemaShape(
+        JsonElement schema,
+        JsonElement schemaRoot,
+        OutputSchemaObjectShape shape,
+        HashSet<string> visitedReferences,
+        int depth)
+    {
+        if (depth >= 64 || schema.ValueKind is not JsonValueKind.Object)
+        {
+            return;
+        }
+
+        if (schema.TryGetProperty("$ref", out JsonElement referenceElement) &&
+            referenceElement.ValueKind is JsonValueKind.String &&
+            referenceElement.GetString() is { } reference &&
+            visitedReferences.Add(reference) &&
+            TryResolveSchemaReference(schemaRoot, reference, out JsonElement referencedSchema))
+        {
+            CollectObjectSchemaShape(referencedSchema, schemaRoot, shape, visitedReferences, depth + 1);
+        }
+
+        if (schema.TryGetProperty("required", out JsonElement required) && required.ValueKind is JsonValueKind.Array)
+        {
+            foreach (JsonElement name in required.EnumerateArray())
+            {
+                if (name.ValueKind is JsonValueKind.String && name.GetString() is { } requiredName)
+                {
+                    shape.Required.Add(requiredName);
+                }
+            }
+        }
+
+        if (schema.TryGetProperty("properties", out JsonElement properties) && properties.ValueKind is JsonValueKind.Object)
+        {
+            foreach (JsonProperty property in properties.EnumerateObject())
+            {
+                if (!shape.Properties.TryGetValue(property.Name, out List<JsonElement>? schemas))
+                {
+                    schemas = [];
+                    shape.Properties.Add(property.Name, schemas);
+                }
+
+                schemas.Add(property.Value);
+            }
+        }
+
+        if (schema.TryGetProperty("allOf", out JsonElement allOf) && allOf.ValueKind is JsonValueKind.Array)
+        {
+            foreach (JsonElement child in allOf.EnumerateArray())
+            {
+                CollectObjectSchemaShape(child, schemaRoot, shape, visitedReferences, depth + 1);
+            }
+        }
+    }
+
+    private static bool SchemaAllowsNull(JsonElement schema, JsonElement schemaRoot, HashSet<string> visitedReferences, int depth)
+    {
+        if (depth >= 64 || schema.ValueKind is not JsonValueKind.Object)
+        {
+            return schema.ValueKind is not JsonValueKind.False;
+        }
+
+        bool allowsNull = true;
+        if (schema.TryGetProperty("$ref", out JsonElement referenceElement) &&
+            referenceElement.ValueKind is JsonValueKind.String &&
+            referenceElement.GetString() is { } reference)
+        {
+            if (!visitedReferences.Add(reference) || !TryResolveSchemaReference(schemaRoot, reference, out JsonElement referencedSchema))
+            {
+                return false;
+            }
+
+            allowsNull &= SchemaAllowsNull(referencedSchema, schemaRoot, visitedReferences, depth + 1);
+        }
+
+        if (schema.TryGetProperty("type", out JsonElement type))
+        {
+            allowsNull &= type.ValueKind switch
+            {
+                JsonValueKind.String => type.GetString() is "null",
+                JsonValueKind.Array => type.EnumerateArray().Any(item => item.ValueKind is JsonValueKind.String && item.GetString() is "null"),
+                _ => false,
+            };
+        }
+
+        if (schema.TryGetProperty("const", out JsonElement constant))
+        {
+            allowsNull &= constant.ValueKind is JsonValueKind.Null;
+        }
+
+        if (schema.TryGetProperty("enum", out JsonElement enumValues) && enumValues.ValueKind is JsonValueKind.Array)
+        {
+            allowsNull &= enumValues.EnumerateArray().Any(value => value.ValueKind is JsonValueKind.Null);
+        }
+
+        if (schema.TryGetProperty("allOf", out JsonElement allOf) && allOf.ValueKind is JsonValueKind.Array)
+        {
+            allowsNull &= allOf.EnumerateArray().All(child => SchemaAllowsNull(child, schemaRoot, new(visitedReferences, StringComparer.Ordinal), depth + 1));
+        }
+
+        if (schema.TryGetProperty("anyOf", out JsonElement anyOf) && anyOf.ValueKind is JsonValueKind.Array)
+        {
+            allowsNull &= anyOf.EnumerateArray().Any(child => SchemaAllowsNull(child, schemaRoot, new(visitedReferences, StringComparer.Ordinal), depth + 1));
+        }
+
+        if (schema.TryGetProperty("oneOf", out JsonElement oneOf) && oneOf.ValueKind is JsonValueKind.Array)
+        {
+            allowsNull &= oneOf.EnumerateArray().Count(child => SchemaAllowsNull(child, schemaRoot, new(visitedReferences, StringComparer.Ordinal), depth + 1)) is 1;
+        }
+
+        return allowsNull;
+    }
+
+    private static bool TryResolveSchemaReference(JsonElement schemaRoot, string reference, out JsonElement resolvedSchema)
+    {
+        resolvedSchema = default;
+        if (!reference.StartsWith("#/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string pointer = Uri.UnescapeDataString(reference.Substring(2));
+        JsonElement current = schemaRoot;
+        foreach (string rawSegment in pointer.Split('/'))
+        {
+            string segment = rawSegment.Replace("~1", "/").Replace("~0", "~");
+            if (current.ValueKind is JsonValueKind.Object && current.TryGetProperty(segment, out JsonElement property))
+            {
+                current = property;
+            }
+            else if (current.ValueKind is JsonValueKind.Array && int.TryParse(segment, out int index) && index >= 0 && index < current.GetArrayLength())
+            {
+                current = current[index];
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        resolvedSchema = current;
+        return true;
+    }
+
+    private sealed class OutputSchemaObjectShape
+    {
+        public HashSet<string> Required { get; } = new(StringComparer.Ordinal);
+
+        public Dictionary<string, List<JsonElement>> Properties { get; } = new(StringComparer.Ordinal);
+    }
+
     private JsonElement? CreateStructuredResponse(object? aiFunctionResult, string? negotiatedProtocolVersion)
     {
         if (ProtocolTool.OutputSchema is null)
@@ -777,6 +1152,21 @@ internal sealed partial class AIFunctionMcpServerTool : McpServerTool
             null => null,
             _ => JsonSerializer.SerializeToElement(aiFunctionResult, AIFunction.JsonSerializerOptions.GetTypeInfo(typeof(object))),
         };
+
+        if (_restoreRequiredNulls &&
+            _returnType is not null &&
+            AIFunction.ReturnJsonSchema is { } generatedSchema &&
+            aiFunctionResult is not (JsonElement or JsonNode or CallToolResult) &&
+            aiFunctionResult is not null &&
+            elementResult is { ValueKind: JsonValueKind.Object } serializedObject)
+        {
+            elementResult = RestoreRequiredNullableProperties(
+                serializedObject,
+                aiFunctionResult,
+                _returnType,
+                generatedSchema,
+                AIFunction.JsonSerializerOptions);
+        }
 
         // Pre-SEP-2106 clients expect the {"result": <value>} envelope for non-object
         // schemas. SEP-2106 clients see the natural shape. The classification is decided

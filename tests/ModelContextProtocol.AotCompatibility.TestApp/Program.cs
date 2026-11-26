@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Extensions.Skills;
@@ -6,7 +7,10 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using System.IO.Pipelines;
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 Pipe clientToServerPipe = new(), serverToClientPipe = new();
 const string FallbackUri = "skill://aot-fallback/SKILL.md";
@@ -22,6 +26,14 @@ var createOptions = new McpServerSkillPackageCreateOptions
 var package = McpServerSkillPackage.Create(
     [McpServerSkillFile.FromText("SKILL.md", "---\nname: aot\ndescription:\n  An AOT-published skill.\nmetadata:\n  note: >\n    First\n    \tCode\n    Last\n---\n")], createOptions);
 var primitive = package.Skill;
+JsonSerializerOptions structuredOptions = new(McpJsonUtilities.DefaultOptions)
+{
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    TypeInfoResolver = JsonTypeInfoResolver.Combine(AotJsonContext.Default, McpJsonUtilities.DefaultOptions.TypeInfoResolver),
+};
+McpServerTool requiredNullableTool = McpServerTool.Create(
+    AotTools.RequiredNullable,
+    new() { Name = "RequiredNullable", UseStructuredContent = true, SerializerOptions = structuredOptions });
 var services = new ServiceCollection();
 var catalogTracker = new AotCatalogTracker();
 services.AddSingleton(catalogTracker);
@@ -31,6 +43,7 @@ services.AddMcpServer()
     .WithTools<AotTools>()
     .WithTools(
     [
+        requiredNullableTool,
         new ForwardingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "ForwardingEcho", UseStructuredContent = true })),
         new OverridingAotTool(McpServerTool.Create(AotTools.Echo, new() { Name = "OverridingEcho", UseStructuredContent = true })),
     ])
@@ -105,6 +118,14 @@ foreach (string name in new[] { "ForwardingEcho", "OverridingEcho" })
     }
 }
 
+var nullableResult = await client.CallToolAsync("RequiredNullable");
+if (nullableResult.StructuredContent is not { } nullableContent ||
+    !nullableContent.TryGetProperty("note", out JsonElement nullableNote) ||
+    nullableNote.ValueKind is not JsonValueKind.Null)
+{
+    throw new Exception("Required nullable output member was omitted in Native AOT.");
+}
+
 // List, get, and verify a skill.
 var skills = await client.ListSkillsAsync();
 if (skills.Count != 1 || skills[0].Name != "aot")
@@ -167,7 +188,19 @@ internal sealed class AotTools
     [McpServerTool(Name = "Echo", UseStructuredContent = true)]
     [McpAppUi(ResourceUri = "ui://aot/echo")]
     public static string Echo(string arg) => $"Echo: {arg}";
+
+    public static AotNullableOutput RequiredNullable() => new() { Id = "42", Note = null };
 }
+
+internal sealed class AotNullableOutput
+{
+    public required string Id { get; init; }
+
+    public required string? Note { get; init; }
+}
+
+[JsonSerializable(typeof(AotNullableOutput))]
+internal partial class AotJsonContext : JsonSerializerContext;
 
 internal sealed class AotCatalogTracker
 {
