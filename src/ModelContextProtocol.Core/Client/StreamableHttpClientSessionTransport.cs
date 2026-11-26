@@ -146,6 +146,14 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
         LogTransportSendingMessageSensitive(message);
 
+        if (message is JsonRpcRequest { Method: RequestMethods.Initialize })
+        {
+            // initialize negotiates the protocol version, so a version cached from an earlier server/discover
+            // request (for example when the client falls back from server/discover to initialize) must not be
+            // sent with it: it can differ from the protocolVersion in the initialize request.
+            _negotiatedProtocolVersion = null;
+        }
+
         // Under the 2026-07-28 or later protocol revision (SEP-2575), every request carries its protocol version in
         // _meta/io.modelcontextprotocol/protocolVersion (and the matching MCP-Protocol-Version HTTP
         // header). Pick the value off the message so the first request (server/discover) can
