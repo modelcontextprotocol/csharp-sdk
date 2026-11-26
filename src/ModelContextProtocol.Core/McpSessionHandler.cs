@@ -416,7 +416,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
 
-        long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
+        long? startingTimestamp = durationMetric.Enabled && IsOperation(message) ? Stopwatch.GetTimestamp() : null;
 
         Activity? activity = null;
         string? target = null;
@@ -769,7 +769,7 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
         Histogram<double> durationMetric = _isServer ? s_serverOperationDuration : s_clientOperationDuration;
         string method = GetMethodName(message);
 
-        long? startingTimestamp = durationMetric.Enabled ? Stopwatch.GetTimestamp() : null;
+        long? startingTimestamp = durationMetric.Enabled && IsOperation(message) ? Stopwatch.GetTimestamp() : null;
 
         Activity? activity = null;
         string? target = null;
@@ -900,6 +900,11 @@ internal sealed partial class McpSessionHandler : IAsyncDisposable
             JsonRpcNotification notification => notification.Method,
             _ => "unknownMethod"
         };
+
+    // Per the MCP semantic conventions, operation duration metrics cover requests and notifications.
+    // Responses and errors complete an operation that is already measured, so they aren't recorded separately.
+    private static bool IsOperation(JsonRpcMessage message) =>
+        message is JsonRpcRequest or JsonRpcNotification;
 
     private void AddTags(ref TagList tags, Activity? activity, JsonRpcMessage message, string method, string? target)
     {

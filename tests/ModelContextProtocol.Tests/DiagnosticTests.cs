@@ -3,7 +3,9 @@ using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using ModelContextProtocol.Tests.Utils;
 using OpenTelemetry.Trace;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
@@ -225,6 +227,53 @@ public class DiagnosticTests
             a.Tags.Any(t => t.Key == "mcp.method.name" && t.Value == "tools/call") &&
             a.Tags.Any(t => t.Key == "gen_ai.tool.name" && t.Value == "DoubleValue"));
         Assert.Empty(mcpClientActivities);
+    }
+
+    [Fact]
+    public async Task Session_OperationDuration_RecordsOnlyRequestsAndNotifications()
+    {
+        var measurements = new ConcurrentQueue<(string Instrument, string? Method)>();
+
+        using var meterListener = new MeterListener();
+        meterListener.InstrumentPublished = (instrument, listener) =>
+        {
+            if (instrument.Meter.Name == "Experimental.ModelContextProtocol" &&
+                instrument.Name is "mcp.client.operation.duration" or "mcp.server.operation.duration")
+            {
+                listener.EnableMeasurementEvents(instrument);
+            }
+        };
+        meterListener.SetMeasurementEventCallback<double>((instrument, _, tags, _) =>
+        {
+            string? method = null;
+            foreach (var tag in tags)
+            {
+                if (tag.Key == "mcp.method.name")
+                {
+                    method = tag.Value as string;
+                }
+            }
+
+            measurements.Enqueue((instrument.Name, method));
+        });
+        meterListener.Start();
+
+        await RunConnected(async (client, server) =>
+        {
+            await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+            await client.CallToolAsync("DoubleValue", new Dictionary<string, object?> { ["amount"] = 42 }, cancellationToken: TestContext.Current.CancellationToken);
+        }, []);
+
+        // The server records its measurement after the response is sent, so wait for it.
+        await WaitForAsync(
+            () => measurements.Any(m => m.Instrument == "mcp.server.operation.duration" && m.Method == "tools/call"),
+            failureMessage: "Timed out waiting for the server tools/call duration measurement.");
+
+        Assert.DoesNotContain(measurements, m => m.Method is null or "unknownMethod");
+        Assert.Single(measurements, m => m.Instrument == "mcp.client.operation.duration" && m.Method == "tools/call");
+        Assert.Single(measurements, m => m.Instrument == "mcp.server.operation.duration" && m.Method == "tools/call");
+        Assert.Single(measurements, m => m.Instrument == "mcp.client.operation.duration" && m.Method == "tools/list");
+        Assert.Single(measurements, m => m.Instrument == "mcp.server.operation.duration" && m.Method == "tools/list");
     }
 
     private static async Task RunConnected(Func<McpClient, McpServer, Task> action, List<string> clientToServerLog)
