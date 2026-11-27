@@ -137,6 +137,14 @@ public class McpClientToolTests : ClientServerTestBase
                 Content = [new TextContentBlock { Text = "Error message" }]
             };
 
+        // Tool that returns CallToolResult with no content blocks
+        [McpServerTool]
+        public static CallToolResult EmptyContentTool() =>
+            new()
+            {
+                Content = []
+            };
+
         // Tool that returns CallToolResult with StructuredContent
         [McpServerTool]
         public static CallToolResult StructuredContentTool() =>
@@ -442,6 +450,22 @@ public class McpClientToolTests : ClientServerTestBase
     }
 
     [Fact]
+    public async Task EmptyContentTool_ReturnsJsonElement()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "empty_content_tool");
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        // With no content blocks there is nothing to convert to AIContent, so the result falls back to the JSON envelope.
+        var jsonElement = Assert.IsType<JsonElement>(result);
+        Assert.True(jsonElement.TryGetProperty("content", out var content));
+        Assert.Equal(JsonValueKind.Array, content.ValueKind);
+        Assert.Equal(0, content.GetArrayLength());
+    }
+
+    [Fact]
     public async Task StructuredContentTool_ReturnsJsonElement()
     {
         await using McpClient client = await CreateMcpClientForServer();
@@ -563,9 +587,12 @@ public class McpClientToolTests : ClientServerTestBase
         var tool = tools.Single(t => t.Name == "text_only_tool")
             .WithResultMarshaling((result, cancellationToken) => new ValueTask<object?>("marshaled"))
             .WithName("renamed_tool")
-            .WithDescription("renamed description");
+            .WithDescription("renamed description")
+            .WithProgress(new Progress<ProgressNotificationValue>())
+            .WithMeta(new JsonObject { ["traceId"] = "trace-1" });
 
         Assert.Equal("renamed_tool", tool.Name);
+        Assert.Equal("renamed description", tool.Description);
 
         var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
 
@@ -667,7 +694,92 @@ public class McpClientToolTests : ClientServerTestBase
         // by the chat client. Nothing tells the model that the tool itself ran to completion.
         Assert.Equal("call-1", functionResult.CallId);
         Assert.Same(exception, functionResult.Exception);
+        Assert.DoesNotContain("Simple text result", Assert.IsType<string>(functionResult.Result));
         Assert.Equal(1, marshalCount);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_DelegateThrows_FunctionInvokingChatClientRethrowsWhenErrorLimitIsZero()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        int marshalCount = 0;
+        var exception = new InvalidOperationException("Marshaling failed");
+        var tool = tools.Single(t => t.Name == "text_only_tool").WithResultMarshaling((result, cancellationToken) =>
+        {
+            marshalCount++;
+            throw exception;
+        });
+
+        // With no tolerance for failed calls, the chat client does not report the failure to the model:
+        // the delegate's exception surfaces to the caller of the chat client instead.
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            InvokeViaFunctionInvokingChatClientAsync(tool, "call-1", c => c.MaximumConsecutiveErrorsPerRequest = 0));
+
+        Assert.Same(exception, thrown);
+        Assert.Equal(1, marshalCount);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_DelegateThrows_FunctionInvokingChatClientRethrowsOnceErrorLimitIsReached()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        int marshalCount = 0;
+        var exception = new InvalidOperationException("Marshaling failed");
+        var tool = tools.Single(t => t.Name == "text_only_tool").WithResultMarshaling((result, cancellationToken) =>
+        {
+            marshalCount++;
+            throw exception;
+        });
+
+        // A model that keeps calling the tool: the first failure is reported back to it, which uses up the
+        // limit of one, so the second failure surfaces to the caller of the chat client instead.
+        int modelTurns = 0;
+        using IChatClient chatClient = new ChatClientBuilder(new CallbackChatClient(messages =>
+            new ChatResponse(new ChatMessage(ChatRole.Assistant, [new FunctionCallContent($"call-{++modelTurns}", tool.Name)]))))
+            .UseFunctionInvocation(configure: c => c.MaximumConsecutiveErrorsPerRequest = 1)
+            .Build();
+
+        var thrown = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            chatClient.GetResponseAsync("go", new ChatOptions { Tools = [tool] }, TestContext.Current.CancellationToken));
+
+        Assert.Same(exception, thrown);
+        Assert.Equal(2, modelTurns);
+        Assert.Equal(2, marshalCount);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_CalledAgain_ReplacesPreviousDelegate()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        bool firstInvoked = false;
+        var tool = tools.Single(t => t.Name == "text_only_tool")
+            .WithResultMarshaling((result, cancellationToken) =>
+            {
+                firstInvoked = true;
+                return new ValueTask<object?>("first");
+            })
+            .WithResultMarshaling((result, cancellationToken) => new ValueTask<object?>("second"));
+
+        var result = await tool.InvokeAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("second", result);
+        Assert.False(firstInvoked);
+    }
+
+    [Fact]
+    public async Task WithResultMarshaling_NullDelegate_Throws()
+    {
+        await using McpClient client = await CreateMcpClientForServer();
+        var tools = await client.ListToolsAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var tool = tools.Single(t => t.Name == "text_only_tool");
+
+        Assert.Throws<ArgumentNullException>("marshalResult", () => tool.WithResultMarshaling(null!));
     }
 
     [Fact]
@@ -741,7 +853,8 @@ public class McpClientToolTests : ClientServerTestBase
     /// Has a <see cref="FunctionInvokingChatClient"/> invoke <paramref name="tool"/> for a single function call
     /// and returns the <see cref="FunctionResultContent"/> it sends back to the model.
     /// </summary>
-    private static async Task<FunctionResultContent> InvokeViaFunctionInvokingChatClientAsync(McpClientTool tool, string callId)
+    private static async Task<FunctionResultContent> InvokeViaFunctionInvokingChatClientAsync(
+        McpClientTool tool, string callId, Action<FunctionInvokingChatClient>? configure = null)
     {
         List<ChatMessage>? followUpMessages = null;
         using IChatClient chatClient = new ChatClientBuilder(new CallbackChatClient(messages =>
@@ -754,7 +867,7 @@ public class McpClientToolTests : ClientServerTestBase
 
             followUpMessages = snapshot;
             return new ChatResponse(new ChatMessage(ChatRole.Assistant, "done"));
-        })).UseFunctionInvocation().Build();
+        })).UseFunctionInvocation(configure: configure).Build();
 
         await chatClient.GetResponseAsync("go", new ChatOptions { Tools = [tool] }, TestContext.Current.CancellationToken);
 

@@ -203,8 +203,14 @@ public sealed class McpClientTool : AIFunction
     /// </returns>
     /// <remarks>
     /// The base <see cref="AIFunction.InvokeAsync"/> method is overridden to invoke this <see cref="CallAsync"/> method.
-    /// The only difference in behavior is that <see cref="AIFunction.InvokeAsync"/> serializes the resulting <see cref="CallToolResult"/>
-    /// such that the <see cref="object"/> returned is a <see cref="JsonElement"/> containing the serialized <see cref="CallToolResult"/>.
+    /// The two differ in what is returned. <see cref="CallAsync"/> returns the <see cref="CallToolResult"/> itself,
+    /// whereas <see cref="AIFunction.InvokeAsync"/> returns an <see cref="object"/> shaped for use in an <see cref="IChatClient"/> operation.
+    /// By default, that is the result's content converted to <see cref="AIContent"/> when the result carries nothing else and every
+    /// content block can be converted, and otherwise a <see cref="JsonElement"/> containing the serialized <see cref="CallToolResult"/>.
+    /// <see cref="WithResultMarshaling"/> lists the exact conditions and allows that behavior to be replaced.
+    /// <see cref="AIFunction.InvokeAsync"/> also supplies the progress handler configured via <see cref="WithProgress"/> and this tool's
+    /// <see cref="JsonSerializerOptions"/>, whereas a direct call to <see cref="CallAsync"/> uses only the <paramref name="progress"/> and
+    /// <paramref name="options"/> it is given.
     /// This <see cref="CallAsync"/> method is intended to be called directly by user code, whereas the base <see cref="AIFunction.InvokeAsync"/>
     /// is intended to be used polymorphically via the base class, typically as part of an <see cref="IChatClient"/> operation.
     /// </remarks>
@@ -370,10 +376,26 @@ public sealed class McpClientTool : AIFunction
     /// </param>
     /// <remarks>
     /// <para>
-    /// By default, <see cref="AIFunction.InvokeAsync"/> applies a built-in marshaling policy: content blocks are
-    /// converted to <see cref="AIContent"/> when the result carries no additional information, and otherwise the
-    /// entire <see cref="CallToolResult"/> is serialized to a <see cref="JsonElement"/> — including
-    /// <see cref="CallToolResult.StructuredContent"/>, <see cref="CallToolResult.IsError"/>, and any
+    /// By default, <see cref="AIFunction.InvokeAsync"/> applies a built-in marshaling policy. The result's content
+    /// blocks are converted to <see cref="AIContent"/>, a single instance for one block and an array for several,
+    /// only when all of the following hold:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><see cref="CallToolResult.IsError"/> is not <see langword="true"/>.</description></item>
+    /// <item><description><see cref="CallToolResult.StructuredContent"/> is <see langword="null"/>.</description></item>
+    /// <item><description>
+    /// The result's <c>_meta</c> has no entries other than the server identity
+    /// (<c>io.modelcontextprotocol/serverInfo</c>). The <c>_meta</c> of individual content blocks is not considered.
+    /// </description></item>
+    /// <item><description><see cref="CallToolResult.Content"/> is not empty.</description></item>
+    /// <item><description>
+    /// Every content block has an <see cref="AIContent"/> equivalent. A single block that cannot be converted,
+    /// such as a <see cref="ResourceLinkBlock"/>, is enough to fail this condition.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// In every other case, the entire <see cref="CallToolResult"/> is serialized to a <see cref="JsonElement"/>,
+    /// including <see cref="CallToolResult.StructuredContent"/>, <see cref="CallToolResult.IsError"/>, and any
     /// <c>_meta</c>. When these tools are used with clients such as <c>IChatClient</c>, the returned value is
     /// what gets surfaced to the AI model, so hosts may need precise control over that shape: keeping
     /// host-only metadata out of model context, choosing between <see cref="CallToolResult.Content"/> and
@@ -390,18 +412,26 @@ public sealed class McpClientTool : AIFunction
     /// <see langword="null"/> for content blocks that have no <see cref="AIContent"/> equivalent, such as
     /// <see cref="ResourceLinkBlock"/>. A delegate that projects <see cref="CallToolResult.Content"/> through it
     /// must decide explicitly whether to convert those blocks itself or to leave them out; otherwise the
-    /// projection contains <see langword="null"/> entries and the blocks are silently lost.
+    /// projection contains <see langword="null"/> entries and the blocks are silently lost. It also copies each
+    /// block's own <c>_meta</c> into <see cref="AIContent.AdditionalProperties"/>, in a delegate just as in the
+    /// default conversion, so a delegate that has to keep block-level metadata out of the returned value must
+    /// remove it there.
     /// </para>
     /// <para>
     /// The delegate runs after the tool call has completed on the server. An exception thrown by the delegate
-    /// propagates unchanged from <see cref="AIFunction.InvokeAsync"/>, and callers such as
-    /// <c>Microsoft.Extensions.AI.FunctionInvokingChatClient</c> report it to the model as a failed function
-    /// call, which the model cannot tell apart from a tool that never ran. The model may then call the tool
-    /// again, repeating any side effects. A delegate that can fail for a tool with side effects should catch
+    /// propagates unchanged from <see cref="AIFunction.InvokeAsync"/>. What happens next depends on the caller.
+    /// With its default configuration, <c>Microsoft.Extensions.AI.FunctionInvokingChatClient</c> reports the
+    /// exception to the model as a failed function call, which the model cannot tell apart from a tool that
+    /// never ran. The model may then call the tool again, repeating any side effects. When its
+    /// <c>MaximumConsecutiveErrorsPerRequest</c> is zero, or once that many consecutive iterations have already
+    /// failed, it throws to its own caller instead and the model is not told about the call at all. What it
+    /// throws is the delegate's exception itself, or an <see cref="AggregateException"/> when several calls in
+    /// the same iteration failed. A delegate that can fail for a tool with side effects should catch
     /// the failure and return a value that describes it instead. When the tool is invoked by
     /// <c>FunctionInvokingChatClient</c>, the delegate can read the function call ID from
-    /// <c>FunctionInvokingChatClient.CurrentContext</c> and return a <see cref="FunctionResultContent"/> with
-    /// that call ID, which is then added to the chat history as is.
+    /// <c>FunctionInvokingChatClient.CurrentContext</c>, which is <see langword="null"/> under any other caller,
+    /// and return a <see cref="FunctionResultContent"/> with that call ID, which is then added to the chat
+    /// history as is. If that content has its <c>Exception</c> set, the chat client still counts the call as failed.
     /// </para>
     /// <para>
     /// <see cref="ReturnJsonSchema"/> is not affected by the delegate: it continues to expose the server's
@@ -421,11 +451,15 @@ public sealed class McpClientTool : AIFunction
     /// This API is experimental and may be removed or change signatures in a future release.
     /// </para>
     /// </remarks>
+    /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided delegate.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="marshalResult"/> is <see langword="null"/>.</exception>
     /// <example>
     /// <code language="csharp">
     /// McpClientTool tool = tools.First(t => t.Name == "search").WithResultMarshaling((result, cancellationToken) =>
     /// {
-    ///     // Surface only the content blocks, so that _meta and the rest of the protocol envelope stay with the host.
+    ///     // Surface only the content blocks, so that the result's _meta and the rest of the protocol envelope
+    ///     // stay with the host. This also drops IsError and StructuredContent: a delegate for a tool that
+    ///     // uses them needs to decide how to surface those as well.
     ///     List&lt;AIContent&gt; contents = [];
     ///     foreach (ContentBlock block in result.Content)
     ///     {
@@ -444,8 +478,6 @@ public sealed class McpClientTool : AIFunction
     /// });
     /// </code>
     /// </example>
-    /// <returns>A new instance of <see cref="McpClientTool"/>, configured with the provided delegate.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="marshalResult"/> is <see langword="null"/>.</exception>
     [Experimental(Experimentals.ResultMarshaling_DiagnosticId, UrlFormat = Experimentals.ResultMarshaling_Url)]
     public McpClientTool WithResultMarshaling(Func<CallToolResult, CancellationToken, ValueTask<object?>> marshalResult)
     {
