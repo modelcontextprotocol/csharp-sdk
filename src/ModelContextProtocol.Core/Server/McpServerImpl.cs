@@ -232,8 +232,7 @@ internal sealed partial class McpServerImpl : McpServer
 
         JsonObject? meta = request.Params is JsonObject paramsObj ? paramsObj["_meta"] as JsonObject : null;
         // An unreadable value cannot select a protocol; only the modern path requires a usable version.
-        string? metadataProtocolVersion =
-            meta?[MetaKeys.ProtocolVersion] is JsonValue value && value.TryGetValue(out string? version) ? version : null;
+        string? metadataProtocolVersion = ReadMetadataProtocolVersion(meta, out bool metadataProtocolVersionUnreadable);
 
         if (transportProtocolVersion is not null &&
             metadataProtocolVersion is not null &&
@@ -301,10 +300,45 @@ internal sealed partial class McpServerImpl : McpServer
         }
 
         // With no established era, warn in case a modern peer accidentally fell back to legacy handling.
-        if (metadataProtocolVersion is null && meta?.ContainsKey(MetaKeys.ProtocolVersion) is true)
+        if (metadataProtocolVersionUnreadable)
         {
             LogIgnoredUnreadableProtocolVersionMetadata(_endpointName, request.Method);
         }
+    }
+
+    /// <summary>
+    /// Reads the protocol version from the request's <c>_meta</c> without throwing. Returns <see langword="null"/>
+    /// when it is absent or cannot be read, and sets <paramref name="unreadable"/> when it is present but not a
+    /// readable string. System.Text.Json throws <see cref="InvalidOperationException"/> when it converts a string
+    /// that is not valid UTF-8, and when a lookup meets a property name of the object that is not valid UTF-8.
+    /// </summary>
+    private static string? ReadMetadataProtocolVersion(JsonObject? meta, out bool unreadable)
+    {
+        unreadable = false;
+        if (meta is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            if (!meta.TryGetPropertyValue(MetaKeys.ProtocolVersion, out JsonNode? node))
+            {
+                return null;
+            }
+
+            if (node is JsonValue value && value.TryGetValue(out string? version))
+            {
+                return version;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // Not valid UTF-8 in the value or in a property name of _meta: handled below as unreadable.
+        }
+
+        unreadable = true;
+        return null;
     }
 
     private static void ProjectModernMetadata(JsonRpcRequest request, JsonObject meta, string protocolVersion)
