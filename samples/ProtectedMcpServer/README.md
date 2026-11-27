@@ -10,6 +10,7 @@ The Protected MCP Server sample shows how to:
 - Implement protected MCP tools and resources
 - Integrate with ASP.NET Core authentication and authorization
 - Provide OAuth resource metadata for client discovery
+- Access the authenticated caller directly in MCP tools using `ClaimsPrincipal` parameter injection
 
 ## Prerequisites
 
@@ -77,6 +78,19 @@ The server is configured to:
 - Validate token audience as `demo-client`
 - Require tokens to have appropriate scopes (`mcp:tools`)
 - Provide OAuth resource metadata for client discovery
+
+### Accessing the Authenticated User
+
+MCP tools can access the authenticated caller by directly injecting a
+`ClaimsPrincipal` parameter:
+
+```csharp
+public async Task<string> GetAlerts(ClaimsPrincipal? user, string state)
+{
+    var userName = user?.Identity?.Name ?? "anonymous";
+    // ...
+}
+```
 
 ## Architecture
 
