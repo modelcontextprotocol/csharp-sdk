@@ -1297,6 +1297,179 @@ public class McpServerTests : LoggedTest
         await runTask;
     }
 
+    [Fact]
+    public async Task Call_Tool_Request_Params_Are_Matched_Case_Sensitively()
+    {
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions(new ServerCapabilities { Tools = new() });
+        var invocations = new List<CallToolRequestParams?>();
+        options.Handlers.CallToolHandler = (request, ct) =>
+        {
+            invocations.Add(request.Params);
+            return new ValueTask<CallToolResult>(new CallToolResult());
+        };
+        options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var replies = new Dictionary<string, TaskCompletionSource<JsonRpcMessageWithId>>
+        {
+            ["1"] = new(),
+            ["2"] = new(),
+            ["3"] = new(),
+            ["4"] = new(),
+            ["5"] = new(),
+        };
+        transport.OnMessageSent = message =>
+        {
+            if (message is JsonRpcResponse or JsonRpcError &&
+                replies.TryGetValue(((JsonRpcMessageWithId)message).Id.ToString(), out var tcs))
+            {
+                tcs.TrySetResult((JsonRpcMessageWithId)message);
+            }
+        };
+
+        // "Name" is not the protocol's "name", so the required property is missing and the tool is not invoked.
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(1),
+                Params = JsonNode.Parse("""{"Name":"echo","arguments":{}}"""),
+            },
+            TestContext.Current.CancellationToken);
+        var rejected = await replies["1"].Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken);
+        Assert.IsType<JsonRpcError>(rejected);
+        Assert.Empty(invocations);
+
+        // An alternately cased optional property is not bound either.
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(2),
+                Params = JsonNode.Parse("""{"name":"echo","Arguments":{"text":"hi"}}"""),
+            },
+            TestContext.Current.CancellationToken);
+        Assert.IsType<JsonRpcResponse>(await replies["2"].Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(3),
+                Params = JsonNode.Parse("""{"name":"echo","arguments":{"text":"hi"}}"""),
+            },
+            TestContext.Current.CancellationToken);
+        Assert.IsType<JsonRpcResponse>(await replies["3"].Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+
+        // When both spellings are present, only "name" is bound, regardless of order. Keys inside "arguments"
+        // are user data and are preserved as distinct entries.
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(4),
+                Params = JsonNode.Parse("""{"name":"echo","Name":"other","arguments":{"text":"hi","Text":"HI"}}"""),
+            },
+            TestContext.Current.CancellationToken);
+        Assert.IsType<JsonRpcResponse>(await replies["4"].Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(5),
+                Params = JsonNode.Parse("""{"Name":"other","name":"echo"}"""),
+            },
+            TestContext.Current.CancellationToken);
+        Assert.IsType<JsonRpcResponse>(await replies["5"].Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+
+        Assert.Collection(invocations,
+            p =>
+            {
+                Assert.Equal("echo", p?.Name);
+                Assert.Null(p?.Arguments);
+            },
+            p =>
+            {
+                Assert.Equal("echo", p?.Name);
+                Assert.Equal("hi", p?.Arguments?["text"].GetString());
+            },
+            p =>
+            {
+                Assert.Equal("echo", p?.Name);
+                Assert.NotNull(p?.Arguments);
+                Assert.Equal(2, p.Arguments.Count);
+                Assert.Equal("hi", p.Arguments["text"].GetString());
+                Assert.Equal("HI", p.Arguments["Text"].GetString());
+            },
+            p =>
+            {
+                Assert.Equal("echo", p?.Name);
+                Assert.Null(p?.Arguments);
+            });
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
+    [Fact]
+    public async Task Call_Tool_Result_With_Annotated_Content_Serializes()
+    {
+        await using var transport = new TestServerTransport();
+        var options = CreateOptions(new ServerCapabilities { Tools = new() });
+        options.Handlers.CallToolHandler = (request, ct) => new ValueTask<CallToolResult>(new CallToolResult
+        {
+            Content =
+            [
+                new TextContentBlock { Text = "x", Annotations = new Annotations { Audience = [Role.User], Priority = 0.5f } },
+                new ResourceLinkBlock
+                {
+                    Uri = "https://example.com/x",
+                    Name = "x",
+                    Icons = [new Icon { Source = "https://example.com/icon.png" }],
+                    Annotations = new Annotations { Audience = [Role.Assistant] },
+                },
+            ],
+        });
+        options.Handlers.ListToolsHandler = (request, ct) => throw new NotImplementedException();
+
+        await using var server = McpServer.Create(transport, options, LoggerFactory);
+        var runTask = server.RunAsync(TestContext.Current.CancellationToken);
+
+        var reply = new TaskCompletionSource<JsonRpcMessageWithId>(TaskCreationOptions.RunContinuationsAsynchronously);
+        transport.OnMessageSent = message =>
+        {
+            if (message is JsonRpcResponse or JsonRpcError)
+            {
+                reply.TrySetResult((JsonRpcMessageWithId)message);
+            }
+        };
+
+        await transport.SendMessageAsync(
+            new JsonRpcRequest
+            {
+                Method = RequestMethods.ToolsCall,
+                Id = new RequestId(1),
+                Params = JsonNode.Parse("""{"name":"annotated"}"""),
+            },
+            TestContext.Current.CancellationToken);
+
+        var response = Assert.IsType<JsonRpcResponse>(await reply.Task.WaitAsync(TestConstants.DefaultTimeout, TestContext.Current.CancellationToken));
+        var content = response.Result?["content"]?.AsArray();
+        Assert.NotNull(content);
+        Assert.Equal(2, content.Count);
+        Assert.Equal("user", content[0]?["annotations"]?["audience"]?[0]?.GetValue<string>());
+        Assert.Equal(0.5, content[0]?["annotations"]?["priority"]?.GetValue<double>());
+        Assert.Equal("assistant", content[1]?["annotations"]?["audience"]?[0]?.GetValue<string>());
+        Assert.Equal("https://example.com/icon.png", content[1]?["icons"]?[0]?["src"]?.GetValue<string>());
+
+        await transport.DisposeAsync();
+        await runTask;
+    }
+
     private async Task Can_Handle_Requests(ServerCapabilities? serverCapabilities, string method, Action<McpServerOptions>? configureOptions, Action<McpServer, JsonNode?> assertResult)
     {
         await using var transport = new TestServerTransport();

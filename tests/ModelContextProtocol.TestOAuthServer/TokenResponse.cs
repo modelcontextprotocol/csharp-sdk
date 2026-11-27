@@ -29,6 +29,7 @@ internal sealed class TokenResponse
     /// Gets or sets the refresh token.
     /// </summary>
     [JsonPropertyName("refresh_token")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RefreshToken { get; init; }
 
     /// <summary>

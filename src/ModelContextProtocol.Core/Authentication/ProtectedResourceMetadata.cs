@@ -18,6 +18,10 @@ public sealed class ProtectedResourceMetadata
     /// OPTIONAL. When omitted, the MCP authentication handler infers the resource URI from the incoming request only when serving
     /// the default <c>/.well-known/oauth-protected-resource</c> endpoint. If a custom <c>ResourceMetadataUri</c> is configured,
     /// <b>Resource</b> must be explicitly set. Automatic inference only works with the default endpoint pattern.
+    /// <para>
+    /// OAuth clients use this exact identifier for authorization and token requests, including token refresh.
+    /// It may differ from the MCP endpoint URI, and meaningful trailing slashes are preserved.
+    /// </para>
     /// </remarks>
     [JsonPropertyName("resource")]
     [StringSyntax(StringSyntaxAttribute.Uri)]

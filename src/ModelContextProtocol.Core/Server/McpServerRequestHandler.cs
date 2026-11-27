@@ -12,8 +12,15 @@ namespace ModelContextProtocol.Server;
 /// <para>
 /// Custom request handlers are registered via <see cref="McpServerOptions.RequestHandlers"/> and
 /// are invoked when a JSON-RPC request with the matching <see cref="Method"/> is received.
-/// The handler receives the raw <see cref="JsonRpcRequest"/> and returns a serialized
-/// <see cref="JsonNode"/> response, giving extensions full control over request/response serialization.
+/// The handler receives a <see cref="RequestContext{TParams}"/> with raw JSON parameters and returns a
+/// serialized <see cref="JsonNode"/> response, giving extensions full control over request/response serialization.
+/// </para>
+/// <para>
+/// Custom handlers use the same service scope lifecycle as built-in request handlers, honoring
+/// <see cref="McpServerOptions.ScopeRequests"/> and asynchronously disposing any scope the server creates.
+/// Use <see cref="MessageContext.Services"/> to resolve request-scoped services; the provider on
+/// <see cref="MessageContext.Server"/> may be the server's longer-lived provider.
+/// Custom handlers do not pass through the typed request filters.
 /// </para>
 /// </remarks>
 [Experimental(Experimentals.Extensibility_DiagnosticId, UrlFormat = Experimentals.Extensibility_Url)]
@@ -39,8 +46,11 @@ public sealed class McpServerRequestHandler
     /// Gets the handler function that processes incoming requests for the specified method.
     /// </summary>
     /// <remarks>
-    /// The handler receives the full <see cref="JsonRpcRequest"/> and a <see cref="CancellationToken"/>,
-    /// and returns a serialized <see cref="JsonNode"/> response (or <see langword="null"/> for void methods).
+    /// The handler receives the raw JSON parameters in <see cref="RequestContext{TParams}.Params"/> and the
+    /// full <see cref="JsonRpcRequest"/> in <see cref="RequestContext{TParams}.JsonRpcRequest"/>.
+    /// Composed handlers may replace <see cref="RequestContext{TParams}.Params"/> without changing the
+    /// original request, so read operation parameters from the context rather than from the raw request.
+    /// It returns a serialized <see cref="JsonNode"/> response, or <see langword="null"/> for void methods.
     /// </remarks>
-    public required Func<JsonRpcRequest, CancellationToken, ValueTask<JsonNode?>> Handler { get; init; }
+    public required McpRequestHandler<JsonNode?, JsonNode?> Handler { get; init; }
 }

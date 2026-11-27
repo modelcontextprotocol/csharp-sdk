@@ -117,13 +117,15 @@ public class CacheableResultWarningTests : LoggedTest
 
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = July2026ProtocolVersion;
 
         var clientTask = McpClient.CreateAsync(
             new StreamClientTransport(
                 clientToServer.Writer.AsStream(),
                 serverToClient.Reader.AsStream(),
                 LoggerFactory),
-            new McpClientOptions { ProtocolVersion = July2026ProtocolVersion },
+            clientOptions,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);
 
@@ -219,12 +221,14 @@ public class CacheableResultWarningTests : LoggedTest
 
         // Pin the protocol version so the client deterministically takes the per-request metadata
         // (server/discover) lifecycle for 2026-07-28 and the initialize lifecycle for older versions.
+        var clientOptions = TestMcpClient.CreateOptions();
+        clientOptions.ProtocolVersion = serverProtocolVersion;
         var clientTask = McpClient.CreateAsync(
             new StreamClientTransport(
                 clientToServer.Writer.AsStream(),
                 serverToClient.Reader.AsStream(),
                 LoggerFactory),
-            new McpClientOptions { ProtocolVersion = serverProtocolVersion },
+            clientOptions,
             loggerFactory: LoggerFactory,
             cancellationToken: cancellationToken);
 

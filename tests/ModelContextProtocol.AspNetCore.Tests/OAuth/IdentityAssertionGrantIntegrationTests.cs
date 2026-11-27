@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Authentication;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Tests.Utils;
 using System.Net.Http.Headers;
 
 namespace ModelContextProtocol.AspNetCore.Tests.OAuth;
@@ -76,7 +77,7 @@ public class IdentityAssertionGrantIntegrationTests : OAuthTestBase
             mcpHttpClient,
             LoggerFactory);
 
-        await using var client = await McpClient.CreateAsync(
+        await using var client = await TestMcpClient.CreateAsync(
             transport,
             loggerFactory: LoggerFactory,
             cancellationToken: TestContext.Current.CancellationToken);

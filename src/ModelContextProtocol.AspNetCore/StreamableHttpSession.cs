@@ -1,6 +1,5 @@
 ﻿using ModelContextProtocol.Server;
 using System.Diagnostics;
-using System.Security.Claims;
 
 namespace ModelContextProtocol.AspNetCore;
 
@@ -19,6 +18,7 @@ internal sealed class StreamableHttpSession(
     private readonly CancellationTokenSource _disposeCts = new();
 
     public string Id => sessionId;
+    public UserIdClaim? UserId => userId;
     public StreamableHttpServerTransport Transport => transport;
     public McpServer Server => server;
     private StatefulSessionManager SessionManager => sessionManager;
@@ -100,7 +100,6 @@ internal sealed class StreamableHttpSession(
     }
 
     public bool TryStartGetRequest() => Interlocked.Exchange(ref _getRequestStarted, 1) == 0;
-    public bool HasSameUserId(ClaimsPrincipal user) => userId == StreamableHttpHandler.GetUserIdClaim(user);
 
     public async ValueTask DisposeAsync()
     {

@@ -1,3 +1,33 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
-<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" />
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <!-- MCPEXP002: custom handlers now receive RequestContext<JsonNode?> rather than JsonRpcRequest. -->
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Server.McpServerRequestHandler.get_Handler</Target>
+    <Left>lib/net10.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net10.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Server.McpServerRequestHandler.get_Handler</Target>
+    <Left>lib/net8.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net8.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Server.McpServerRequestHandler.get_Handler</Target>
+    <Left>lib/net9.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/net9.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:ModelContextProtocol.Server.McpServerRequestHandler.get_Handler</Target>
+    <Left>lib/netstandard2.0/ModelContextProtocol.Core.dll</Left>
+    <Right>lib/netstandard2.0/ModelContextProtocol.Core.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>
