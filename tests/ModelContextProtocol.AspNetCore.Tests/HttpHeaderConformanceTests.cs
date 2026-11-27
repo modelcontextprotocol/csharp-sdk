@@ -519,6 +519,201 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Server_RejectsInvalidUtf8InProtocolVersionMeta_WithBadRequest()
+    {
+        await StartAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
+
+        // The 0xFF byte can never appear in valid UTF-8. The JSON reader accepts it inside a string token,
+        // and the failure only surfaces when the server converts the _meta protocol version to a string.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContentWithInvalidUtf8(
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28",
+            "\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"TestClient\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/list");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        await AssertJsonRpcErrorAsync(response, McpErrorCode.InvalidRequest, expectedId: 2);
+    }
+
+    [Fact]
+    public async Task Server_RejectsInvalidUtf8InInitializeProtocolVersion_WithBadRequest()
+    {
+        await StartAsync();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContentWithInvalidUtf8(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25",
+            "\",\"capabilities\":{},\"clientInfo\":{\"name\":\"TestClient\",\"version\":\"1.0\"}}}");
+        request.Headers.Add("MCP-Protocol-Version", "2025-11-25");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        await AssertJsonRpcErrorAsync(response, McpErrorCode.InvalidRequest, expectedId: 1);
+    }
+
+    [Fact]
+    public async Task Server_RejectsInvalidUtf8PropertyNameInInitializeParams_WithBadRequest()
+    {
+        await StartAsync();
+
+        // Reading any property of a JSON object converts all of its property names to strings,
+        // so one unreadable name breaks the lookup of params.protocolVersion.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContentWithInvalidUtf8(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"TestClient\",\"version\":\"1.0\"},\"x",
+            "\":1}}");
+        request.Headers.Add("MCP-Protocol-Version", "2025-11-25");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        await AssertJsonRpcErrorAsync(response, McpErrorCode.InvalidRequest, expectedId: 1);
+    }
+
+    [Theory]
+    [InlineData("params")]
+    [InlineData("_meta")]
+    [InlineData("arguments")]
+    public async Task Server_RejectsInvalidUtf8PropertyName_WithBadRequest(string location)
+    {
+        await StartAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
+
+        // Each body has one property name that is "x" followed by a 0xFF byte, placed in the named object.
+        // The other property names in that object are valid, but they cannot be read either.
+        const string Arguments = "\"region\":\"us-west1\",\"priority\":42,\"verbose\":false,\"emptyVal\":\"\"";
+        const string MetaEntries = "\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"TestClient\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}";
+        const string Start = "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{";
+        (string before, string after) = location switch
+        {
+            "params" => (
+                $"{Start}\"name\":\"header_test\",\"arguments\":{{{Arguments}}},\"_meta\":{{{MetaEntries}}},\"x",
+                "\":1}}"),
+            "_meta" => (
+                $"{Start}\"name\":\"header_test\",\"arguments\":{{{Arguments}}},\"_meta\":{{{MetaEntries},\"x",
+                "\":1}}}"),
+            "arguments" => (
+                $"{Start}\"name\":\"header_test\",\"arguments\":{{{Arguments},\"x",
+                $"\":1}},\"_meta\":{{{MetaEntries}}}}}}}"),
+            _ => throw new ArgumentOutOfRangeException(nameof(location)),
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContentWithInvalidUtf8(before, after);
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "us-west1");
+        request.Headers.Add("Mcp-Param-Priority", "42");
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        await AssertJsonRpcErrorAsync(response, McpErrorCode.InvalidRequest, expectedId: 2);
+    }
+
+    [Fact]
+    public async Task Server_RejectsLoneSurrogateInMcpNameBodyValue_WithBadRequest()
+    {
+        await StartAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
+
+        // An escaped lone surrogate is valid JSON text, but it cannot be converted to a valid string.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContent("""
+            {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"\uD800","arguments":{},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"TestClient","version":"1.0"},"io.modelcontextprotocol/clientCapabilities":{}}}}
+            """);
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        await AssertJsonRpcErrorAsync(response, McpErrorCode.InvalidRequest, expectedId: 2);
+    }
+
+    [Fact]
+    public async Task Server_RejectsInvalidUtf8InCustomHandlerRoutingValue_WithBadRequest()
+    {
+        await StartAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
+
+        // The extension/get handler routes on params.itemId, which is compared with the Mcp-Name header.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContentWithInvalidUtf8(
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"extension/get\",\"params\":{\"itemId\":\"item-42",
+            "\",\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"TestClient\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}");
+        request.Headers.Add(McpHttpHeaders.ProtocolVersion, "2026-07-28");
+        request.Headers.Add(McpHttpHeaders.Method, "extension/get");
+        request.Headers.Add(McpHttpHeaders.Name, "item-42");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        await AssertJsonRpcErrorAsync(response, McpErrorCode.InvalidRequest, expectedId: 2);
+    }
+
+    [Fact]
+    public async Task Server_TreatsInvalidUtf8ProtocolVersionMetaAsMissing_WithoutProtocolVersionHeader()
+    {
+        await StartAsync();
+
+        // Without the MCP-Protocol-Version header the core server reads the _meta protocol version.
+        // An unreadable value is treated as missing, so the request is served without per-request
+        // metadata instead of failing with an internal error.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContentWithInvalidUtf8(
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\",\"params\":{\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28",
+            "\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"TestClient\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var rpcResponse = await ReadSseJsonRpcMessageAsync(response);
+        Assert.Null(rpcResponse["error"]);
+        Assert.NotNull(rpcResponse["result"]?["tools"]);
+        Assert.Equal(2, rpcResponse["id"]!.GetValue<long>());
+    }
+
+    [Fact]
+    public async Task Server_RejectsInvalidUtf8InMcpNameBodyValue_WithBadRequest()
+    {
+        await StartAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
+
+        // The Mcp-Name header is compared with params.name, which is converted to a string first.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContentWithInvalidUtf8(
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"header_test",
+            "\",\"arguments\":{},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"TestClient\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        await AssertJsonRpcErrorAsync(response, McpErrorCode.InvalidRequest, expectedId: 2);
+    }
+
+    [Fact]
+    public async Task Server_RejectsInvalidUtf8InCustomParamHeaderArgument_WithBadRequest()
+    {
+        await StartAsync();
+        await ProbeWithJuly2026ProtocolVersionAsync();
+
+        // The region argument is annotated with x-mcp-header, so it is converted to a string and compared
+        // with the Mcp-Param-Region header.
+        using var request = new HttpRequestMessage(HttpMethod.Post, "");
+        request.Content = JsonContentWithInvalidUtf8(
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"header_test\",\"arguments\":{\"region\":\"us-west1",
+            "\",\"priority\":42,\"verbose\":false,\"emptyVal\":\"\"},\"_meta\":{\"io.modelcontextprotocol/protocolVersion\":\"2026-07-28\",\"io.modelcontextprotocol/clientInfo\":{\"name\":\"TestClient\",\"version\":\"1.0\"},\"io.modelcontextprotocol/clientCapabilities\":{}}}}");
+        request.Headers.Add("MCP-Protocol-Version", "2026-07-28");
+        request.Headers.Add("Mcp-Method", "tools/call");
+        request.Headers.Add("Mcp-Name", "header_test");
+        request.Headers.Add("Mcp-Param-Region", "us-west1");
+        request.Headers.Add("Mcp-Param-Priority", "42");
+        request.Headers.Add("Mcp-Param-Verbose", "false");
+        request.Headers.Add("Mcp-Param-EmptyVal", "");
+
+        using var response = await HttpClient.SendAsync(request, TestContext.Current.CancellationToken);
+        await AssertJsonRpcErrorAsync(response, McpErrorCode.InvalidRequest, expectedId: 2);
+    }
+
     #endregion
 
     #region Client-side encoding tests (unit tests for McpHeaderEncoder)
@@ -628,6 +823,45 @@ public class HttpHeaderConformanceTests(ITestOutputHelper outputHelper) : Kestre
     }
 
     private static StringContent JsonContent(string json) => new(json, Encoding.UTF8, "application/json");
+
+    /// <summary>
+    /// Asserts a 400 response whose JSON-RPC error has the expected code and echoes the request id.
+    /// </summary>
+    private static async Task AssertJsonRpcErrorAsync(HttpResponseMessage response, McpErrorCode expectedCode, long expectedId)
+    {
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var json = JsonNode.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))!;
+        Assert.Equal((int)expectedCode, json["error"]!["code"]!.GetValue<int>());
+        Assert.Equal(expectedId, json["id"]!.GetValue<long>());
+    }
+
+    /// <summary>
+    /// Reads the single JSON-RPC message from an SSE response.
+    /// </summary>
+    private static async Task<JsonNode> ReadSseJsonRpcMessageAsync(HttpResponseMessage response)
+    {
+        var responseStream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+        List<string> messages = [];
+        await foreach (var sseItem in SseParser.Create(responseStream).EnumerateAsync(TestContext.Current.CancellationToken))
+        {
+            Assert.Equal("message", sseItem.EventType);
+            messages.Add(sseItem.Data);
+        }
+
+        return JsonNode.Parse(Assert.Single(messages))!;
+    }
+
+    /// <summary>
+    /// Builds a JSON body that is <paramref name="before"/> + a single 0xFF byte + <paramref name="after"/>,
+    /// so the body contains a string value that is not valid UTF-8.
+    /// </summary>
+    private static ByteArrayContent JsonContentWithInvalidUtf8(string before, string after)
+    {
+        byte[] body = [.. Encoding.UTF8.GetBytes(before), 0xFF, .. Encoding.UTF8.GetBytes(after)];
+        var content = new ByteArrayContent(body);
+        content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+        return content;
+    }
 
     private long _lastRequestId = 1;
 

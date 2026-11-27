@@ -118,21 +118,29 @@ internal sealed class StreamableHttpHandler(
             return;
         }
 
-        if (!ValidateProtocolVersionEnvelope(context, message, out var protocolVersionEnvelopeError))
+        // The body parsed successfully, but reading its values can still throw InvalidOperationException:
+        // System.Text.Json checks the UTF-8 in a string only when it converts the string to a .NET string,
+        // the first lookup in a JsonObject converts all of that object's property names, and reading a
+        // non-string value as a string throws too. These are malformed requests, not server errors, so
+        // they get a 400 that echoes the request id instead of an HTTP 500. The error is written after
+        // the try block, so an exception from writing the response is never caught here.
+        JsonRpcErrorDetail? requestValidationError;
+        try
         {
-            await WriteJsonRpcErrorDetailAsync(context, protocolVersionEnvelopeError, StatusCodes.Status400BadRequest, requestId);
-            return;
+            requestValidationError = ValidateRequestEnvelopeAndHeaders(context, message, mcpServerOptionsSnapshot.Value);
+        }
+        catch (InvalidOperationException ex)
+        {
+            requestValidationError = new()
+            {
+                Code = (int)McpErrorCode.InvalidRequest,
+                Message = $"Bad Request: The request contains a value that could not be read: {ex.Message}",
+            };
         }
 
-        if (!ValidateMcpHeaders(context, message, mcpServerOptionsSnapshot.Value, out var errorMessage))
+        if (requestValidationError is not null)
         {
-            await WriteJsonRpcErrorAsync(context, errorMessage, StatusCodes.Status400BadRequest, (int)McpErrorCode.HeaderMismatch, requestId);
-            return;
-        }
-
-        if (!ValidateRequiredPerRequestMeta(context, message, out var requiredMetaError))
-        {
-            await WriteJsonRpcErrorDetailAsync(context, requiredMetaError, StatusCodes.Status400BadRequest, requestId);
+            await WriteJsonRpcErrorDetailAsync(context, requestValidationError, StatusCodes.Status400BadRequest, requestId);
             return;
         }
 
@@ -1471,6 +1479,31 @@ internal sealed class StreamableHttpHandler(
         }
 
         return SafeIntegerParse.NotNumeric;
+    }
+
+    /// <summary>
+    /// Runs the body checks that compare the JSON-RPC message with the request headers. Returns the first error,
+    /// or <see langword="null"/> when the request passes. Can throw <see cref="InvalidOperationException"/> when
+    /// the body contains a value or property name that cannot be read; the caller maps that to a 400.
+    /// </summary>
+    private static JsonRpcErrorDetail? ValidateRequestEnvelopeAndHeaders(HttpContext context, JsonRpcMessage message, McpServerOptions serverOptions)
+    {
+        if (!ValidateProtocolVersionEnvelope(context, message, out var protocolVersionEnvelopeError))
+        {
+            return protocolVersionEnvelopeError;
+        }
+
+        if (!ValidateMcpHeaders(context, message, serverOptions, out var errorMessage))
+        {
+            return new() { Code = (int)McpErrorCode.HeaderMismatch, Message = errorMessage };
+        }
+
+        if (!ValidateRequiredPerRequestMeta(context, message, out var requiredMetaError))
+        {
+            return requiredMetaError;
+        }
+
+        return null;
     }
 
     private static Task WriteJsonRpcErrorDetailAsync(HttpContext context, JsonRpcErrorDetail detail, int statusCode, RequestId requestId = default)
