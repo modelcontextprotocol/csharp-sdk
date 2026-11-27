@@ -39,6 +39,15 @@
   <Folder Name="/docs/concepts/progress/samples/server/">
     <Project Path="docs/concepts/progress/samples/server/Progress.csproj" />
   </Folder>
+  <Folder Name="/docs/concepts/transports/" />
+  <Folder Name="/docs/concepts/transports/samples/" />
+  <Folder Name="/docs/concepts/transports/samples/integration-testing/" />
+  <Folder Name="/docs/concepts/transports/samples/integration-testing/server/">
+    <Project Path="docs/concepts/transports/samples/integration-testing/server/IntegrationTestingMcpServer.csproj" />
+  </Folder>
+  <Folder Name="/docs/concepts/transports/samples/integration-testing/tests/">
+    <Project Path="docs/concepts/transports/samples/integration-testing/tests/IntegrationTestingMcpServer.Tests.csproj" />
+  </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/AspNetCoreMcpPerSessionTools/AspNetCoreMcpPerSessionTools.csproj" />
     <Project Path="samples/AspNetCoreMcpServer/AspNetCoreMcpServer.csproj" />
