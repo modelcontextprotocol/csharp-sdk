@@ -10,7 +10,7 @@ namespace ModelContextProtocol.Authentication;
 /// <remarks>
 /// <para>
 /// This provider implements the full Identity Assertion Authorization Grant flow as specified at
-/// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/draft/enterprise-managed-authorization.mdx"/>:
+/// <see href="https://github.com/modelcontextprotocol/ext-auth/blob/main/specification/stable/enterprise-managed-authorization/2026-07-28/enterprise-managed-authorization.mdx"/>:
 /// </para>
 /// <list type="number">
 /// <item><description>
