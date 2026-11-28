@@ -434,7 +434,7 @@ public static class AIContentExtensions
                 Content =
                     resultContent.Result is AIContent c ? [c.ToContentBlock(options)] :
                     resultContent.Result is IEnumerable<AIContent> ec ? [.. ec.Select(c => c.ToContentBlock(options))] :
-                    [new TextContentBlock { Text = JsonSerializer.Serialize(content, options.GetTypeInfo<object>()) }],
+                    [new TextContentBlock { Text = JsonSerializer.Serialize(resultContent.Result, options.GetTypeInfo(typeof(object))) }],
                 StructuredContent = resultContent.Result is JsonElement je ? je : null,
             },
 

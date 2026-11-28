@@ -653,6 +653,7 @@ public class McpClientTests : ClientServerTestBase
 
                 string resultText = toolResult.Result?.ToString() ?? string.Empty;
                 Assert.Contains("Weather in Paris: sunny", resultText);
+                Assert.DoesNotContain("callId", resultText);
 
                 return Task.FromResult<ChatResponse>(new([
                     new ChatMessage(ChatRole.User, messages.First().Contents),
