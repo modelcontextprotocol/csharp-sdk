@@ -56,4 +56,39 @@ internal static class EncodingUtilities
             throw new FormatException("Invalid base64 data");
         }
     }
+
+    /// <summary>
+    /// Validates that <paramref name="base64Utf8"/> is a well-formed base64 encoding (as UTF-8 bytes),
+    /// without retaining the decoded result.
+    /// </summary>
+    /// <remarks>
+    /// Several protocol types expose a <see cref="ReadOnlyMemory{Byte}"/> property that is documented to
+    /// hold the base64 text representation of binary data (as UTF-8 bytes), with a <c>FromBytes</c> factory
+    /// provided to construct an instance from the raw, unencoded bytes instead. Assigning raw bytes directly
+    /// to such a property is a common, easy mistake: the value serializes without error but produces a JSON
+    /// payload that is not valid base64, which only surfaces as a confusing <see cref="FormatException"/> on
+    /// the deserializing end. This validates eagerly, at the point of misuse, instead.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="base64Utf8"/> is not valid base64-encoded UTF-8 data.</exception>
+    public static void ValidateBase64Utf8(ReadOnlyMemory<byte> base64Utf8, string paramName, string typeName, string factoryMethodName)
+    {
+        int maxLength = Base64.GetMaxDecodedFromUtf8Length(base64Utf8.Length);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(maxLength);
+        try
+        {
+            OperationStatus status = Base64.DecodeFromUtf8(base64Utf8.Span, buffer, out int bytesConsumed, out _);
+            if (status != OperationStatus.Done || bytesConsumed != base64Utf8.Length)
+            {
+                throw new ArgumentException(
+                    $"The value must be the base64 text representation of the binary data, as UTF-8 bytes, " +
+                    $"not the raw, unencoded bytes. Use {typeName}.{factoryMethodName}(...) to construct an " +
+                    $"instance from raw binary data instead.",
+                    paramName);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
 }

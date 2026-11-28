@@ -56,12 +56,35 @@ public sealed class BlobResourceContents : ResourceContents
         MimeType = mimeType;
     }
 
+    [SetsRequiredMembers]
+    private BlobResourceContents(ReadOnlyMemory<byte> base64Utf8, string uri, string? mimeType, bool alreadyBase64Encoded)
+    {
+        _blob = base64Utf8;
+        Uri = uri;
+        MimeType = mimeType;
+    }
+
+    /// <summary>
+    /// Creates a <see cref="BlobResourceContents"/> directly from base64-encoded UTF-8 bytes that are
+    /// already known to be valid, bypassing the validation the public <see cref="Blob"/> setter performs.
+    /// </summary>
+    /// <remarks>
+    /// Used by <see cref="ResourceContents.Converter"/> for the JSON fast path: when the wire <c>blob</c> value required no
+    /// unescaping, its raw UTF-8 bytes are exactly the base64 text as read from the document, so
+    /// re-validating them would be redundant.
+    /// </remarks>
+    internal static BlobResourceContents FromTrustedBase64Utf8(ReadOnlyMemory<byte> base64Utf8, string uri, string? mimeType) =>
+        new(base64Utf8, uri, mimeType, alreadyBase64Encoded: true);
+
     /// <summary>
     /// Gets or sets the base64-encoded UTF-8 bytes representing the binary data of the item.
     /// </summary>
     /// <remarks>
-    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>. The value must be
+    /// the base64 text representation of the data, as UTF-8 bytes — not the raw, unencoded bytes. To
+    /// construct an instance from raw binary data, use <see cref="FromBytes"/> instead.
     /// </remarks>
+    /// <exception cref="ArgumentException">The assigned value is not valid base64-encoded UTF-8 data.</exception>
     [JsonPropertyName("blob")]
     public required ReadOnlyMemory<byte> Blob
     {
@@ -77,6 +100,7 @@ public sealed class BlobResourceContents : ResourceContents
         }
         set
         {
+            EncodingUtilities.ValidateBase64Utf8(value, nameof(Blob), nameof(BlobResourceContents), nameof(FromBytes));
             _blob = value;
             _decodedData = null; // Invalidate cache
         }

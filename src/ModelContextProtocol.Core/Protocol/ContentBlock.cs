@@ -281,20 +281,16 @@ public abstract class ContentBlock
                 "image" => decodedData is not null ?
                     ImageContentBlock.FromBytes(decodedData.Value,
                         mimeType ?? throw new JsonException("MIME type must be provided for 'image' type.")) :
-                    new ImageContentBlock
-                    {
-                        Data = data ?? throw new JsonException("Image data must be provided for 'image' type."),
-                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'image' type."),
-                    },
+                    ImageContentBlock.FromTrustedBase64Utf8(
+                        data ?? throw new JsonException("Image data must be provided for 'image' type."),
+                        mimeType ?? throw new JsonException("MIME type must be provided for 'image' type.")),
 
                 "audio" => decodedData is not null ?
                     AudioContentBlock.FromBytes(decodedData.Value,
                         mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type.")) :
-                    new AudioContentBlock
-                    {
-                        Data = data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
-                        MimeType = mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type."),
-                    },
+                    AudioContentBlock.FromTrustedBase64Utf8(
+                        data ?? throw new JsonException("Audio data must be provided for 'audio' type."),
+                        mimeType ?? throw new JsonException("MIME type must be provided for 'audio' type.")),
 
                 "resource" => new EmbeddedResourceBlock
                 {
@@ -500,6 +496,25 @@ public sealed class ImageContentBlock : ContentBlock
         MimeType = mimeType;
     }
 
+    [SetsRequiredMembers]
+    private ImageContentBlock(ReadOnlyMemory<byte> base64Utf8, string mimeType, bool alreadyBase64Encoded)
+    {
+        _data = base64Utf8;
+        MimeType = mimeType;
+    }
+
+    /// <summary>
+    /// Creates an <see cref="ImageContentBlock"/> directly from base64-encoded UTF-8 bytes that are
+    /// already known to be valid, bypassing the validation the public <see cref="Data"/> setter performs.
+    /// </summary>
+    /// <remarks>
+    /// Used by <see cref="ContentBlock.Converter"/> for the JSON fast path: when the wire <c>data</c> value
+    /// required no unescaping, its raw UTF-8 bytes are exactly the base64 text as read from the document,
+    /// so re-validating them would be redundant.
+    /// </remarks>
+    internal static ImageContentBlock FromTrustedBase64Utf8(ReadOnlyMemory<byte> base64Utf8, string mimeType) =>
+        new(base64Utf8, mimeType, alreadyBase64Encoded: true);
+
     /// <inheritdoc/>
     public override string Type => "image";
 
@@ -507,8 +522,11 @@ public sealed class ImageContentBlock : ContentBlock
     /// Gets or sets the base64-encoded UTF-8 bytes representing the image data.
     /// </summary>
     /// <remarks>
-    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>. The value must be
+    /// the base64 text representation of the data, as UTF-8 bytes — not the raw, unencoded bytes. To
+    /// construct an instance from raw binary data, use <see cref="FromBytes"/> instead.
     /// </remarks>
+    /// <exception cref="ArgumentException">The assigned value is not valid base64-encoded UTF-8 data.</exception>
     [JsonPropertyName("data")]
     public required ReadOnlyMemory<byte> Data
     {
@@ -524,6 +542,7 @@ public sealed class ImageContentBlock : ContentBlock
         }
         set
         {
+            EncodingUtilities.ValidateBase64Utf8(value, nameof(Data), nameof(ImageContentBlock), nameof(FromBytes));
             _data = value;
             _decodedData = null; // Invalidate cache
         }
@@ -609,6 +628,25 @@ public sealed class AudioContentBlock : ContentBlock
         MimeType = mimeType;
     }
 
+    [SetsRequiredMembers]
+    private AudioContentBlock(ReadOnlyMemory<byte> base64Utf8, string mimeType, bool alreadyBase64Encoded)
+    {
+        _data = base64Utf8;
+        MimeType = mimeType;
+    }
+
+    /// <summary>
+    /// Creates an <see cref="AudioContentBlock"/> directly from base64-encoded UTF-8 bytes that are
+    /// already known to be valid, bypassing the validation the public <see cref="Data"/> setter performs.
+    /// </summary>
+    /// <remarks>
+    /// Used by <see cref="ContentBlock.Converter"/> for the JSON fast path: when the wire <c>data</c> value
+    /// required no unescaping, its raw UTF-8 bytes are exactly the base64 text as read from the document,
+    /// so re-validating them would be redundant.
+    /// </remarks>
+    internal static AudioContentBlock FromTrustedBase64Utf8(ReadOnlyMemory<byte> base64Utf8, string mimeType) =>
+        new(base64Utf8, mimeType, alreadyBase64Encoded: true);
+
     /// <inheritdoc/>
     public override string Type => "audio";
 
@@ -616,8 +654,11 @@ public sealed class AudioContentBlock : ContentBlock
     /// Gets or sets the base64-encoded UTF-8 bytes representing the audio data.
     /// </summary>
     /// <remarks>
-    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>.
+    /// Setting this value will invalidate any cached value of <see cref="DecodedData"/>. The value must be
+    /// the base64 text representation of the data, as UTF-8 bytes — not the raw, unencoded bytes. To
+    /// construct an instance from raw binary data, use <see cref="FromBytes"/> instead.
     /// </remarks>
+    /// <exception cref="ArgumentException">The assigned value is not valid base64-encoded UTF-8 data.</exception>
     [JsonPropertyName("data")]
     public required ReadOnlyMemory<byte> Data
     {
@@ -633,6 +674,7 @@ public sealed class AudioContentBlock : ContentBlock
         }
         set
         {
+            EncodingUtilities.ValidateBase64Utf8(value, nameof(Data), nameof(AudioContentBlock), nameof(FromBytes));
             _data = value;
             _decodedData = null; // Invalidate cache
         }
