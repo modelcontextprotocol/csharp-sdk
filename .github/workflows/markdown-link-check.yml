@@ -32,7 +32,7 @@ jobs:
           python3 .github/scripts/prepare_markdown_links.py .
 
       - name: Markup Link Checker (mlc)
-        uses: becheran/mlc@d791bd6ae91ea883f02172e21f453ba8da45dfcd # v1.3.0
+        uses: becheran/mlc@b74268b49f87c6aaf6ee8d4c6a48d9250cb95b01 # v2.0.0
         with:
           # Ignore DocFX cross-reference links (xref:) that mlc cannot check.
           # Ignore DocFX snippet inclusion links.
