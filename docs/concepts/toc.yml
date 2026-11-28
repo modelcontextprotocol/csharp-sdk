@@ -33,6 +33,8 @@ items:
     uid: elicitation
 - name: Server Features
   items:
+  - name: OAuth Proxy
+    uid: oauth-proxy
   - name: Tools
     uid: tools
   - name: Resources
