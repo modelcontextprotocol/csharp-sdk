@@ -20,6 +20,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
     private static readonly MediaTypeWithQualityHeaderValue s_textEventStreamMediaType = new("text/event-stream");
 
     private readonly McpHttpClient _httpClient;
+    private readonly Uri _endpoint;
     private readonly HttpClientTransportOptions _options;
     private readonly CancellationTokenSource _connectionCts = new();
     private readonly ILogger _logger;
@@ -34,6 +35,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     public StreamableHttpClientSessionTransport(
         string endpointName,
+        Uri endpoint,
         HttpClientTransportOptions transportOptions,
         McpHttpClient httpClient,
         Channel<JsonRpcMessage>? messageChannel,
@@ -43,6 +45,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         Throw.IfNull(transportOptions);
         Throw.IfNull(httpClient);
 
+        _endpoint = endpoint;
         _options = transportOptions;
         _httpClient = httpClient;
         _logger = (ILogger?)loggerFactory?.CreateLogger<HttpClientTransport>() ?? NullLogger.Instance;
@@ -155,7 +158,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
         using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _connectionCts.Token);
         cancellationToken = sendCts.Token;
 
-        using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _options.Endpoint)
+        using var httpRequestMessage = new HttpRequestMessage(HttpMethod.Post, _endpoint)
         {
             Headers =
             {
@@ -377,7 +380,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
             }
             shouldDelay = true;
 
-            using var request = new HttpRequestMessage(HttpMethod.Get, _options.Endpoint);
+            using var request = new HttpRequestMessage(HttpMethod.Get, _endpoint);
             request.Headers.Accept.Add(s_textEventStreamMediaType);
             CopyAdditionalHeaders(request.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion, state.LastEventId);
 
@@ -516,7 +519,7 @@ internal sealed partial class StreamableHttpClientSessionTransport : TransportBa
 
     private async Task SendDeleteRequest()
     {
-        using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, _options.Endpoint);
+        using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, _endpoint);
         CopyAdditionalHeaders(deleteRequest.Headers, _options.AdditionalHeaders, SessionId, _negotiatedProtocolVersion);
 
         // Do not validate we get a successful status code, because server support for the DELETE request is optional
